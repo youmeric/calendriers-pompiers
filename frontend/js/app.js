@@ -611,7 +611,7 @@
 
   function onError(err) {
     console.error(err);
-    showToast("Erreur de chargement des données", true);
+    showToast(`Erreur de chargement des données : ${err.message}`, true);
   }
 
   async function init() {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import mimetypes
 import os
@@ -7,8 +8,8 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Response
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import auth, db
@@ -43,6 +44,34 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Calendriers Pompiers - Courzieu & Brussieu", lifespan=lifespan)
+
+
+def _asset_version() -> str:
+    """Empreinte des scripts et styles : change à chaque mise à jour du site."""
+    h = hashlib.sha1()
+    for path in sorted(FRONTEND_DIR.glob("**/*")):
+        if path.suffix in {".js", ".css", ".html", ".webmanifest"} and path.is_file():
+            h.update(path.read_bytes())
+    return h.hexdigest()[:10]
+
+
+ASSET_VERSION = _asset_version() if FRONTEND_DIR.exists() else "dev"
+
+
+@app.middleware("http")
+async def no_stale_files(request: Request, call_next):
+    # Sans consigne, les navigateurs gardent pages et scripts en cache « au jugé » et
+    # peuvent mélanger ancienne et nouvelle version après une mise à jour : on leur
+    # demande de revérifier à chaque fois (réponse 304 légère si rien n'a changé).
+    response = await call_next(request)
+    response.headers.setdefault("Cache-Control", "no-cache")
+    return response
+
+
+def _page(name: str) -> HTMLResponse:
+    """Page HTML dont les liens vers scripts/styles portent la version courante."""
+    html = (FRONTEND_DIR / name).read_text(encoding="utf-8").replace("__V__", ASSET_VERSION)
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 # fichiers produits par le pipeline, rechargés s'ils sont régénérés
 _communes_cache: dict[str, dict] = {}
@@ -263,9 +292,21 @@ def admin_reset_statuses(slug: str):
 
 # ---- Pages ---------------------------------------------------------------------
 
+@app.get("/", include_in_schema=False)
+@app.get("/index.html", include_in_schema=False)
+def public_page():
+    return _page("index.html")
+
+
 @app.get("/admin", include_in_schema=False)
+@app.get("/admin.html", include_in_schema=False)
 def admin_page():
-    return FileResponse(FRONTEND_DIR / "admin.html")
+    return _page("admin.html")
+
+
+@app.get("/plan.html", include_in_schema=False)
+def plan_page():
+    return _page("plan.html")
 
 
 if FRONTEND_DIR.exists():
