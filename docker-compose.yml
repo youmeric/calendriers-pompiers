@@ -1,0 +1,33 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: calendriers-pompiers-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_PATH=/app/db/status.db
+      - SECTORS_DATA_DIR=/app/sectors
+    volumes:
+      - sectors-data:/app/sectors
+      - status-db:/app/db
+
+  pipeline:
+    build:
+      context: .
+      dockerfile: data_pipeline/Dockerfile
+    image: calendriers-pompiers-pipeline
+    profiles: ["pipeline"]
+    environment:
+      - SECTORS_OUTPUT_DIR=/app/sectors
+      - BAN_CACHE_DIR=/app/cache
+    volumes:
+      - sectors-data:/app/sectors
+      - pipeline-cache:/app/cache
+
+volumes:
+  sectors-data:
+  status-db:
+  pipeline-cache:

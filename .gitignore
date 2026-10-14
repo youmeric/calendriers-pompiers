@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Données générées par le pipeline (régénérées via `docker compose run --rm pipeline`)
+backend/app/data/*.json
+!backend/app/data/.gitkeep
+data/cache/*
+!data/cache/.gitkeep
+
+# Base de statuts locale (dev)
+*.db
+
+.DS_Store
