@@ -35,6 +35,13 @@ sur Courzieu et Brussieu (69690).
   - **Option « suivi des adresses »** : désactivée par défaut, la page
     publique sert uniquement de plan. Activée, elle ajoute les boutons
     ✓ fait / ⏳ absent / ✕ refus par adresse.
+  - **Année de la tournée** : affichée dans le titre du site et sur les plans
+    (« Tournée des calendriers 2027 »). Par défaut, l'année qui suit à partir
+    de juillet ; à changer dans « Page publique » si besoin.
+- **Aux couleurs de la caserne** : l'écusson des sapeurs-pompiers de Courzieu
+  apparaît dans l'en-tête, sur la connexion admin, sur les plans imprimés et
+  comme icône de l'application. Pour le remplacer, changer
+  `frontend/img/logo-courzieu.png` (et les icônes de `frontend/icons/`).
 - **Page publique (`/`)**, pensée pour le téléphone : on voit la carte
   entière avec tous les secteurs **des deux communes**, puis on touche **son**
   secteur. La carte

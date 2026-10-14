@@ -87,7 +87,8 @@ a { color: var(--link); }
   color: var(--text);
 }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; color: inherit; text-decoration: none; }
-.brand-logo { width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; box-shadow: 0 2px 6px rgba(229, 56, 59, 0.3); }
+/* écusson de la caserne : plus haut que large, sans cadre */
+.brand-logo { width: auto; height: 46px; flex-shrink: 0; filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.25)); }
 .brand-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
 .brand-title {
   font-size: 15px;
@@ -169,6 +170,7 @@ a.btn { text-decoration: none; }
 
 .panel { padding: 6px 16px 28px; }
 .panel-title { font-size: 18px; font-weight: 700; margin: 8px 0 12px; }
+.panel-sub { margin: -8px 0 12px; }
 .hint { color: var(--muted); font-size: 13px; line-height: 1.45; margin: 6px 0; }
 .empty { color: var(--muted); text-align: center; padding: 24px 12px; }
 .color-dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
@@ -608,7 +610,8 @@ body.public.panel-collapsed .drawer-body { display: none; }
 .login-view { display: flex; justify-content: center; align-items: flex-start; padding: 12vh 16px 40px; }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; box-shadow: var(--shadow-lg); }
 .login-card { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 10px; }
-.login-logo { width: 56px; height: 56px; border-radius: 16px; box-shadow: 0 4px 14px rgba(229, 56, 59, 0.3); }
+.login-logo { width: auto; height: 100px; align-self: center; filter: drop-shadow(0 4px 10px rgba(15, 23, 42, 0.2)); }
+.login-card h2, .login-card > .hint { text-align: center; }
 .login-card h2 { margin: 8px 0 0; font-size: 21px; }
 .login-card .hint { margin: 0 0 8px; }
 .login-card label { font-size: 13px; font-weight: 600; }
@@ -791,7 +794,9 @@ body.plan { background: #e9ecf0; }
   box-shadow: 0 10px 40px rgba(15, 23, 42, 0.14);
 }
 body.plan-landscape .sheet { width: calc(277mm + 16mm); }
-.sheet-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 4mm; }
+.sheet-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 4mm; }
+.sheet-logo { width: auto; height: 22mm; flex-shrink: 0; }
+.sheet-heading { flex: 1; min-width: 0; }
 .sheet-header h1 { margin: 2px 0; font-size: 22px; font-weight: 750; display: flex; align-items: center; gap: 8px; }
 .sheet-kicker { margin: 0; color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; }
 .sheet-subtitle { margin: 0; color: var(--muted); font-size: 14px; }
@@ -831,3 +836,8 @@ body.plan-landscape .resume-columns { columns: 3; }
   #plan-map, body.plan-overview #plan-map, body.plan-no-detail #plan-map, body.plan-landscape #plan-map { height: 110vw; }
   .sheet { padding: 4mm; margin: 12px auto; }
 }
+
+/* ---- Réglage de l'année de la tournée (admin) ---- */
+.setting-year { align-items: center; justify-content: space-between; font-weight: 600; cursor: default; }
+.setting-year input { width: 88px; height: auto; margin: 0; padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: 15px; font-weight: 600; text-align: center; }
+.setting-year input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }

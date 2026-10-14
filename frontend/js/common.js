@@ -235,6 +235,10 @@ window.Common = (() => {
       </div>`).join("");
   }
 
+  function tourneeTitle(annee) {
+    return annee ? `Tournée des calendriers ${annee}` : "Tournée des calendriers";
+  }
+
   function hameauxPreview(resume, max = 3) {
     const names = (resume || []).filter((e) => e.nom !== "Habitations isolées").map((e) => e.nom);
     return names.slice(0, max).join(", ") + (names.length > max ? "…" : "");
@@ -245,5 +249,6 @@ window.Common = (() => {
     formatDistance, formatDuration, renderLimite, renderResume, hameauxPreview,
     toPolys, pointInPolys, outerRings, holeRings, OFF_ROAD,
     addBaseLayers, sectorCode, labelHtml, compactLabelsBelow, distanceToEdge, normalizeText,
+    tourneeTitle,
   };
 })();

@@ -3,7 +3,7 @@
   const {
     escapeHtml, fetchJSON, showToast, labelPoint, renderLimite, renderResume, hameauxPreview,
     toPolys, outerRings, holeRings, addBaseLayers, sectorCode, labelHtml, compactLabelsBelow,
-    pointInPolys, distanceToEdge, formatDistance, normalizeText,
+    pointInPolys, distanceToEdge, formatDistance, normalizeText, tourneeTitle,
   } = window.Common;
 
   const STATUS = {
@@ -655,9 +655,14 @@
 
   async function init() {
     initMap();
-    const { communes } = await fetchJSON("/api/communes");
+    const index = await fetchJSON("/api/communes");
+    const { communes } = index;
     state.communes = communes;
-    document.querySelector(".topbar-sub").textContent = communes.map((c) => c.nom).join(" · ");
+    document.getElementById("communes-names").textContent = communes.map((c) => c.nom).join(" · ");
+    if (index.annee) {
+      document.getElementById("brand-title").textContent = tourneeTitle(index.annee);
+      document.title = `${tourneeTitle(index.annee)} — Sapeurs-pompiers de Courzieu`;
+    }
     if (!communes.length) {
       els.noSectors.hidden = false;
       els.noSectors.textContent = "Aucune donnée disponible pour l'instant.";

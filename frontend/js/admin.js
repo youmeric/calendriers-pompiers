@@ -42,6 +42,7 @@
     excludedCount: $("excluded-count"),
     excludedList: $("excluded-list"),
     suivi: $("suivi-toggle"),
+    annee: $("annee-input"),
     versionsBtn: $("btn-versions"),
     versionsList: $("versions-list"),
     importAuto: $("btn-import-auto"),
@@ -1043,7 +1044,32 @@
     const settings = await fetchJSON("/api/admin/settings");
     els.suivi.checked = settings.suivi_adresses;
     els.resetBlock.hidden = !settings.suivi_adresses;
+    showAnnee(settings.annee);
   }
+
+  function showAnnee(annee) {
+    els.annee.value = annee;
+    $("brand-title").textContent = window.Common.tourneeTitle(annee);
+  }
+
+  els.annee.addEventListener("change", async () => {
+    const annee = Number(els.annee.value);
+    if (!Number.isInteger(annee) || annee < 2000 || annee > 2100) {
+      showToast("Année invalide (entre 2000 et 2100).", true);
+      return;
+    }
+    try {
+      const saved = await fetchJSON("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ annee }),
+      });
+      showAnnee(saved.annee);
+      showToast(`${window.Common.tourneeTitle(saved.annee)} : titre mis à jour sur le site public.`);
+    } catch (err) {
+      showToast(err.message, true);
+    }
+  });
 
   els.suivi.addEventListener("change", async () => {
     const value = els.suivi.checked;

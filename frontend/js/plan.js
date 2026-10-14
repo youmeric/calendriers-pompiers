@@ -265,7 +265,9 @@
     const sectorId = hash[1] ? Number(hash[1]) : null;
 
     // toutes les communes : pour le choix du plan et pour les secteurs voisins
-    const { communes } = await fetchJSON("/api/communes");
+    const index = await fetchJSON("/api/communes");
+    const { communes } = index;
+    $("plan-tournee").textContent = window.Common.tourneeTitle(index.annee);
     if (slug && !communes.some((c) => c.slug === slug)) throw new Error("Commune inconnue");
     const all = await Promise.all(communes.map((c) => fetchJSON(`/api/communes/${encodeURIComponent(c.slug)}`)));
     all.forEach((d) => d.sectors.forEach((s, i) => { s.code = sectorCode(d.commune.nom, i); }));

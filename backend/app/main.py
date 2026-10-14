@@ -6,6 +6,7 @@ import mimetypes
 import os
 import time
 from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
@@ -141,13 +142,24 @@ def _suivi_enabled() -> bool:
 
 # ---- API publique --------------------------------------------------------------
 
+def _annee() -> int:
+    """Année de la tournée : réglée dans l'admin, sinon l'année des calendriers
+    distribués à cette saison (à partir de juillet, ceux de l'année suivante)."""
+    value = db.get_setting("annee", "")
+    if value.isdigit():
+        return int(value)
+    today = date.today()
+    return today.year + 1 if today.month >= 7 else today.year
+
+
 @app.get("/api/communes")
 def list_communes():
     index_path = DATA_DIR / "index.json"
-    if not index_path.exists():
-        return {"communes": []}
-    with open(index_path, "r", encoding="utf-8") as fh:
-        return json.load(fh)
+    data = {"communes": []}
+    if index_path.exists():
+        with open(index_path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    return {**data, "annee": _annee()}
 
 
 @app.get("/api/communes/{slug}")
@@ -225,13 +237,16 @@ def me():
 
 @app.get("/api/admin/settings", dependencies=[Depends(auth.require_admin)])
 def admin_get_settings():
-    return {"suivi_adresses": _suivi_enabled()}
+    return {"suivi_adresses": _suivi_enabled(), "annee": _annee()}
 
 
 @app.put("/api/admin/settings", dependencies=[Depends(auth.require_admin)])
 def admin_save_settings(payload: SettingsIn):
-    db.set_setting("suivi_adresses", "1" if payload.suivi_adresses else "0")
-    return {"suivi_adresses": payload.suivi_adresses}
+    if payload.suivi_adresses is not None:
+        db.set_setting("suivi_adresses", "1" if payload.suivi_adresses else "0")
+    if payload.annee is not None:
+        db.set_setting("annee", str(payload.annee))
+    return admin_get_settings()
 
 
 @app.get("/api/admin/communes/{slug}", dependencies=[Depends(auth.require_admin)])

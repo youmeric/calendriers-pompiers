@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#ffffff" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-title" content="Secteurs" />
+<meta name="apple-mobile-web-app-title" content="Calendriers" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-<title>Calendriers des pompiers — Courzieu &amp; Brussieu</title>
+<title>Tournée des calendriers — Sapeurs-pompiers de Courzieu</title>
 <link rel="preload" href="vendor/inter/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
 <link rel="stylesheet" href="css/style.css?v=__V__" />
@@ -17,10 +17,10 @@
 <body class="public">
   <header class="topbar">
     <a class="brand" href="#/">
-      <img class="brand-logo" src="icons/icon-192.png" alt="" width="34" height="34" />
+      <img class="brand-logo" src="img/logo-courzieu.png" alt="Sapeurs-pompiers de Courzieu" width="31" height="44" />
       <span class="brand-text">
-        <span class="brand-title">Calendriers des pompiers</span>
-        <span class="topbar-sub">Courzieu · Brussieu</span>
+        <span id="brand-title" class="brand-title">Tournée des calendriers</span>
+        <span class="topbar-sub">Sapeurs-pompiers de Courzieu</span>
       </span>
     </a>
   </header>
@@ -46,6 +46,7 @@
             <div id="search-results" class="search-results" hidden></div>
           </div>
           <h2 class="panel-title">Choisissez votre secteur</h2>
+          <p id="communes-names" class="hint panel-sub"></p>
           <div id="sector-buttons" class="sector-buttons"></div>
           <p id="no-sectors" class="empty" hidden>Les secteurs n'ont pas encore été définis. Revenez un peu plus tard.</p>
           <a id="btn-print-all" class="btn print-link" href="#" target="_blank" rel="noopener" hidden>

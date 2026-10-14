@@ -67,7 +67,9 @@ class ExclusionIn(BaseModel):
 
 
 class SettingsIn(BaseModel):
-    suivi_adresses: bool
+    # champs facultatifs : on n'enregistre que ce qui est envoyé
+    suivi_adresses: bool | None = None
+    annee: int | None = Field(default=None, ge=2000, le=2100)
 
 
 class SectorsIn(BaseModel):

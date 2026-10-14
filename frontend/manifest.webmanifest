@@ -1,7 +1,7 @@
 {
-  "name": "Secteurs — calendriers des pompiers",
-  "short_name": "Secteurs",
-  "description": "Plan des secteurs de distribution des calendriers des sapeurs-pompiers (Courzieu, Brussieu)",
+  "name": "Tournée des calendriers — Sapeurs-pompiers de Courzieu",
+  "short_name": "Calendriers",
+  "description": "Secteurs de la tournée des calendriers des sapeurs-pompiers de Courzieu (Courzieu, Brussieu)",
   "lang": "fr",
   "start_url": "/",
   "scope": "/",
