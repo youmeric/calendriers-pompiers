@@ -437,3 +437,55 @@ body.plan-overview #plan-map { height: 175mm; }
   font-size: 13px;
 }
 .version-row .btn { width: auto; margin: 0; flex-shrink: 0; }
+
+/* ===================== Plusieurs communes, secteurs en morceaux ===================== */
+.topbar-sub { font-size: 13px; opacity: 0.9; white-space: nowrap; }
+.commune-heading { margin: 18px 0 2px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.commune-heading:first-child { margin-top: 0; }
+.limite-part { margin: 10px 0 2px; font-weight: 700; font-size: 13px; }
+.legend-table th { text-align: left; padding: 10px 6px 4px; font-size: 13px; color: var(--muted); text-transform: uppercase; }
+
+/* ============== Admin : mode hameaux, adresses exclues, réparations ============== */
+.map-wrap { position: relative; }
+.map-banner {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 120px);
+  background: #fff8db;
+  border: 2px solid #e0b84c;
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 14px;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.2);
+}
+.map-banner .btn { flex-shrink: 0; }
+.admin-toolbar.second { margin-top: 8px; }
+.excluded-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.excluded-row .btn { width: auto; margin: 0; flex-shrink: 0; }
+.tools .excluded-row .btn, .tools .version-row .btn { width: auto; margin-top: 0; }
+.warning .fix-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.warning .warning-body { flex: 1; min-width: 0; }
+.popup-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.popup-actions .btn { min-height: 34px; padding: 6px 10px; font-size: 13px; }
+.leaflet-container.hamlet-mode .leaflet-interactive { cursor: copy; }
+
+@media (min-width: 900px) {
+  .map-wrap { flex: 1; height: 100%; }
+  .map-wrap #admin-map { height: 100%; }
+}
+.leaflet-container.over-address { cursor: pointer; }
+.leaflet-container.hamlet-mode.over-address { cursor: copy; }

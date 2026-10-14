@@ -30,7 +30,13 @@
   </section>
 
   <main id="editor-view" class="editor" hidden>
-    <section id="admin-map" aria-label="Carte d'édition des secteurs"></section>
+    <div class="map-wrap">
+      <section id="admin-map" aria-label="Carte d'édition des secteurs"></section>
+      <div id="mode-banner" class="map-banner" hidden>
+        <span id="mode-text"></span>
+        <button id="mode-done" class="btn small primary" type="button">Terminer</button>
+      </div>
+    </div>
 
     <aside id="admin-panel">
       <div class="admin-toolbar">
@@ -39,17 +45,22 @@
         <button id="btn-redo" class="btn icon" type="button" title="Rétablir (Ctrl+Y)" aria-label="Rétablir" disabled>↷</button>
         <button id="btn-save" class="btn primary" type="button" disabled>Enregistrer</button>
       </div>
+      <div class="admin-toolbar second">
+        <button id="btn-new-hamlets" class="btn" type="button">🏘 Nouveau secteur à partir de hameaux</button>
+      </div>
       <p id="dirty-hint" class="hint dirty" hidden>Modifications non enregistrées</p>
 
       <details class="help">
         <summary>Comment ça marche ?</summary>
         <ul>
+          <li><b>Par hameaux</b> (le plus simple) : « Nouveau secteur à partir de hameaux », puis cliquez une maison : tout son hameau entre dans le secteur. Continuez à cliquer les hameaux voulus ; un hameau déjà dans un autre secteur en est retiré automatiquement. Recliquez un hameau pour le retirer. Sur un secteur existant : bouton « 🏘 Hameaux » de sa fiche.</li>
           <li><b>Dessiner</b> : cliquez « Dessiner un secteur », puis cliquez point par point autour de la zone. Cliquez sur le premier point pour fermer le secteur.</li>
           <li>Les points <b>s'aimantent aux routes</b> et aux bords des autres secteurs : collez deux secteurs voisins en suivant la même route pour qu'il n'y ait ni trou ni chevauchement.</li>
-          <li><b>Modifier un tracé</b> : bouton « Modifier » sur la fiche du secteur, puis déplacez les points (glisser) ; cliquez un point pour le supprimer, ou le petit point au milieu d'un côté pour en ajouter un. Re-cliquez « Terminer ».</li>
-          <li>Les petits points sur la carte sont les adresses : de la couleur du secteur qui les contient, <b>noirs</b> s'ils ne sont dans aucun secteur.</li>
+          <li><b>Modifier un tracé</b> : bouton « Modifier le tracé » sur la fiche du secteur, puis déplacez les points (glisser) ; cliquez un point pour le supprimer, ou le petit point au milieu d'un côté pour en ajouter un. Re-cliquez « Terminer ».</li>
+          <li>Les petits points sur la carte sont les adresses : de la couleur du secteur qui les contient, <b>noirs</b> s'ils ne sont dans aucun secteur. <b>Cliquez une adresse</b> pour l'exclure (cimetière, bâtiment sans habitant…).</li>
+          <li>Un secteur peut être en plusieurs morceaux (hameaux éloignés) ou contenir une enclave (hameau retiré au milieu).</li>
           <li>Une erreur ? <b>↶</b> annule la dernière action (Ctrl+Z), <b>↷</b> la rétablit.</li>
-          <li>Rien n'est publié tant que vous n'avez pas cliqué <b>Enregistrer</b>.</li>
+          <li>Les alertes sont des aides : elles <b>n'empêchent jamais d'enregistrer</b>. Rien n'est publié tant que vous n'avez pas cliqué <b>Enregistrer</b>.</li>
         </ul>
       </details>
 
@@ -85,6 +96,12 @@
         <p class="hint">Désactivé : la page publique sert uniquement de plan des secteurs.</p>
       </section>
 
+      <details class="tools" id="excluded-block">
+        <summary>Adresses exclues (<span id="excluded-count">0</span>)</summary>
+        <p class="hint">Cliquez une adresse sur la carte pour l'exclure (cimetière, bâtiment sans habitant…). Une adresse exclue n'apparaît plus nulle part, ni dans les comptes ni sur le site public. Pris en compte immédiatement.</p>
+        <div id="excluded-list"></div>
+      </details>
+
       <details class="tools">
         <summary>Autres outils</summary>
         <button id="btn-versions" class="btn" type="button">Versions enregistrées…</button>
@@ -105,7 +122,9 @@
 
   <script src="vendor/leaflet/leaflet.js"></script>
   <script src="vendor/geoman/leaflet-geoman.min.js"></script>
+  <script src="vendor/turf/turf.min.js"></script>
   <script src="js/common.js"></script>
+  <script src="js/geometry.js"></script>
   <script src="js/admin.js"></script>
 </body>
 </html>

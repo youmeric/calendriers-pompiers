@@ -3,13 +3,23 @@
 Site web pour organiser la distribution des calendriers des sapeurs-pompiers
 sur Courzieu et Brussieu (69690).
 
-- **Page admin (`/admin`)**, protégée par mot de passe : vous dessinez
-  vous-même les secteurs sur la carte, vous les nommez et leur donnez une
-  couleur. Les tracés **s'aimantent aux routes** OSM et aux bords des secteurs
-  voisins. L'outil vous **alerte** si un hameau est coupé entre deux secteurs,
-  si des adresses ne sont dans aucun secteur, ou si deux secteurs se
-  chevauchent. Une proposition automatique (4 secteurs équilibrés, bourg à
-  pied depuis la mairie) peut servir de point de départ.
+- **Page admin (`/admin`)**, protégée par mot de passe : vous créez vous-même
+  les secteurs, vous les nommez et leur donnez une couleur.
+  - **Par hameaux** (le plus simple) : en cliquant une maison, tout son hameau
+    entre dans le secteur (et sort de l'autre secteur s'il y était) ; recliquer
+    le retire. Un secteur peut ainsi être en plusieurs morceaux, ou avoir une
+    enclave (hameau retiré au milieu).
+  - **En dessinant** : les tracés **s'aimantent aux routes** OSM et aux bords
+    des secteurs voisins.
+  - L'outil **alerte** si un hameau est coupé (avec un bouton pour le remettre
+    en entier d'un côté), si des adresses ne sont dans aucun secteur, ou si
+    deux secteurs se chevauchent. Ces alertes **n'empêchent jamais
+    d'enregistrer**.
+  - **Exclure une adresse** (cimetière, bâtiment sans habitant…) : clic sur
+    l'adresse → « Exclure ». Elle disparaît des comptes et du site public ;
+    on peut la réintégrer.
+  - Une proposition automatique (4 secteurs équilibrés, bourg à pied depuis la
+    mairie) peut servir de point de départ.
   - **Équilibre** : pour chaque secteur, nombre d'adresses, km de routes,
     temps estimé et écart à la moyenne (minutes par porte réglables).
   - **↶ / ↷** (Ctrl+Z / Ctrl+Y) pour annuler ou rétablir, et **versions** :
@@ -18,7 +28,8 @@ sur Courzieu et Brussieu (69690).
     publique sert uniquement de plan. Activée, elle ajoute les boutons
     ✓ fait / ⏳ absent / ✕ refus par adresse.
 - **Page publique (`/`)**, pensée pour le téléphone : on voit la carte
-  entière avec tous les secteurs, puis on touche **son** secteur. La carte
+  entière avec tous les secteurs **des deux communes**, puis on touche **son**
+  secteur. La carte
   zoome dessus et **assombrit tout ce qui est en dehors**, pour voir exactement
   où il se termine. On y trouve :
   - **où s'arrête le secteur**, en mots : les routes suivies par la limite

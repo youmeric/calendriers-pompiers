@@ -1,43 +1,51 @@
 (() => {
   "use strict";
   const {
-    PALETTE, escapeHtml, fetchJSON, showToast, pointInPolygon, osmLayer, labelPoint, formatDistance, formatDuration,
+    PALETTE, escapeHtml, fetchJSON, showToast, osmLayer, labelPoint, formatDistance, formatDuration,
+    toPolys, pointInPolys, OFF_ROAD,
   } = window.Common;
+  const Geometry = window.Geometry;
 
   const SNAP_DISTANCE = 20;
   const OUTSIDE_COLOR = "#111111";
   const MIN_PER_KM = 2; // ~30 km/h
   const MAX_HISTORY = 100;
   const NOT_DRIVEN = new Set(["footway", "path", "cycleway", "steps", "bridleway", "track", "pedestrian", "corridor"]);
-  const OFF_ROAD = "hors route (à travers champs)";
 
+  const $ = (id) => document.getElementById(id);
   const els = {
-    loginView: document.getElementById("login-view"),
-    loginForm: document.getElementById("login-form"),
-    password: document.getElementById("password"),
-    loginError: document.getElementById("login-error"),
-    editorView: document.getElementById("editor-view"),
-    select: document.getElementById("commune-select"),
-    logout: document.getElementById("btn-logout"),
-    draw: document.getElementById("btn-draw"),
-    undo: document.getElementById("btn-undo"),
-    redo: document.getElementById("btn-redo"),
-    save: document.getElementById("btn-save"),
-    dirtyHint: document.getElementById("dirty-hint"),
-    snap: document.getElementById("snap-toggle"),
-    roads: document.getElementById("roads-toggle"),
-    buildings: document.getElementById("buildings-toggle"),
-    warnings: document.getElementById("warnings"),
-    balance: document.getElementById("balance-rows"),
-    minPerAddress: document.getElementById("min-per-address"),
-    list: document.getElementById("sector-editor-list"),
-    suivi: document.getElementById("suivi-toggle"),
-    versionsBtn: document.getElementById("btn-versions"),
-    versionsList: document.getElementById("versions-list"),
-    importAuto: document.getElementById("btn-import-auto"),
-    printAll: document.getElementById("btn-print-all"),
-    resetBlock: document.getElementById("reset-status-block"),
-    resetStatus: document.getElementById("btn-reset-status"),
+    loginView: $("login-view"),
+    loginForm: $("login-form"),
+    password: $("password"),
+    loginError: $("login-error"),
+    editorView: $("editor-view"),
+    select: $("commune-select"),
+    logout: $("btn-logout"),
+    draw: $("btn-draw"),
+    newHamlets: $("btn-new-hamlets"),
+    undo: $("btn-undo"),
+    redo: $("btn-redo"),
+    save: $("btn-save"),
+    dirtyHint: $("dirty-hint"),
+    banner: $("mode-banner"),
+    bannerText: $("mode-text"),
+    bannerDone: $("mode-done"),
+    snap: $("snap-toggle"),
+    roads: $("roads-toggle"),
+    buildings: $("buildings-toggle"),
+    warnings: $("warnings"),
+    balance: $("balance-rows"),
+    minPerAddress: $("min-per-address"),
+    list: $("sector-editor-list"),
+    excludedCount: $("excluded-count"),
+    excludedList: $("excluded-list"),
+    suivi: $("suivi-toggle"),
+    versionsBtn: $("btn-versions"),
+    versionsList: $("versions-list"),
+    importAuto: $("btn-import-auto"),
+    printAll: $("btn-print-all"),
+    resetBlock: $("reset-status-block"),
+    resetStatus: $("btn-reset-status"),
   };
 
   const state = {
@@ -47,16 +55,20 @@
     data: null,
     sectors: [], // {id, nom, couleur, layer, label, count, groups, km, minutes}
     markers: [],
+    owners: [], // pour chaque adresse : index du secteur qui la contient (ou null)
+    excluded: new Set(),
     roadSegments: [],
     roadsLayer: null,
     buildingsLayer: null,
     contourLayer: null,
     editing: null,
     selected: null,
-    history: [], // instantanés JSON de l'état des secteurs
+    hamletTarget: null, // secteur en cours de construction par hameaux
+    hamletNew: false, // le prochain clic crée un nouveau secteur
+    history: [],
     future: [],
     savedSnapshot: "[]",
-    savedById: new Map(), // id -> {polygon (JSON), limite} tel qu'enregistré
+    savedById: new Map(),
   };
 
   const storage = {
@@ -119,22 +131,28 @@
     // une vue initiale est indispensable avant d'ajouter des calques (rendu canvas)
     state.map = L.map("admin-map", { zoomControl: true }).setView([45.742, 4.57], 13);
     osmLayer().addTo(state.map);
-    state.canvas = L.canvas({ padding: 0.5 });
+    state.canvas = L.canvas({ padding: 0.5, tolerance: 6 });
     state.map.pm.setLang("fr");
     state.map.pm.setGlobalOptions({ snappable: true, snapDistance: SNAP_DISTANCE, allowSelfIntersection: false });
 
+    state.map.on("click", onMapClick);
+    state.map.on("mousemove", onMapMove);
     state.map.on("pm:drawstart", () => { els.draw.textContent = "✖ Annuler le dessin"; els.draw.classList.add("active"); });
     state.map.on("pm:drawend", () => { els.draw.textContent = "✏️ Dessiner un secteur"; els.draw.classList.remove("active"); });
     state.map.on("pm:create", (e) => {
-      const ring = ringOf(e.layer);
+      const polys = polysOf(e.layer);
       state.map.removeLayer(e.layer);
-      const sector = addSector({ id: null, nom: `Secteur ${state.sectors.length + 1}`, couleur: nextColor(), polygon: ring });
+      const sector = addSector({ id: null, nom: `Secteur ${state.sectors.length + 1}`, couleur: nextColor(), polygon: polys });
       changed();
       renderList();
       selectSector(sector, true);
-      const input = document.querySelector(`.sector-edit-card[data-index="${state.sectors.indexOf(sector)}"] input[type="text"]`);
-      if (input) { input.focus(); input.select(); }
+      focusName(sector);
     });
+  }
+
+  function focusName(sector) {
+    const input = document.querySelector(`.sector-edit-card[data-index="${state.sectors.indexOf(sector)}"] input[type="text"]`);
+    if (input) { input.focus(); input.select(); }
   }
 
   function clearSectorLayers() {
@@ -146,6 +164,7 @@
 
   function clearCommuneLayers() {
     state.map.pm.disableDraw();
+    stopHamletMode();
     clearSectorLayers();
     for (const layer of [state.roadsLayer, state.buildingsLayer, state.contourLayer]) {
       if (layer) state.map.removeLayer(layer);
@@ -191,16 +210,70 @@
     })));
     if (els.buildings.checked) state.buildingsLayer.addTo(state.map);
 
+    // Les clics et le survol des adresses sont gérés au niveau de la carte (voir
+    // nearestAddress) : ainsi ils marchent même quand un secteur est dessiné par-dessus.
     state.markers = data.addresses.map((a) => L.circleMarker([a.lat, a.lon], {
       renderer: state.canvas, radius: 4, weight: 1, color: "#fff", fillColor: OUTSIDE_COLOR, fillOpacity: 1,
-      pmIgnore: true, snapIgnore: true,
-    }).bindTooltip(`${escapeHtml(a.label)}<br><small>${escapeHtml(a.groupe)}</small>`).addTo(state.map));
+      interactive: false, pmIgnore: true, snapIgnore: true,
+    }).addTo(state.map));
   }
 
-  function ringOf(layer) {
-    let latlngs = layer.getLatLngs();
-    while (Array.isArray(latlngs[0])) latlngs = latlngs[0];
-    return latlngs.map((ll) => [+ll.lat.toFixed(6), +ll.lng.toFixed(6)]);
+  const HIT_PX = 10;
+
+  /** Index de l'adresse affichée la plus proche du point écran, à moins de HIT_PX pixels. */
+  function nearestAddress(latlng) {
+    if (!state.data) return null;
+    const p = state.map.latLngToContainerPoint(latlng);
+    const size = state.map.getSize();
+    let best = null;
+    let bestD = HIT_PX * HIT_PX;
+    state.data.addresses.forEach((a, idx) => {
+      const q = state.map.latLngToContainerPoint([a.lat, a.lon]);
+      if (q.x < -HIT_PX || q.y < -HIT_PX || q.x > size.x + HIT_PX || q.y > size.y + HIT_PX) return;
+      const d = (q.x - p.x) ** 2 + (q.y - p.y) ** 2;
+      if (d <= bestD) { bestD = d; best = idx; }
+    });
+    return best;
+  }
+
+  function onMapClick(e) {
+    if (state.map.pm.globalDrawModeEnabled() || state.editing) return;
+    const idx = nearestAddress(e.latlng);
+    if (idx === null) return;
+    const a = state.data.addresses[idx];
+    if (state.hamletTarget || state.hamletNew) {
+      if (state.excluded.has(a.id)) { showToast("Adresse exclue : réintégrez-la d'abord pour l'utiliser.", true); return; }
+      toggleHamlet(a.groupe_id);
+    } else {
+      openAddressPopup(idx);
+    }
+  }
+
+  let hoverTimer = null;
+  let hoverTip = null;
+  function onMapMove(e) {
+    if (hoverTimer) return;
+    hoverTimer = setTimeout(() => {
+      hoverTimer = null;
+      const idx = state.map.pm.globalDrawModeEnabled() ? null : nearestAddress(e.latlng);
+      state.map.getContainer().classList.toggle("over-address", idx !== null);
+      if (idx === null) {
+        if (hoverTip) { state.map.removeLayer(hoverTip); hoverTip = null; }
+        return;
+      }
+      const a = state.data.addresses[idx];
+      const html = `${escapeHtml(a.label)}<br><small>${escapeHtml(a.groupe)}${state.excluded.has(a.id) ? " · exclue" : ""}</small>`;
+      if (!hoverTip) hoverTip = L.tooltip({ direction: "top", offset: [0, -6] });
+      hoverTip.setLatLng([a.lat, a.lon]).setContent(html);
+      if (!state.map.hasLayer(hoverTip)) hoverTip.addTo(state.map);
+    }, 60);
+  }
+
+  /** Contours d'un calque Leaflet au format canonique [[contour, enclave...], ...]. */
+  function polysOf(layer) {
+    let ll = layer.getLatLngs();
+    if (!Array.isArray(ll[0][0])) ll = [ll]; // polygone simple -> un seul morceau
+    return ll.map((poly) => poly.map((ring) => ring.map((p) => [+p.lat.toFixed(6), +p.lng.toFixed(6)])));
   }
 
   function nextColor() {
@@ -209,7 +282,7 @@
   }
 
   function sectorStyle(sector) {
-    const selected = state.selected === sector;
+    const selected = state.selected === sector || state.hamletTarget === sector;
     return { color: sector.couleur, fillColor: sector.couleur, weight: selected ? 4 : 2, fillOpacity: selected ? 0.25 : 0.15 };
   }
 
@@ -223,25 +296,36 @@
 
   function addSector({ id, nom, couleur, polygon }) {
     const sector = { id, nom, couleur, count: 0, groups: 0, km: 0, minutes: 0 };
-    sector.layer = L.polygon(polygon, {}).addTo(state.map);
+    const polys = toPolys(polygon);
+    sector.layer = L.polygon(polys, {}).addTo(state.map);
     sector.layer.setStyle(sectorStyle(sector));
-    sector.label = L.marker(L.latLngBounds(polygon).getCenter(), {
+    sector.label = L.marker(sector.layer.getBounds().getCenter(), {
       icon: labelIcon(sector), interactive: false, keyboard: false, pmIgnore: true, snapIgnore: true,
     }).addTo(state.map);
-    sector.layer.on("click", () => { if (!state.map.pm.globalDrawModeEnabled()) selectSector(sector, true); });
+    sector.layer.on("click", () => {
+      if (state.map.pm.globalDrawModeEnabled() || state.hamletTarget || state.hamletNew) return;
+      selectSector(sector, true);
+    });
     sector.layer.on("pm:edit", () => { changed(); updateCards(); });
     state.sectors.push(sector);
     return sector;
   }
 
+  function setSectorPolys(sector, polys) {
+    const wasEditing = state.editing === sector;
+    if (wasEditing) stopEditing();
+    sector.layer.setLatLngs(polys);
+    sector.layer.setStyle(sectorStyle(sector));
+    if (wasEditing) startEditing(sector);
+  }
+
   function removeSector(sector) {
     if (state.editing === sector) stopEditing();
+    if (state.hamletTarget === sector) stopHamletMode();
     state.map.removeLayer(sector.layer);
     state.map.removeLayer(sector.label);
     state.sectors = state.sectors.filter((s) => s !== sector);
     if (state.selected === sector) state.selected = null;
-    changed();
-    renderList();
   }
 
   function selectSector(sector, scroll) {
@@ -260,6 +344,7 @@
 
   function startEditing(sector) {
     if (state.editing && state.editing !== sector) stopEditing();
+    stopHamletMode();
     state.map.pm.disableDraw();
     state.editing = sector;
     sector.layer.pm.enable({ snappable: els.snap.checked, snapDistance: SNAP_DISTANCE, allowSelfIntersection: false });
@@ -275,10 +360,166 @@
     renderList();
   }
 
+  // ---- Mode « hameaux » ------------------------------------------------------------
+
+  function activeGroupAddresses(groupId) {
+    return state.data.addresses.filter((a) => a.groupe_id === groupId && !state.excluded.has(a.id));
+  }
+
+  function updateBanner() {
+    const active = state.hamletTarget || state.hamletNew;
+    els.banner.hidden = !active;
+    state.map.getContainer().classList.toggle("hamlet-mode", Boolean(active));
+    if (state.hamletNew) {
+      els.bannerText.textContent = "Nouveau secteur : cliquez une maison pour y mettre tout son hameau.";
+    } else if (state.hamletTarget) {
+      els.bannerText.textContent = `« ${state.hamletTarget.nom} » : cliquez une maison pour ajouter son hameau (recliquez pour le retirer).`;
+    }
+  }
+
+  function startHamletMode(sector) {
+    stopEditing();
+    state.map.pm.disableDraw();
+    state.hamletNew = !sector;
+    state.hamletTarget = sector || null;
+    if (sector) selectSector(sector, false);
+    state.sectors.forEach((s) => s.layer.setStyle(sectorStyle(s)));
+    updateBanner();
+    renderList();
+  }
+
+  function stopHamletMode() {
+    if (!state.hamletTarget && !state.hamletNew) return;
+    state.hamletTarget = null;
+    state.hamletNew = false;
+    state.sectors.forEach((s) => s.layer.setStyle(sectorStyle(s)));
+    updateBanner();
+    renderList();
+  }
+
+  /** Met tout le hameau `groupId` dans `target` et le retire des autres secteurs. */
+  function moveGroupTo(groupId, target) {
+    const addrs = activeGroupAddresses(groupId);
+    if (!addrs.length) return;
+    const shape = Geometry.hamletShape(addrs);
+    setSectorPolys(target, Geometry.union(polysOf(target.layer), shape));
+    for (const other of [...state.sectors]) {
+      if (other === target || !Geometry.intersects(polysOf(other.layer), shape)) continue;
+      const rest = Geometry.difference(polysOf(other.layer), shape);
+      if (rest.length) setSectorPolys(other, rest);
+      else {
+        removeSector(other);
+        showToast(`« ${other.nom} » ne contenait que ce hameau : secteur supprimé (↶ pour annuler).`);
+      }
+    }
+  }
+
+  function toggleHamlet(groupId) {
+    const addrs = activeGroupAddresses(groupId);
+    if (!addrs.length) return;
+    const name = addrs[0].groupe;
+    try {
+      if (state.hamletNew) {
+        const sector = addSector({ id: null, nom: name, couleur: nextColor(), polygon: Geometry.union([], Geometry.hamletShape(addrs)) });
+        moveGroupTo(groupId, sector); // le retire d'un éventuel autre secteur
+        state.hamletNew = false;
+        state.hamletTarget = sector;
+        changed();
+        renderList();
+        selectSector(sector, true);
+        updateBanner();
+        showToast(`Secteur créé avec « ${name} ». Continuez à cliquer des hameaux, puis renommez-le.`);
+        return;
+      }
+      const target = state.hamletTarget;
+      const polys = polysOf(target.layer);
+      const allInside = addrs.every((a) => pointInPolys(a.lat, a.lon, polys));
+      if (allInside) {
+        const rest = Geometry.difference(polys, Geometry.hamletShape(addrs));
+        if (!rest.length) { showToast("C'est le seul hameau du secteur : supprimez plutôt le secteur.", true); return; }
+        setSectorPolys(target, rest);
+        showToast(`« ${name} » retiré de « ${target.nom} ».`);
+      } else {
+        moveGroupTo(groupId, target);
+        showToast(`« ${name} » ajouté à « ${target.nom} ».`);
+      }
+      changed();
+      renderList();
+    } catch (err) {
+      console.error(err);
+      showToast(`Opération impossible sur ce hameau : ${err.message}`, true);
+    }
+  }
+
+  els.newHamlets.addEventListener("click", () => {
+    if (state.hamletNew) stopHamletMode(); else startHamletMode(null);
+  });
+  els.bannerDone.addEventListener("click", stopHamletMode);
+
+  // ---- Adresses exclues ------------------------------------------------------------
+
+  function openAddressPopup(idx) {
+    const a = state.data.addresses[idx];
+    const excluded = state.excluded.has(a.id);
+    const group = state.data.addresses.filter((x) => x.groupe_id === a.groupe_id);
+    const box = document.createElement("div");
+    box.innerHTML = `<strong>${escapeHtml(a.label)}</strong><br><span class="hint">${escapeHtml(a.groupe)}${excluded ? " · <b>exclue</b>" : ""}</span>`;
+    const actions = document.createElement("div");
+    actions.className = "popup-actions";
+    if (excluded) {
+      actions.append(button("Réintégrer cette adresse", "btn", () => setExcluded([a.id], false)));
+    } else {
+      actions.append(button("Exclure cette adresse", "btn danger", () => setExcluded([a.id], true)));
+      if (group.length > 1) {
+        actions.append(button(`Exclure tout « ${a.groupe} » (${group.length})`, "btn danger", () => {
+          if (confirm(`Exclure les ${group.length} adresses de « ${a.groupe} » ?`)) setExcluded(group.map((x) => x.id), true);
+        }));
+      }
+    }
+    box.appendChild(actions);
+    L.popup({ maxWidth: 280 }).setLatLng([a.lat, a.lon]).setContent(box).openOn(state.map);
+  }
+
+  async function setExcluded(ids, excluded) {
+    try {
+      const res = await fetchJSON(`/api/admin/communes/${state.slug}/excluded`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address_ids: ids, excluded }),
+      });
+      state.excluded = new Set(res.excluded);
+      state.map.closePopup();
+      recompute();
+      renderExcluded();
+      showToast(excluded ? `${ids.length} adresse(s) exclue(s) ✓` : `${ids.length} adresse(s) réintégrée(s) ✓`);
+    } catch (err) {
+      if (err.status === 401) { showToast("Session expirée : reconnectez-vous.", true); showLogin(); }
+      else showToast(err.message, true);
+    }
+  }
+
+  function renderExcluded() {
+    const list = state.data.addresses.filter((a) => state.excluded.has(a.id));
+    els.excludedCount.textContent = String(list.length);
+    els.excludedList.innerHTML = list.length ? "" : `<p class="hint">Aucune adresse exclue.</p>`;
+    for (const a of list) {
+      const row = document.createElement("div");
+      row.className = "excluded-row";
+      row.innerHTML = `<span>${escapeHtml(a.label)}<br><span class="hint">${escapeHtml(a.groupe)}</span></span>`;
+      const btns = document.createElement("span");
+      btns.append(
+        button("Voir", "btn small", () => state.map.setView([a.lat, a.lon], 18)),
+        button("Réintégrer", "btn small", () => setExcluded([a.id], false)),
+      );
+      row.appendChild(btns);
+      els.excludedList.appendChild(row);
+    }
+  }
+
   // ---- Historique (annuler / rétablir) ----------------------------------------------
 
   function serialize() {
-    return JSON.stringify(state.sectors.map((s) => ({ id: s.id, nom: s.nom, couleur: s.couleur, polygon: ringOf(s.layer) })));
+    return JSON.stringify(state.sectors.map((s) => ({ id: s.id, nom: s.nom, couleur: s.couleur, polygon: polysOf(s.layer) })));
   }
 
   function isDirty() {
@@ -306,8 +547,11 @@
   }
 
   function restore(snapshot) {
+    const hamletIndex = state.hamletTarget ? state.sectors.indexOf(state.hamletTarget) : -1;
     clearSectorLayers();
     JSON.parse(snapshot).forEach((s) => addSector(s));
+    state.hamletTarget = state.hamletTarget && state.sectors[hamletIndex] ? state.sectors[hamletIndex] : null;
+    updateBanner();
     recompute();
     renderList();
     refreshDirty();
@@ -337,7 +581,9 @@
   els.undo.addEventListener("click", undo);
   els.redo.addEventListener("click", redo);
   document.addEventListener("keydown", (e) => {
-    if (!(e.ctrlKey || e.metaKey) || els.editorView.hidden) return;
+    if (els.editorView.hidden) return;
+    if (e.key === "Escape") { stopHamletMode(); return; }
+    if (!(e.ctrlKey || e.metaKey)) return;
     if (["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) return; // annulation native du texte
     const key = e.key.toLowerCase();
     if (key === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
@@ -348,33 +594,42 @@
 
   function recompute() {
     if (!state.data) return;
-    const rings = state.sectors.map((s) => ringOf(s.layer));
+    const polys = state.sectors.map((s) => polysOf(s.layer));
     const boxes = state.sectors.map((s) => s.layer.getBounds());
     const addresses = state.data.addresses;
-    const owners = addresses.map((a) => rings.reduce((acc, ring, i) => {
-      if (boxes[i].contains([a.lat, a.lon]) && pointInPolygon(a.lat, a.lon, ring)) acc.push(i);
-      return acc;
-    }, []));
 
-    state.sectors.forEach((s) => { s.count = 0; s.groupSet = new Set(); s.km = 0; });
+    state.sectors.forEach((s) => { s.count = 0; s.groupSet = new Set(); s.km = 0; s.mine = []; });
     const outside = [];
     const overlap = [];
     const groupOwners = new Map();
+    state.owners = [];
 
-    owners.forEach((own, idx) => {
-      const a = addresses[idx];
+    addresses.forEach((a, idx) => {
+      const marker = state.markers[idx];
+      if (state.excluded.has(a.id)) {
+        state.owners.push(null);
+        marker.setStyle({ radius: 3, fillColor: "#ffffff", fillOpacity: 0.6, color: "#888888", weight: 1 });
+        return;
+      }
+      const own = [];
+      polys.forEach((p, i) => { if (boxes[i].contains([a.lat, a.lon]) && pointInPolys(a.lat, a.lon, p)) own.push(i); });
       const first = own.length ? own[0] : null;
+      state.owners.push(first);
       if (first === null) outside.push(a);
       else {
-        state.sectors[first].count++;
-        state.sectors[first].groupSet.add(a.groupe_id);
+        const s = state.sectors[first];
+        s.count++;
+        s.groupSet.add(a.groupe_id);
+        s.mine.push(a);
       }
       if (own.length > 1) overlap.push({ a, own });
-      if (!groupOwners.has(a.groupe_id)) groupOwners.set(a.groupe_id, { nom: a.groupe, owners: new Set(), addrs: [] });
+      if (!groupOwners.has(a.groupe_id)) groupOwners.set(a.groupe_id, { id: a.groupe_id, nom: a.groupe, owners: new Set(), addrs: [] });
       const g = groupOwners.get(a.groupe_id);
       g.owners.add(first);
       g.addrs.push(a);
-      state.markers[idx].setStyle({
+      marker.setStyle({
+        radius: 4,
+        fillOpacity: 1,
         fillColor: first === null ? OUTSIDE_COLOR : state.sectors[first].couleur,
         color: own.length > 1 ? "#ff00ff" : "#fff",
         weight: own.length > 1 ? 2 : 1,
@@ -382,8 +637,8 @@
     });
 
     for (const seg of state.roadSegments) {
-      for (let i = 0; i < rings.length; i++) {
-        if (boxes[i].contains([seg.lat, seg.lon]) && pointInPolygon(seg.lat, seg.lon, rings[i])) {
+      for (let i = 0; i < polys.length; i++) {
+        if (boxes[i].contains([seg.lat, seg.lon]) && pointInPolys(seg.lat, seg.lon, polys[i])) {
           state.sectors[i].km += seg.m / 1000;
           break;
         }
@@ -394,8 +649,7 @@
     state.sectors.forEach((s, i) => {
       s.groups = s.groupSet.size;
       s.minutes = s.count * minPerAddress + s.km * MIN_PER_KM;
-      const mine = addresses.filter((_, idx) => owners[idx][0] === i);
-      s.label.setLatLng(labelPoint({ polygon: rings[i] }, mine));
+      s.label.setLatLng(labelPoint({ polygon: polys[i] }, s.mine));
     });
 
     const cutGroups = [...groupOwners.values()].filter((g) => g.owners.size > 1);
@@ -409,14 +663,20 @@
   }
 
   function renderWarnings({ outside, overlap, cutGroups }) {
-    const items = [];
     if (!state.sectors.length) {
-      els.warnings.innerHTML = `<div class="warning info">Aucun secteur pour l'instant : dessinez-en un, ou importez la proposition automatique (« Autres outils » en bas).</div>`;
+      els.warnings.innerHTML = `<div class="warning info">Aucun secteur pour l'instant : créez-en un à partir de hameaux, dessinez-en un, ou importez la proposition automatique (« Autres outils » en bas).</div>`;
       return;
     }
+    const items = [];
     cutGroups.forEach((g) => {
       const names = [...g.owners].map(sectorName).join(" et ");
-      items.push({ cls: "danger", text: `Hameau « ${escapeHtml(g.nom)} » coupé entre ${escapeHtml(names)} (${g.addrs.length} adresses).`, addrs: g.addrs });
+      const fixes = [...g.owners].filter((i) => i !== null).map((i) => ({
+        text: `Tout dans « ${state.sectors[i].nom} »`,
+        run: () => {
+          try { moveGroupTo(g.id, state.sectors[i]); changed(); renderList(); } catch (err) { showToast(err.message, true); }
+        },
+      }));
+      items.push({ cls: "danger", text: `Hameau « ${escapeHtml(g.nom)} » coupé entre ${escapeHtml(names)} (${g.addrs.length} adresses).`, addrs: g.addrs, fixes });
     });
     if (outside.length) {
       const byGroup = {};
@@ -433,19 +693,23 @@
       els.warnings.innerHTML = `<div class="warning ok">✓ Toutes les adresses sont dans un secteur, aucun hameau coupé, aucun chevauchement.</div>`;
       return;
     }
-    els.warnings.innerHTML = "";
+    els.warnings.innerHTML = `<p class="hint">Ces alertes sont des aides : vous pouvez enregistrer malgré elles.</p>`;
     items.forEach((item) => {
       const div = document.createElement("div");
       div.className = `warning ${item.cls}`;
-      div.innerHTML = `<span>${item.text}</span>`;
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "btn small";
-      btn.textContent = "Voir";
-      btn.addEventListener("click", () => {
+      const body = document.createElement("div");
+      body.className = "warning-body";
+      body.innerHTML = `<span>${item.text}</span>`;
+      if (item.fixes && item.fixes.length) {
+        const fixes = document.createElement("div");
+        fixes.className = "fix-buttons";
+        item.fixes.forEach((f) => fixes.appendChild(button(f.text, "btn small", f.run)));
+        body.appendChild(fixes);
+      }
+      div.appendChild(body);
+      div.appendChild(button("Voir", "btn small", () => {
         state.map.fitBounds(L.latLngBounds(item.addrs.map((a) => [a.lat, a.lon])), { padding: [60, 60], maxZoom: 17 });
-      });
-      div.appendChild(btn);
+      }));
       els.warnings.appendChild(div);
     });
   }
@@ -477,14 +741,18 @@
 
   function limiteText(limite) {
     if (!limite || !limite.length) return "";
-    return limite.map((r) => `${r.nom === OFF_ROAD ? "champs" : r.nom} (${formatDistance(r.m)})`).join(" → ");
+    return limite.map((r) => {
+      if (r.nom === "__partie__") return `[morceau ${r.partie}]`;
+      if (r.nom === "__enclave__") return "[enclave]";
+      return `${r.nom === OFF_ROAD ? "champs" : r.nom} (${formatDistance(r.m)})`;
+    }).join(" → ").replace(/\] → /g, "] ");
   }
 
   function savedInfo(sector) {
     if (sector.id === null) return { status: "new" };
     const saved = state.savedById.get(sector.id);
     if (!saved) return { status: "new" };
-    if (saved.polygon !== JSON.stringify(ringOf(sector.layer))) return { status: "modified" };
+    if (saved.polygon !== JSON.stringify(polysOf(sector.layer))) return { status: "modified" };
     return { status: "saved", limite: saved.limite };
   }
 
@@ -494,7 +762,7 @@
       const card = document.createElement("div");
       card.className = "sector-edit-card";
       card.dataset.index = String(index);
-      card.classList.toggle("selected", state.selected === sector);
+      card.classList.toggle("selected", state.selected === sector || state.hamletTarget === sector);
       card.style.borderLeftColor = sector.couleur;
 
       const row = document.createElement("div");
@@ -517,13 +785,14 @@
       const name = document.createElement("input");
       name.type = "text";
       name.value = sector.nom;
-      name.maxLength = 80;
+      name.maxLength = 120;
       name.placeholder = "Nom du secteur";
       name.setAttribute("aria-label", "Nom du secteur");
       name.addEventListener("input", () => {
         sector.nom = name.value;
         sector.label.setIcon(labelIcon(sector));
         renderBalance();
+        updateBanner();
         refreshDirty();
       });
       name.addEventListener("change", changed);
@@ -542,7 +811,11 @@
       const actions = document.createElement("div");
       actions.className = "sector-edit-actions";
       const editing = state.editing === sector;
+      const hamlets = state.hamletTarget === sector;
       actions.append(
+        button(hamlets ? "✓ Fin hameaux" : "🏘 Hameaux", hamlets ? "btn small primary" : "btn small", () => {
+          if (hamlets) stopHamletMode(); else startHamletMode(sector);
+        }),
         button(editing ? "✓ Terminer" : "Modifier le tracé", editing ? "btn small primary" : "btn small", () => {
           if (editing) stopEditing(); else startEditing(sector);
         }),
@@ -558,7 +831,10 @@
           window.open(`plan.html#/${encodeURIComponent(state.slug)}/${sector.id}`, "_blank", "noopener");
         }),
         button("Supprimer", "btn small danger", () => {
-          if (confirm(`Supprimer le secteur « ${sector.nom} » ?`)) removeSector(sector);
+          if (!confirm(`Supprimer le secteur « ${sector.nom} » ?`)) return;
+          removeSector(sector);
+          changed();
+          renderList();
         }),
       );
 
@@ -572,8 +848,10 @@
     document.querySelectorAll(".sector-edit-card").forEach((card) => {
       const sector = state.sectors[Number(card.dataset.index)];
       if (!sector) return;
+      const nParts = polysOf(sector.layer).length;
       card.querySelector('[data-role="count"]').textContent =
-        `${sector.count} adresse(s) · ${sector.groups} groupe(s) d'habitations · ${sector.km.toFixed(1).replace(".", ",")} km de routes`;
+        `${sector.count} adresse(s) · ${sector.groups} groupe(s) d'habitations · ${sector.km.toFixed(1).replace(".", ",")} km de routes`
+        + (nParts > 1 ? ` · ${nParts} morceaux` : "");
       const info = savedInfo(sector);
       const el = card.querySelector('[data-role="limite"]');
       if (info.status === "saved" && info.limite) {
@@ -602,12 +880,13 @@
   async function save() {
     const empty = state.sectors.find((s) => !s.nom.trim());
     if (empty) {
-      showToast("Chaque secteur doit avoir un nom.", true);
+      showToast("Chaque secteur doit avoir un nom (c'est la seule chose obligatoire).", true);
       selectSector(empty, true);
+      focusName(empty);
       return;
     }
     const payload = {
-      sectors: state.sectors.map((s) => ({ id: s.id, nom: s.nom.trim(), couleur: s.couleur, polygon: ringOf(s.layer) })),
+      sectors: state.sectors.map((s) => ({ id: s.id, nom: s.nom.trim(), couleur: s.couleur, polygon: polysOf(s.layer) })),
     };
     els.save.disabled = true;
     try {
@@ -623,7 +902,6 @@
       });
       rememberSaved(res.sectors);
       state.savedSnapshot = serialize();
-      // les ids des nouveaux secteurs sont connus : l'historique repart de là
       resetHistory();
       updateCards();
       els.versionsList.innerHTML = "";
@@ -677,6 +955,7 @@
           if (isDirty() && !confirm("Remplacer les modifications non enregistrées par cette version ?")) return;
           const { sectors } = await fetchJSON(`/api/admin/communes/${state.slug}/versions/${v.id}`);
           state.map.pm.disableDraw();
+          stopHamletMode();
           restore(JSON.stringify(sectors));
           changed();
           showToast("Version chargée : cliquez Enregistrer pour la republier.");
@@ -693,8 +972,9 @@
   async function loadCommune(slug) {
     state.slug = slug;
     const data = await fetchJSON(`/api/admin/communes/${slug}`);
-    state.data = data;
     clearCommuneLayers();
+    state.data = data;
+    state.excluded = new Set(data.excluded || []);
     buildBaseLayers(data);
     data.sectors.forEach((s) => addSector(s));
     rememberSaved(data.sectors);
@@ -702,8 +982,9 @@
     resetHistory();
     recompute();
     renderList();
+    renderExcluded();
     els.versionsList.innerHTML = "";
-    els.printAll.href = `plan.html#/${encodeURIComponent(slug)}`;
+    els.printAll.href = "plan.html#/";
     const pts = data.addresses.map((a) => [a.lat, a.lon]);
     if (pts.length) state.map.fitBounds(pts, { padding: [20, 20] });
     else if (data.commune.mairie) state.map.setView([data.commune.mairie.lat, data.commune.mairie.lon], 14);
@@ -736,6 +1017,7 @@
       return;
     }
     stopEditing();
+    stopHamletMode();
     const color = nextColor();
     state.map.pm.enableDraw("Polygon", {
       snappable: els.snap.checked,
@@ -770,6 +1052,7 @@
     const auto = state.data.auto_sectors || [];
     if (!auto.length) { showToast("Pas de proposition automatique disponible.", true); return; }
     if (state.sectors.length && !confirm("Remplacer les secteurs affichés par la proposition automatique ? (↶ pour revenir en arrière)")) return;
+    stopHamletMode();
     clearSectorLayers();
     auto.forEach((s) => addSector({ id: null, nom: s.nom, couleur: s.couleur, polygon: s.polygon }));
     changed();

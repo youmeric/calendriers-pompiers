@@ -182,3 +182,26 @@ def describe_limit(polygon: list, index: RoadIndex) -> list[dict]:
         neighbours = {runs[i - 1][0], runs[(i + 1) % len(runs)][0], label}
         out.append({"nom": label, "m": int(round(length)), "croise": [c for c in cuts if c not in neighbours]})
     return out
+
+
+PART_MARKER = "__partie__"
+ENCLAVE_MARKER = "__enclave__"
+
+
+def describe_limit_polys(polys: list[list], index: RoadIndex) -> list[dict]:
+    """Comme describe_limit, pour un secteur en un ou plusieurs morceaux,
+    éventuellement percés d'enclaves (zones au milieu qui n'en font pas partie).
+    Chaque morceau est précédé de {"nom": "__partie__", "partie": k} (s'il y en a
+    plusieurs) et chaque enclave de {"nom": "__enclave__", "partie": k}."""
+    out: list[dict] = []
+    several = len(polys) > 1
+    for k, poly in enumerate(polys, start=1):
+        if not poly:
+            continue
+        if several:
+            out.append({"nom": PART_MARKER, "partie": k, "m": 0, "croise": []})
+        out.extend(describe_limit(poly[0], index))
+        for hole in poly[1:]:
+            out.append({"nom": ENCLAVE_MARKER, "partie": k, "m": 0, "croise": []})
+            out.extend(describe_limit(hole, index))
+    return out

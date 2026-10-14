@@ -11,9 +11,9 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import auth, db
-from .geo import point_in_polygon
-from .limits import RoadIndex, describe_limit
-from .models import LoginIn, SectorsIn, SettingsIn, StatusUpdate
+from .geo import point_in_polys
+from .limits import RoadIndex, describe_limit_polys
+from .models import ExclusionIn, LoginIn, SectorsIn, SettingsIn, StatusUpdate
 from .resume import build_resume, commune_voie_counts
 
 DATA_DIR = Path(os.environ.get("SECTORS_DATA_DIR") or (Path(__file__).resolve().parent / "data"))
@@ -57,9 +57,16 @@ def _load_commune(slug: str) -> dict:
         data = json.load(fh)
     data["_mtime"] = mtime
     data["_address_ids"] = {a["id"] for a in data["addresses"]}
-    data["_voie_counts"] = commune_voie_counts(data["addresses"])
     _communes_cache[slug] = data
     return data
+
+
+def _active_addresses(slug: str, data: dict) -> list[dict]:
+    """Adresses de la commune moins celles exclues par l'admin (cimetière…)."""
+    excluded = db.get_excluded(slug)
+    if not excluded:
+        return data["addresses"]
+    return [a for a in data["addresses"] if a["id"] not in excluded]
 
 
 def _road_index(data: dict) -> RoadIndex:
@@ -76,7 +83,7 @@ def _sectors_with_limits(slug: str, data: dict) -> list[dict]:
     sectors = db.list_sectors(slug)
     for s in sectors:
         if s["limite_src"] != data["_mtime"]:
-            s["limite"] = describe_limit(s["polygon"], _road_index(data))
+            s["limite"] = describe_limit_polys(s["polygon"], _road_index(data))
             db.set_sector_limite(s["id"], s["limite"], data["_mtime"])
         s.pop("limite_src", None)
     return sectors
@@ -88,7 +95,7 @@ def _assign(addresses: list[dict], sectors: list[dict]) -> tuple[dict[int, list[
     outside = []
     for addr in addresses:
         for s in sectors:
-            if point_in_polygon(addr["lat"], addr["lon"], s["polygon"]):
+            if point_in_polys(addr["lat"], addr["lon"], s["polygon"]):
                 by_sector[s["id"]].append(addr)
                 break
         else:
@@ -117,7 +124,9 @@ def get_commune(slug: str):
     sectors = _sectors_with_limits(slug, data)
     suivi = _suivi_enabled()
     statuses = db.get_statuses(slug) if suivi else {}
-    by_sector, outside = _assign(data["addresses"], sectors)
+    addresses_all = _active_addresses(slug, data)
+    voie_counts = commune_voie_counts(addresses_all)
+    by_sector, outside = _assign(addresses_all, sectors)
 
     out = []
     for s in sectors:
@@ -130,14 +139,15 @@ def get_commune(slug: str):
                 item["status"] = statuses.get(a["id"], {}).get("status")
                 counts[item["status"] or "a_faire"] += 1
             addresses.append(item)
-        sector = {**s, "addresses": addresses, "resume": build_resume(mine, data["_voie_counts"])}
+        sector = {**s, "addresses": addresses, "resume": build_resume(mine, voie_counts)}
         if suivi:
             sector["counts"] = counts
         out.append(sector)
 
     commune = data["commune"]
     return {
-        "commune": {"slug": slug, "nom": commune["nom"], "mairie": commune.get("mairie")},
+        "commune": {"slug": slug, "nom": commune["nom"], "mairie": commune.get("mairie"),
+                    "contour": commune.get("contour")},
         "suivi": suivi,
         "sectors": out,
         "hors_secteur": len(outside),
@@ -199,6 +209,7 @@ def admin_get_commune(slug: str):
         "commune": data["commune"],
         "sectors": _sectors_with_limits(slug, data),
         "addresses": data["addresses"],
+        "excluded": sorted(db.get_excluded(slug)),
         "roads": data.get("roads", []),
         "buildings": data.get("buildings", []),
         "auto_sectors": [
@@ -213,6 +224,16 @@ def admin_save_sectors(slug: str, payload: SectorsIn):
     data = _load_commune(slug)
     db.replace_sectors(slug, [s.model_dump() for s in payload.sectors])
     return {"sectors": _sectors_with_limits(slug, data)}
+
+
+@app.put("/api/admin/communes/{slug}/excluded", dependencies=[Depends(auth.require_admin)])
+def admin_set_excluded(slug: str, payload: ExclusionIn):
+    data = _load_commune(slug)
+    unknown = [a for a in payload.address_ids if a not in data["_address_ids"]]
+    if unknown:
+        raise HTTPException(status_code=404, detail=f"Adresse(s) inconnue(s) : {', '.join(unknown[:5])}")
+    db.set_excluded(slug, payload.address_ids, payload.excluded)
+    return {"excluded": sorted(db.get_excluded(slug))}
 
 
 @app.get("/api/admin/communes/{slug}/versions", dependencies=[Depends(auth.require_admin)])

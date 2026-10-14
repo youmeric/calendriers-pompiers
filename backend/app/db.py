@@ -8,6 +8,8 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
+from .geo import normalize_polys
+
 DB_PATH = os.environ.get("DB_PATH", "db/status.db")
 
 VALID_STATUSES = {"fait", "absent", "refus"}
@@ -56,6 +58,12 @@ def init_db() -> None:
                 data TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS versions_commune ON sector_versions (commune_slug, id);
+            CREATE TABLE IF NOT EXISTS excluded_addresses (
+                commune_slug TEXT NOT NULL,
+                address_id TEXT NOT NULL,
+                excluded_at TEXT NOT NULL,
+                PRIMARY KEY (commune_slug, address_id)
+            );
             """
         )
         columns = {row[1] for row in conn.execute("PRAGMA table_info(sectors)")}
@@ -111,7 +119,7 @@ def list_sectors(commune_slug: str) -> list[dict]:
             (commune_slug,),
         ).fetchall()
     return [
-        {"id": r[0], "nom": r[1], "couleur": r[2], "polygon": json.loads(r[3]),
+        {"id": r[0], "nom": r[1], "couleur": r[2], "polygon": normalize_polys(json.loads(r[3])),
          "limite": json.loads(r[4]) if r[4] else None, "limite_src": r[5]}
         for r in rows
     ]
@@ -186,7 +194,37 @@ def get_version(commune_slug: str, version_id: int) -> list[dict] | None:
     with get_conn() as conn:
         row = conn.execute("SELECT data FROM sector_versions WHERE commune_slug = ? AND id = ?",
                            (commune_slug, version_id)).fetchone()
-    return json.loads(row[0]) if row else None
+    if not row:
+        return None
+    sectors = json.loads(row[0])
+    for s in sectors:
+        s["polygon"] = normalize_polys(s["polygon"])
+    return sectors
+
+
+# ---- Adresses exclues (cimetière, bâtiment sans habitant…) ---------------------
+
+def get_excluded(commune_slug: str) -> set[str]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT address_id FROM excluded_addresses WHERE commune_slug = ?",
+                            (commune_slug,)).fetchall()
+    return {r[0] for r in rows}
+
+
+def set_excluded(commune_slug: str, address_ids: list[str], excluded: bool) -> None:
+    now = _now()
+    with get_conn() as conn:
+        if excluded:
+            conn.executemany(
+                "INSERT OR IGNORE INTO excluded_addresses (commune_slug, address_id, excluded_at) VALUES (?, ?, ?)",
+                [(commune_slug, a, now) for a in address_ids],
+            )
+        else:
+            conn.executemany(
+                "DELETE FROM excluded_addresses WHERE commune_slug = ? AND address_id = ?",
+                [(commune_slug, a) for a in address_ids],
+            )
+        conn.commit()
 
 
 # ---- Statuts des adresses -----------------------------------------------------

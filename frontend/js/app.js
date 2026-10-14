@@ -1,6 +1,9 @@
 (() => {
   "use strict";
-  const { escapeHtml, fetchJSON, showToast, osmLayer, labelPoint, renderLimite, renderResume, hameauxPreview } = window.Common;
+  const {
+    escapeHtml, fetchJSON, showToast, osmLayer, labelPoint, renderLimite, renderResume, hameauxPreview,
+    toPolys, outerRings, holeRings,
+  } = window.Common;
 
   const STATUS = {
     fait: { label: "Fait", icon: "✓", color: "#2e9e5b" },
@@ -9,11 +12,9 @@
   };
   const TODO_COLOR = "#3b4656";
   const QUEUE_KEY = "pompiers-pending-updates";
-  const LAST_KEY = "pompiers-last-commune";
   const WORLD = [[85, -180], [85, 180], [-85, 180], [-85, -180]];
 
   const els = {
-    select: document.getElementById("commune-select"),
     mapEl: document.getElementById("map"),
     home: document.getElementById("home-panel"),
     buttons: document.getElementById("sector-buttons"),
@@ -36,10 +37,10 @@
   };
 
   const state = {
-    communes: [],
-    slug: null,
-    data: null,
-    current: null,
+    communes: [], // [{slug, nom}] dans l'ordre de l'index
+    all: {}, // slug -> données de la commune
+    suivi: false,
+    current: null, // {slug, sector}
     map: null,
     layer: null,
     markers: new Map(),
@@ -154,9 +155,21 @@
     });
   }
 
+  function contourLayer(commune) {
+    if (!commune.contour) return null;
+    return L.geoJSON(commune.contour, {
+      style: { color: "#1c2430", weight: 2, dashArray: "8 6", fill: false, opacity: 0.6 },
+      interactive: false,
+    });
+  }
+
+  function allSectors() {
+    return state.communes.flatMap((c) => (state.all[c.slug]?.sectors || []).map((s) => ({ slug: c.slug, sector: s })));
+  }
+
   function statusColor(status) { return status ? STATUS[status].color : TODO_COLOR; }
 
-  // ---- Vue d'ensemble --------------------------------------------------------------
+  // ---- Vue d'ensemble : toutes les communes -------------------------------------------
 
   function showHome() {
     state.current = null;
@@ -165,76 +178,98 @@
     setMapMode("map-home");
     state.layer.clearLayers();
     state.markers.clear();
-
-    const sectors = state.data.sectors;
-    els.noSectors.hidden = sectors.length > 0;
     els.buttons.innerHTML = "";
 
     const bounds = L.latLngBounds([]);
-    for (const s of sectors) {
-      const poly = L.polygon(s.polygon, { color: s.couleur, weight: 2, fillColor: s.couleur, fillOpacity: 0.3 });
-      poly.on("click", () => openSector(s.id));
-      poly.addTo(state.layer);
-      sectorLabel(s, false).addTo(state.layer);
-      bounds.extend(poly.getBounds());
+    let total = 0;
+    for (const c of state.communes) {
+      const data = state.all[c.slug];
+      if (!data) continue;
+      const contour = contourLayer(data.commune);
+      if (contour) { contour.addTo(state.layer); bounds.extend(contour.getBounds()); }
 
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "sector-button";
-      btn.style.borderLeftColor = s.couleur;
-      let meta = `${s.addresses.length} adresses`;
-      let progress = "";
-      if (state.data.suivi) {
-        const total = s.addresses.length || 1;
-        const done = s.counts.fait + s.counts.absent + s.counts.refus;
-        meta += ` · ${Math.round((done / total) * 100)} % traité`;
-        progress = `<span class="mini-progress"><span style="width:${(done / total) * 100}%;background:${s.couleur}"></span></span>`;
-      } else {
-        const preview = hameauxPreview(s.resume);
-        if (preview) meta += ` · ${escapeHtml(preview)}`;
+      if (data.sectors.length) {
+        const heading = document.createElement("h3");
+        heading.className = "commune-heading";
+        heading.textContent = data.commune.nom;
+        els.buttons.appendChild(heading);
       }
-      btn.innerHTML = `
-        <span class="sector-button-name"><span class="color-dot" style="background:${s.couleur}"></span>${escapeHtml(s.nom)}</span>
-        <span class="sector-button-meta">${meta}</span>${progress}`;
-      btn.addEventListener("click", () => openSector(s.id));
-      els.buttons.appendChild(btn);
+      for (const s of data.sectors) {
+        total++;
+        const poly = L.polygon(toPolys(s.polygon), { color: s.couleur, weight: 2, fillColor: s.couleur, fillOpacity: 0.3 });
+        poly.on("click", () => openSector(c.slug, s.id));
+        poly.addTo(state.layer);
+        sectorLabel(s, false).addTo(state.layer);
+        bounds.extend(poly.getBounds());
+        els.buttons.appendChild(sectorButton(c.slug, s));
+      }
     }
-
-    els.printAll.hidden = sectors.length === 0;
-    els.printAll.href = `plan.html#/${encodeURIComponent(state.slug)}`;
+    els.noSectors.hidden = total > 0;
+    els.printAll.hidden = total === 0;
+    els.printAll.href = "plan.html#/";
 
     refreshMapSize(() => {
       if (bounds.isValid()) state.map.fitBounds(bounds, { padding: [16, 16] });
     });
   }
 
-  function openSector(id) {
-    location.hash = `#/${state.slug}/${id}`;
+  function sectorButton(slug, s) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "sector-button";
+    btn.style.borderLeftColor = s.couleur;
+    let meta = `${s.addresses.length} adresses`;
+    let progress = "";
+    if (state.suivi && s.counts) {
+      const total = s.addresses.length || 1;
+      const done = s.counts.fait + s.counts.absent + s.counts.refus;
+      meta += ` · ${Math.round((done / total) * 100)} % traité`;
+      progress = `<span class="mini-progress"><span style="width:${(done / total) * 100}%;background:${s.couleur}"></span></span>`;
+    } else {
+      const preview = hameauxPreview(s.resume);
+      if (preview) meta += ` · ${escapeHtml(preview)}`;
+    }
+    btn.innerHTML = `
+      <span class="sector-button-name"><span class="color-dot" style="background:${s.couleur}"></span>${escapeHtml(s.nom)}</span>
+      <span class="sector-button-meta">${meta}</span>${progress}`;
+    btn.addEventListener("click", () => openSector(slug, s.id));
+    return btn;
+  }
+
+  function openSector(slug, id) {
+    location.hash = `#/${encodeURIComponent(slug)}/${id}`;
   }
 
   // ---- Vue d'un secteur --------------------------------------------------------------
 
-  function showSector(sector) {
-    state.current = sector;
+  function showSector(slug, sector) {
+    state.current = { slug, sector };
     els.home.hidden = true;
     els.sectorPanel.hidden = false;
     setMapMode("map-sector");
     state.layer.clearLayers();
     state.markers.clear();
 
+    const polys = toPolys(sector.polygon);
     // tout ce qui est hors du secteur est assombri
-    L.polygon([WORLD, sector.polygon], { stroke: false, fillColor: "#0b1220", fillOpacity: 0.5, interactive: false })
-      .addTo(state.layer);
-    for (const other of state.data.sectors) {
+    const mask = { stroke: false, fillColor: "#0b1220", fillOpacity: 0.5, interactive: false };
+    L.polygon([WORLD, ...outerRings(polys)], mask).addTo(state.layer);
+    // les enclaves ne font pas partie du secteur : assombries elles aussi
+    holeRings(polys).forEach((hole) => L.polygon(hole, mask).addTo(state.layer));
+    for (const c of state.communes) {
+      const contour = state.all[c.slug] && contourLayer(state.all[c.slug].commune);
+      if (contour) contour.addTo(state.layer);
+    }
+    for (const { sector: other } of allSectors()) {
       if (other.id === sector.id) continue;
-      L.polygon(other.polygon, { color: other.couleur, weight: 1.5, dashArray: "4 4", fill: false, interactive: false })
+      L.polygon(toPolys(other.polygon), { color: other.couleur, weight: 1.5, dashArray: "4 4", fill: false, interactive: false })
         .addTo(state.layer);
       sectorLabel(other, true).addTo(state.layer);
     }
-    const outline = L.polygon(sector.polygon, { color: sector.couleur, weight: 5, fill: false, interactive: false })
+    const outline = L.polygon(polys, { color: sector.couleur, weight: 5, fill: false, interactive: false })
       .addTo(state.layer);
 
-    const suivi = state.data.suivi;
+    const suivi = state.suivi;
     for (const a of sector.addresses) {
       const m = L.circleMarker([a.lat, a.lon], {
         radius: suivi ? 6 : 4, color: "#fff", weight: 1.5, fillColor: suivi ? statusColor(a.status) : TODO_COLOR, fillOpacity: 1,
@@ -247,14 +282,15 @@
 
     els.dot.style.background = sector.couleur;
     els.name.textContent = sector.nom;
-    els.summary.textContent = `${sector.addresses.length} adresses`;
-    els.print.href = `plan.html#/${encodeURIComponent(state.slug)}/${sector.id}`;
+    const communeNom = state.all[slug].commune.nom;
+    els.summary.textContent = `${communeNom} · ${sector.addresses.length} adresses${polys.length > 1 ? ` · ${polys.length} morceaux` : ""}`;
+    els.print.href = `plan.html#/${encodeURIComponent(slug)}/${sector.id}`;
     renderLimite(els.limite, sector.limite);
     renderResume(els.resume, sector.resume);
     els.suiviBlock.hidden = !suivi;
     if (suivi) {
       renderProgress(sector);
-      renderAddressList(sector);
+      renderAddressList(slug, sector);
     }
     window.scrollTo({ top: 0 });
 
@@ -283,7 +319,7 @@
     return String(a || "").localeCompare(String(b || ""), "fr", { numeric: true });
   }
 
-  function renderAddressList(sector) {
+  function renderAddressList(slug, sector) {
     els.list.innerHTML = "";
     const groups = new Map();
     for (const a of sector.addresses) {
@@ -296,7 +332,7 @@
       block.className = "address-group";
       block.innerHTML = `<h3 class="group-title">${escapeHtml(name)} <small>(${addrs.length})</small></h3>`;
       addrs.sort((x, y) => numericCompare(x.nom_voie, y.nom_voie) || numericCompare(x.numero, y.numero))
-        .forEach((a) => block.appendChild(addressRow(sector, a)));
+        .forEach((a) => block.appendChild(addressRow(slug, sector, a)));
       els.list.appendChild(block);
     }
     if (!sector.addresses.length) {
@@ -304,7 +340,7 @@
     }
   }
 
-  function addressRow(sector, a) {
+  function addressRow(slug, sector, a) {
     const row = document.createElement("div");
     row.className = "address-row";
     row.id = `addr-${CSS.escape(a.id)}`;
@@ -313,7 +349,7 @@
     const label = document.createElement("button");
     label.type = "button";
     label.className = "address-label";
-    label.innerHTML = `${escapeHtml(a.label)}`;
+    label.textContent = a.label;
     label.addEventListener("click", () => {
       const m = state.markers.get(a.id);
       if (!m) return;
@@ -333,7 +369,7 @@
       b.setAttribute("aria-label", `${STATUS[key].label} : ${a.label}`);
       b.textContent = STATUS[key].icon;
       b.classList.toggle("active", a.status === key);
-      b.addEventListener("click", () => toggleStatus(sector, a, key, row));
+      b.addEventListener("click", () => toggleStatus(slug, sector, a, key, row));
       buttons.appendChild(b);
     }
     row.append(label, buttons);
@@ -346,7 +382,7 @@
     row.querySelectorAll(".status-btn").forEach((b) => b.classList.toggle("active", b.dataset.status === status));
   }
 
-  async function toggleStatus(sector, a, key, row) {
+  async function toggleStatus(slug, sector, a, key, row) {
     const newStatus = a.status === key ? null : key;
     sector.counts[a.status || "a_faire"]--;
     sector.counts[newStatus || "a_faire"]++;
@@ -355,10 +391,10 @@
     state.markers.get(a.id)?.setStyle({ fillColor: statusColor(newStatus) });
     renderProgress(sector);
     try {
-      await sendStatus(state.slug, a.id, newStatus);
+      await sendStatus(slug, a.id, newStatus);
     } catch {
       const q = readQueue();
-      q.push({ slug: state.slug, addressId: a.id, status: newStatus });
+      q.push({ slug, addressId: a.id, status: newStatus });
       writeQueue(q);
       showToast("Pas de réseau : enregistré sur le téléphone, envoi automatique au retour du réseau.", true);
     }
@@ -378,11 +414,11 @@
 
   els.hideDone.addEventListener("change", () => els.list.classList.toggle("hide-done", els.hideDone.checked));
 
-  els.back.addEventListener("click", () => { location.hash = `#/${state.slug}`; });
+  els.back.addEventListener("click", () => { location.hash = "#/"; });
 
   els.share.addEventListener("click", async () => {
     const url = location.href;
-    const title = `Secteur ${state.current?.nom || ""} — calendriers des pompiers`;
+    const title = `Secteur ${state.current?.sector.nom || ""} — calendriers des pompiers`;
     try {
       if (navigator.share) { await navigator.share({ title, url }); return; }
       await navigator.clipboard.writeText(url);
@@ -395,34 +431,30 @@
 
   // ---- Navigation ------------------------------------------------------------------
 
-  function parseHash() {
-    const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
-    return { slug: parts[0] ? decodeURIComponent(parts[0]) : null, id: parts[1] ? Number(parts[1]) : null };
+  async function loadAll() {
+    const results = await Promise.allSettled(
+      state.communes.map((c) => fetchJSON(`/api/communes/${encodeURIComponent(c.slug)}`)),
+    );
+    let loaded = 0;
+    results.forEach((r, i) => {
+      // hors-ligne : on garde les données déjà affichées
+      if (r.status === "fulfilled") { state.all[state.communes[i].slug] = r.value; loaded++; }
+    });
+    if (!loaded && !Object.keys(state.all).length) throw new Error("données indisponibles");
+    const any = Object.values(state.all)[0];
+    state.suivi = Boolean(any && any.suivi);
   }
 
   async function route() {
-    let { slug, id } = parseHash();
-    if (!state.communes.some((c) => c.slug === slug)) {
-      const last = storage.get(LAST_KEY, null);
-      slug = state.communes.some((c) => c.slug === last) ? last : state.communes[0].slug;
-      history.replaceState(null, "", `#/${slug}`);
-      id = null;
-    }
-    const sameCommune = slug === state.slug && state.data;
-    state.slug = slug;
-    storage.set(LAST_KEY, slug);
-    els.select.value = slug;
-    try {
-      // rechargé à chaque navigation pour voir l'avancement des autres équipes
-      state.data = await fetchJSON(`/api/communes/${encodeURIComponent(slug)}`);
-    } catch (err) {
-      if (!sameCommune) throw err; // hors-ligne : on garde les données déjà affichées
-    }
-    const sector = id !== null ? state.data.sectors.find((s) => s.id === id) : null;
-    if (sector) showSector(sector); else showHome();
+    const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
+    const slug = parts[0] ? decodeURIComponent(parts[0]) : null;
+    const id = parts[1] ? Number(parts[1]) : null;
+    // rechargé à chaque navigation pour voir l'avancement des autres équipes
+    await loadAll();
+    const sector = slug && id !== null ? state.all[slug]?.sectors.find((s) => s.id === id) : null;
+    if (sector) showSector(slug, sector); else showHome();
   }
 
-  els.select.addEventListener("change", () => { location.hash = `#/${els.select.value}`; });
   window.addEventListener("hashchange", () => route().catch(onError));
 
   function onError(err) {
@@ -434,12 +466,12 @@
     initMap();
     const { communes } = await fetchJSON("/api/communes");
     state.communes = communes;
+    document.querySelector(".topbar-sub").textContent = communes.map((c) => c.nom).join(" · ");
     if (!communes.length) {
       els.noSectors.hidden = false;
       els.noSectors.textContent = "Aucune donnée disponible pour l'instant.";
       return;
     }
-    els.select.innerHTML = communes.map((c) => `<option value="${escapeHtml(c.slug)}">${escapeHtml(c.nom)}</option>`).join("");
     await route();
     flushQueue();
   }
