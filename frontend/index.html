@@ -22,6 +22,12 @@
   <main class="public-main">
     <section id="map" aria-label="Carte des secteurs"></section>
 
+    <!-- Téléphone : barre pour replier la liste et agrandir la carte -->
+    <div id="panel-handle" class="panel-handle">
+      <button id="handle-back" class="btn small" type="button" hidden>← Secteurs</button>
+      <button id="panel-toggle" class="panel-toggle" type="button" aria-expanded="true" aria-controls="home-panel sector-panel"></button>
+    </div>
+
     <!-- Vue d'ensemble : tous les secteurs -->
     <section id="home-panel" class="panel">
       <div class="search">

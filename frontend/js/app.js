@@ -37,6 +37,8 @@
     limite: document.getElementById("sector-limite"),
     resume: document.getElementById("sector-resume"),
     suiviBlock: document.getElementById("suivi-block"),
+    panelToggle: document.getElementById("panel-toggle"),
+    handleBack: document.getElementById("handle-back"),
   };
 
   const state = {
@@ -238,6 +240,7 @@
     els.home.hidden = false;
     els.sectorPanel.hidden = true;
     setMapMode("map-home");
+    updateHandle();
     state.layer.clearLayers();
     state.markers.clear();
     els.buttons.innerHTML = "";
@@ -348,6 +351,7 @@
     els.code.textContent = sector.code;
     els.code.style.background = sector.couleur;
     els.name.textContent = sector.nom;
+    updateHandle();
     const communeNom = state.all[slug].commune.nom;
     els.summary.textContent = `${communeNom} · ${sector.addresses.length} adresses${polys.length > 1 ? ` · ${polys.length} morceaux` : ""}`;
     els.print.href = `plan.html#/${encodeURIComponent(slug)}/${sector.id}`;
@@ -388,6 +392,35 @@
     els.mapEl.classList.toggle("map-home", mode === "map-home");
     els.mapEl.classList.toggle("map-sector", mode === "map-sector");
   }
+
+  // ---- Téléphone : liste repliable pour naviguer sur la carte en plein écran ----------
+
+  const PANEL_KEY = "panneau-replie";
+
+  function updateHandle() {
+    const collapsed = document.body.classList.contains("panel-collapsed");
+    els.panelToggle.textContent = !collapsed
+      ? "▾ Replier pour agrandir la carte"
+      : state.current
+        ? `▴ ${els.code.textContent} · ${els.name.textContent} — détails`
+        : "▴ Afficher la liste des secteurs";
+    els.panelToggle.setAttribute("aria-expanded", String(!collapsed));
+    els.handleBack.hidden = !(collapsed && state.current);
+  }
+
+  function setCollapsed(collapsed) {
+    document.body.classList.toggle("panel-collapsed", collapsed);
+    storage.set(PANEL_KEY, collapsed ? "1" : "0");
+    updateHandle();
+    window.scrollTo({ top: 0 });
+    if (state.map) refreshMapSize(() => {});
+  }
+
+  els.panelToggle.addEventListener("click", () => {
+    setCollapsed(!document.body.classList.contains("panel-collapsed"));
+  });
+  els.handleBack.addEventListener("click", () => { location.hash = "#/"; });
+  document.body.classList.toggle("panel-collapsed", storage.get(PANEL_KEY, "0") === "1");
 
   function refreshMapSize(then) {
     setTimeout(() => { state.map.invalidateSize(); then(); }, 60);
@@ -608,6 +641,7 @@
   }
 
   window.addEventListener("hashchange", () => route().catch(onError));
+  window.addEventListener("beforeprint", () => state.map && state.map.invalidateSize());
 
   function onError(err) {
     console.error(err);

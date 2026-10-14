@@ -50,6 +50,22 @@ sur Courzieu et Brussieu (69690).
     **Partager** propre au secteur, et un bouton **🖨 Plan** (plan A4 avec
     **QR code**, à imprimer ou enregistrer en PDF). Un plan d'ensemble des deux
     communes est aussi disponible.
+  - sur téléphone, une barre sous la carte **replie la liste** pour naviguer
+    sur la carte en plein écran (elle garde le nom du secteur ouvert et un
+    bouton « ← Secteurs ») ; on la déplie d'une touche. Le choix est mémorisé.
+- **Plan à imprimer / télécharger (`plan.html`)** : la liste « Plan » en haut
+  choisit **un secteur seul**, **une commune** ou **l'ensemble**. Le bouton
+  ⚙ Options règle ce qui est imprimé (choix mémorisés) :
+  - autour du secteur : **masqué** (seul le secteur apparaît, par défaut),
+    estompé, grisé ou visible ; secteurs voisins affichés ou non ;
+  - **points des maisons** oui / non ; limite de commune oui / non ;
+  - **détail** : description de la limite, hameaux et rues, liste complète
+    des adresses par voie ; pour l'ensemble, tableau des secteurs et
+    étiquettes (code et nom, code seul, aucune). Sans détail, la carte prend
+    toute la page ;
+  - QR code oui / non, orientation **portrait ou paysage**.
+  « ⬇ Télécharger en PDF » ouvre la fenêtre d'impression : choisir
+  « Enregistrer au format PDF ».
   - une **recherche** d'adresse, de rue ou de hameau qui ouvre le bon secteur ;
   - des **pastilles** (C1, C2… B1…) qui numérotent les secteurs : vue de loin,
     la carte n'affiche que les pastilles, les noms apparaissent en zoomant ;

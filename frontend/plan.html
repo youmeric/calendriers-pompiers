@@ -7,11 +7,66 @@
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
 <link rel="icon" type="image/png" href="icons/favicon-64.png" />
 <link rel="stylesheet" href="css/style.css?v=__V__" />
+<style id="page-size">@page { size: A4 portrait; margin: 10mm; }</style>
 </head>
 <body class="plan">
   <div class="plan-toolbar no-print">
-    <button id="btn-print" class="btn primary" type="button" disabled>Chargement de la carte…</button>
-    <span class="hint">Dans la fenêtre d'impression, choisissez « Enregistrer au format PDF » pour obtenir un fichier. Vous pouvez déplacer/zoomer la carte avant d'imprimer.</span>
+    <div class="plan-toolbar-main">
+      <label class="plan-choice">
+        <span>Plan</span>
+        <select id="opt-plan" aria-label="Plan à imprimer"></select>
+      </label>
+      <button id="btn-print" class="btn primary" type="button" disabled>Chargement de la carte…</button>
+      <button id="btn-pdf" class="btn" type="button" disabled>⬇ Télécharger en PDF</button>
+      <button id="btn-options" class="btn" type="button" aria-expanded="false" aria-controls="plan-options">⚙ Options</button>
+    </div>
+
+    <form id="plan-options" class="plan-options" hidden>
+      <fieldset>
+        <legend>Sur la carte</legend>
+        <label class="only-sector">Autour du secteur
+          <select id="opt-outside">
+            <option value="blanc">masqué (seul le secteur apparaît)</option>
+            <option value="estompe">estompé</option>
+            <option value="grise">grisé</option>
+            <option value="visible">visible</option>
+          </select>
+        </label>
+        <label class="only-overview">Hors des communes
+          <select id="opt-outside-all">
+            <option value="blanc">masqué</option>
+            <option value="estompe">estompé</option>
+            <option value="visible">visible</option>
+          </select>
+        </label>
+        <label><input type="checkbox" id="opt-houses" /> Points des maisons</label>
+        <label class="only-sector"><input type="checkbox" id="opt-others" /> Secteurs voisins</label>
+        <label class="only-overview">Étiquettes
+          <select id="opt-labels">
+            <option value="noms">code et nom</option>
+            <option value="codes">code seul</option>
+            <option value="aucune">aucune</option>
+          </select>
+        </label>
+        <label><input type="checkbox" id="opt-contour" /> Limite de commune</label>
+      </fieldset>
+      <fieldset>
+        <legend>Sur la feuille</legend>
+        <label class="only-sector"><input type="checkbox" id="opt-limite" /> Description de la limite</label>
+        <label class="only-sector"><input type="checkbox" id="opt-resume" /> Hameaux et rues du secteur</label>
+        <label class="only-sector"><input type="checkbox" id="opt-adresses" /> Liste de toutes les adresses</label>
+        <label class="only-overview"><input type="checkbox" id="opt-legend" /> Tableau des secteurs</label>
+        <label><input type="checkbox" id="opt-qr" /> QR code</label>
+        <label>Orientation
+          <select id="opt-orientation">
+            <option value="portrait">portrait</option>
+            <option value="landscape">paysage</option>
+          </select>
+        </label>
+      </fieldset>
+      <p class="hint">Les choix sont mémorisés. Vous pouvez aussi déplacer/zoomer la carte avant d'imprimer ;
+        <button id="btn-refit" class="link-btn" type="button">recadrer</button>.</p>
+    </form>
   </div>
 
   <article class="sheet">
@@ -44,7 +99,12 @@
       <div id="plan-resume" class="resume-columns"></div>
     </section>
 
-    <p class="sheet-footer">Fond de carte © contributeurs OpenStreetMap · adresses : Base Adresse Nationale · <span id="plan-date"></span></p>
+    <section id="plan-adresses-block" class="sheet-section" hidden>
+      <h2>Toutes les adresses du secteur</h2>
+      <div id="plan-adresses" class="adresses-columns"></div>
+    </section>
+
+    <p class="sheet-footer">Fond de carte © contributeurs OpenStreetMap / IGN · adresses : Base Adresse Nationale · <span id="plan-date"></span></p>
   </article>
 
   <div id="toast" class="toast" hidden></div>
