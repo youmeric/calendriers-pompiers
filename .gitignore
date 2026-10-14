@@ -3,13 +3,19 @@ __pycache__/
 .venv/
 venv/
 
-# Données générées par le pipeline (régénérées via `docker compose run --rm pipeline`)
-backend/app/data/*.json
-!backend/app/data/.gitkeep
+# Configuration locale (mot de passe admin)
+.env
+
+# Données du serveur (bind mounts docker-compose) et du pipeline
+data/db/
+data/sectors/
 data/cache/*
 !data/cache/.gitkeep
+backend/app/data/*.json
+!backend/app/data/.gitkeep
 
-# Base de statuts locale (dev)
+# Base locale (dev)
 *.db
+db/
 
 .DS_Store

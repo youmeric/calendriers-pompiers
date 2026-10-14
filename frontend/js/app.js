@@ -1,316 +1,416 @@
 (() => {
   "use strict";
+  const { escapeHtml, fetchJSON, showToast, osmLayer, labelPoint } = window.Common;
 
-  const STATUS_LABELS = { fait: "Fait", absent: "Absent", refus: "Refus" };
-  const STATUS_ICONS = { fait: "✓", absent: "⏳", refus: "✕" };
-  const QUEUE_KEY = "pompiers-pending-updates";
-
-  const state = {
-    slug: localStorage.getItem("pompiers-last-commune") || null,
-    data: null,
-    map: null,
-    layerGroup: null,
-    markersById: new Map(),
+  const STATUS = {
+    fait: { label: "Fait", icon: "✓", color: "#2e9e5b" },
+    absent: { label: "Absent", icon: "⏳", color: "#c9951d" },
+    refus: { label: "Refus", icon: "✕", color: "#c0392b" },
   };
+  const TODO_COLOR = "#3b4656";
+  const QUEUE_KEY = "pompiers-pending-updates";
+  const LAST_KEY = "pompiers-last-commune";
+  const WORLD = [[85, -180], [85, 180], [-85, 180], [-85, -180]];
 
   const els = {
     select: document.getElementById("commune-select"),
-    sectorsList: document.getElementById("sectors-list"),
-    progress: document.getElementById("global-progress"),
-    toggleMap: document.getElementById("toggle-map"),
-    toast: document.getElementById("toast"),
+    mapEl: document.getElementById("map"),
+    home: document.getElementById("home-panel"),
+    buttons: document.getElementById("sector-buttons"),
+    noSectors: document.getElementById("no-sectors"),
+    sectorPanel: document.getElementById("sector-panel"),
+    back: document.getElementById("btn-back"),
+    share: document.getElementById("btn-share"),
+    dot: document.getElementById("sector-dot"),
+    name: document.getElementById("sector-name"),
+    progress: document.getElementById("sector-progress"),
+    stats: document.getElementById("sector-stats"),
+    hideDone: document.getElementById("hide-done"),
+    list: document.getElementById("address-list"),
   };
 
-  function showToast(message, isError = false) {
-    els.toast.textContent = message;
-    els.toast.hidden = false;
-    els.toast.classList.toggle("error", isError);
-    clearTimeout(showToast._t);
-    showToast._t = setTimeout(() => { els.toast.hidden = true; }, 2500);
+  const state = {
+    communes: [],
+    slug: null,
+    data: null,
+    current: null,
+    map: null,
+    layer: null,
+    markers: new Map(),
+    locate: { active: false, marker: null, circle: null, centered: false },
+  };
+
+  const storage = {
+    get(k, fallback) { try { return localStorage.getItem(k) ?? fallback; } catch { return fallback; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch { /* stockage indisponible */ } },
+  };
+
+  // ---- File d'attente hors-ligne ---------------------------------------------------
+
+  function readQueue() { try { return JSON.parse(storage.get(QUEUE_KEY, "[]")); } catch { return []; } }
+  function writeQueue(q) { storage.set(QUEUE_KEY, JSON.stringify(q)); }
+
+  async function sendStatus(slug, addressId, status) {
+    return fetchJSON(`/api/communes/${slug}/addresses/${encodeURIComponent(addressId)}/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
   }
 
-  // ---- File d'attente hors-ligne -----------------------------------------
-  function readQueue() {
-    try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]"); }
-    catch { return []; }
-  }
-  function writeQueue(q) { localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); }
-  function queueUpdate(item) {
-    const q = readQueue();
-    q.push(item);
-    writeQueue(q);
-  }
   async function flushQueue() {
     const q = readQueue();
     if (!q.length) return;
     const remaining = [];
     for (const item of q) {
-      try {
-        await postStatus(item.slug, item.addressId, item.status, false);
-      } catch {
-        remaining.push(item);
-      }
+      try { await sendStatus(item.slug, item.addressId, item.status); } catch (err) { if (err.status !== 404) remaining.push(item); }
     }
     writeQueue(remaining);
-    if (remaining.length === 0 && q.length > 0) showToast("Modifications hors-ligne synchronisées");
+    if (!remaining.length) showToast("Modifications hors-ligne synchronisées ✓");
   }
   window.addEventListener("online", flushQueue);
 
-  // ---- API -----------------------------------------------------------------
-  async function fetchJSON(url, options) {
-    const resp = await fetch(url, options);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    return resp.json();
-  }
+  // ---- Carte -----------------------------------------------------------------------
 
-  async function postStatus(slug, addressId, status, allowQueue = true) {
-    const url = `/api/communes/${slug}/addresses/${encodeURIComponent(addressId)}/status`;
-    try {
-      return await fetchJSON(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-    } catch (err) {
-      if (allowQueue) {
-        queueUpdate({ slug, addressId, status });
-        showToast("Hors-ligne : la modification sera synchronisée plus tard", true);
-      }
-      throw err;
-    }
-  }
-
-  // ---- Rendu de la carte -----------------------------------------------------
   function initMap() {
-    state.map = L.map("map", { zoomControl: true });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">contributeurs OpenStreetMap</a>',
-    }).addTo(state.map);
-    state.layerGroup = L.layerGroup().addTo(state.map);
+    state.map = L.map("map", { zoomControl: true }).setView([45.742, 4.57], 13);
+    osmLayer().addTo(state.map);
+    state.layer = L.layerGroup().addTo(state.map);
+    addLocateControl();
   }
 
-  function statusColor(status) {
-    switch (status) {
-      case "fait": return "#2e9e5b";
-      case "absent": return "#c9951d";
-      case "refus": return "#c0392b";
-      default: return "#3b4656";
-    }
-  }
-
-  function renderMap(data) {
-    state.layerGroup.clearLayers();
-    state.markersById.clear();
-    const bounds = [];
-
-    if (data.commune.mairie) {
-      const { lat, lon } = data.commune.mairie;
-      L.marker([lat, lon], {
-        icon: L.divIcon({ className: "mairie-icon", html: "🏛️", iconSize: [24, 24] }),
-      }).bindPopup("Mairie").addTo(state.layerGroup);
-      bounds.push([lat, lon]);
-    }
-
-    for (const sector of data.sectors) {
-      if (sector.polygon && sector.polygon.length >= 3) {
-        const latlngs = sector.polygon.map((p) => [p[0], p[1]]);
-        const poly = L.polygon(latlngs, {
-          color: sector.couleur,
-          weight: 2,
-          fillColor: sector.couleur,
-          fillOpacity: 0.18,
-        }).addTo(state.layerGroup);
-        poly.bindTooltip(sector.nom, { sticky: true, className: "sector-tooltip" });
-        latlngs.forEach((ll) => bounds.push(ll));
+  function addLocateControl() {
+    const Locate = L.Control.extend({
+      options: { position: "topleft" },
+      onAdd() {
+        const btn = L.DomUtil.create("button", "locate-btn leaflet-bar");
+        btn.type = "button";
+        btn.title = "Me localiser";
+        btn.setAttribute("aria-label", "Me localiser");
+        btn.textContent = "📍";
+        L.DomEvent.disableClickPropagation(btn);
+        L.DomEvent.on(btn, "click", () => toggleLocate(btn));
+        return btn;
+      },
+    });
+    state.map.addControl(new Locate());
+    state.map.on("locationfound", (e) => {
+      const loc = state.locate;
+      if (!loc.marker) {
+        loc.circle = L.circle(e.latlng, { radius: e.accuracy, color: "#1a73e8", weight: 1, fillOpacity: 0.1, interactive: false }).addTo(state.map);
+        loc.marker = L.circleMarker(e.latlng, { radius: 8, color: "#fff", weight: 3, fillColor: "#1a73e8", fillOpacity: 1 }).addTo(state.map);
+      } else {
+        loc.marker.setLatLng(e.latlng);
+        loc.circle.setLatLng(e.latlng).setRadius(e.accuracy);
       }
-      for (const addr of sector.addresses) {
-        const marker = L.circleMarker([addr.lat, addr.lon], {
-          radius: 5,
-          color: "#ffffff",
-          weight: 1,
-          fillColor: statusColor(addr.status),
-          fillOpacity: 0.95,
-        });
-        marker.bindPopup(`<strong>${escapeHtml(addr.label)}</strong><br>${escapeHtml(sector.nom)}`);
-        marker.addTo(state.layerGroup);
-        state.markersById.set(addr.id, marker);
-        bounds.push([addr.lat, addr.lon]);
+      if (!loc.centered) {
+        loc.centered = true;
+        state.map.setView(e.latlng, Math.max(state.map.getZoom(), 16));
       }
-    }
-
-    if (bounds.length) state.map.fitBounds(bounds, { padding: [20, 20] });
-  }
-
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (c) => ({
-      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-    }[c]));
-  }
-
-  // ---- Rendu de la liste ------------------------------------------------------
-  function renderProgress(data) {
-    const totals = { fait: 0, absent: 0, refus: 0, a_faire: 0 };
-    for (const sector of data.sectors) {
-      for (const key of Object.keys(totals)) totals[key] += sector.counts[key] || 0;
-    }
-    const total = Object.values(totals).reduce((a, b) => a + b, 0) || 1;
-    els.progress.innerHTML = "";
-    for (const key of ["fait", "absent", "refus"]) {
-      const span = document.createElement("span");
-      span.className = key;
-      span.style.width = `${(totals[key] / total) * 100}%`;
-      span.title = `${STATUS_LABELS[key]}: ${totals[key]}`;
-      els.progress.appendChild(span);
-    }
-    els.progress.setAttribute("aria-label",
-      `Fait: ${totals.fait}, Absent: ${totals.absent}, Refus: ${totals.refus}, À faire: ${totals.a_faire}`);
-  }
-
-  function renderSectors(data) {
-    els.sectorsList.innerHTML = "";
-    data.sectors.forEach((sector, idx) => {
-      const details = document.createElement("details");
-      details.className = "sector-card";
-      details.open = idx === 0;
-
-      const summary = document.createElement("summary");
-      summary.className = "sector-summary";
-      summary.innerHTML = `
-        <span class="color-dot" style="background:${sector.couleur}"></span>
-        <span class="sector-title">
-          <strong>${escapeHtml(sector.nom)}</strong>
-          <small>${sector.addresses.length} adresses · ${sector.mode === "pied" ? "à pied" : "en voiture"} · ~${Math.round(sector.temps_estime_min)} min</small>
-        </span>
-        <span class="chip">${sector.counts.fait}/${sector.addresses.length} fait</span>
-      `;
-      details.appendChild(summary);
-
-      const list = document.createElement("div");
-      list.className = "address-list";
-      sector.addresses
-        .slice()
-        .sort((a, b) => (a.nom_voie || a.lieu_dit).localeCompare(b.nom_voie || b.lieu_dit) || (a.numero || "").localeCompare(b.numero || "", undefined, { numeric: true }))
-        .forEach((addr) => list.appendChild(renderAddressRow(data.commune.slug || state.slug, addr)));
-      details.appendChild(list);
-
-      els.sectorsList.appendChild(details);
+    });
+    state.map.on("locationerror", () => {
+      showToast("Position indisponible : autorisez la localisation pour ce site.", true);
+      stopLocate();
     });
   }
 
-  function renderAddressRow(slug, addr) {
-    const row = document.createElement("div");
-    row.className = `address-row status-${addr.status || ""}`;
-    row.dataset.addressId = addr.id;
+  function toggleLocate(btn) {
+    if (state.locate.active) { stopLocate(); return; }
+    state.locate.active = true;
+    state.locate.centered = false;
+    btn.classList.add("active");
+    state.map.locate({ watch: true, enableHighAccuracy: true, setView: false });
+  }
 
-    const label = document.createElement("div");
+  function stopLocate() {
+    const loc = state.locate;
+    state.map.stopLocate();
+    loc.active = false;
+    if (loc.marker) { state.map.removeLayer(loc.marker); state.map.removeLayer(loc.circle); }
+    loc.marker = loc.circle = null;
+    document.querySelector(".locate-btn")?.classList.remove("active");
+  }
+
+  function sectorLabel(sector, small) {
+    return L.marker(labelPoint(sector, sector.addresses), {
+      interactive: false,
+      keyboard: false,
+      icon: L.divIcon({
+        className: `sector-label-icon${small ? " small" : ""}`,
+        html: `<span style="border-color:${sector.couleur}">${escapeHtml(sector.nom)}</span>`,
+        iconSize: null,
+      }),
+    });
+  }
+
+  function statusColor(status) { return status ? STATUS[status].color : TODO_COLOR; }
+
+  // ---- Vue d'ensemble --------------------------------------------------------------
+
+  function showHome() {
+    state.current = null;
+    els.home.hidden = false;
+    els.sectorPanel.hidden = true;
+    setMapMode("map-home");
+    state.layer.clearLayers();
+    state.markers.clear();
+
+    const sectors = state.data.sectors;
+    els.noSectors.hidden = sectors.length > 0;
+    els.buttons.innerHTML = "";
+
+    const bounds = L.latLngBounds([]);
+    for (const s of sectors) {
+      const poly = L.polygon(s.polygon, { color: s.couleur, weight: 2, fillColor: s.couleur, fillOpacity: 0.3 });
+      poly.on("click", () => openSector(s.id));
+      poly.addTo(state.layer);
+      sectorLabel(s, false).addTo(state.layer);
+      bounds.extend(poly.getBounds());
+
+      const total = s.addresses.length || 1;
+      const done = s.counts.fait + s.counts.absent + s.counts.refus;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "sector-button";
+      btn.style.borderLeftColor = s.couleur;
+      btn.innerHTML = `
+        <span class="sector-button-name"><span class="color-dot" style="background:${s.couleur}"></span>${escapeHtml(s.nom)}</span>
+        <span class="sector-button-meta">${s.addresses.length} adresses · ${Math.round((done / total) * 100)} % traité</span>
+        <span class="mini-progress"><span style="width:${(done / total) * 100}%;background:${s.couleur}"></span></span>`;
+      btn.addEventListener("click", () => openSector(s.id));
+      els.buttons.appendChild(btn);
+    }
+
+    refreshMapSize(() => {
+      if (bounds.isValid()) state.map.fitBounds(bounds, { padding: [16, 16] });
+    });
+  }
+
+  function openSector(id) {
+    location.hash = `#/${state.slug}/${id}`;
+  }
+
+  // ---- Vue d'un secteur --------------------------------------------------------------
+
+  function showSector(sector) {
+    state.current = sector;
+    els.home.hidden = true;
+    els.sectorPanel.hidden = false;
+    setMapMode("map-sector");
+    state.layer.clearLayers();
+    state.markers.clear();
+
+    // tout ce qui est hors du secteur est assombri
+    L.polygon([WORLD, sector.polygon], { stroke: false, fillColor: "#0b1220", fillOpacity: 0.5, interactive: false })
+      .addTo(state.layer);
+    for (const other of state.data.sectors) {
+      if (other.id === sector.id) continue;
+      L.polygon(other.polygon, { color: other.couleur, weight: 1.5, dashArray: "4 4", fill: false, interactive: false })
+        .addTo(state.layer);
+      sectorLabel(other, true).addTo(state.layer);
+    }
+    const outline = L.polygon(sector.polygon, { color: sector.couleur, weight: 5, fill: false, interactive: false })
+      .addTo(state.layer);
+
+    for (const a of sector.addresses) {
+      const m = L.circleMarker([a.lat, a.lon], { radius: 6, color: "#fff", weight: 1.5, fillColor: statusColor(a.status), fillOpacity: 1 });
+      m.bindPopup(`<strong>${escapeHtml(a.label)}</strong><br>${escapeHtml(a.groupe)}`);
+      m.on("click", () => highlightRow(a.id));
+      m.addTo(state.layer);
+      state.markers.set(a.id, m);
+    }
+
+    els.dot.style.background = sector.couleur;
+    els.name.textContent = sector.nom;
+    renderProgress(sector);
+    renderAddressList(sector);
+    window.scrollTo({ top: 0 });
+
+    refreshMapSize(() => state.map.fitBounds(outline.getBounds(), { padding: [20, 20] }));
+  }
+
+  // ne pas écraser className : Leaflet y a mis ses propres classes (leaflet-container…)
+  function setMapMode(mode) {
+    els.mapEl.classList.toggle("map-home", mode === "map-home");
+    els.mapEl.classList.toggle("map-sector", mode === "map-sector");
+  }
+
+  function refreshMapSize(then) {
+    setTimeout(() => { state.map.invalidateSize(); then(); }, 60);
+  }
+
+  function renderProgress(sector) {
+    const c = sector.counts;
+    const total = sector.addresses.length || 1;
+    els.progress.innerHTML = ["fait", "absent", "refus"]
+      .map((k) => `<span class="${k}" style="width:${(c[k] / total) * 100}%"></span>`).join("");
+    els.stats.textContent = `${c.fait} fait · ${c.absent} absent · ${c.refus} refus · ${c.a_faire} restant sur ${sector.addresses.length}`;
+  }
+
+  function numericCompare(a, b) {
+    return String(a || "").localeCompare(String(b || ""), "fr", { numeric: true });
+  }
+
+  function renderAddressList(sector) {
+    els.list.innerHTML = "";
+    const groups = new Map();
+    for (const a of sector.addresses) {
+      if (!groups.has(a.groupe)) groups.set(a.groupe, []);
+      groups.get(a.groupe).push(a);
+    }
+    const ordered = [...groups.entries()].sort((x, y) => y[1].length - x[1].length);
+    for (const [name, addrs] of ordered) {
+      const block = document.createElement("div");
+      block.className = "address-group";
+      block.innerHTML = `<h3 class="group-title">${escapeHtml(name)} <small>(${addrs.length})</small></h3>`;
+      addrs.sort((x, y) => numericCompare(x.nom_voie, y.nom_voie) || numericCompare(x.numero, y.numero))
+        .forEach((a) => block.appendChild(addressRow(sector, a)));
+      els.list.appendChild(block);
+    }
+    if (!sector.addresses.length) {
+      els.list.innerHTML = `<p class="empty">Aucune adresse dans ce secteur.</p>`;
+    }
+  }
+
+  function addressRow(sector, a) {
+    const row = document.createElement("div");
+    row.className = "address-row";
+    row.id = `addr-${CSS.escape(a.id)}`;
+    applyRowStatus(row, a.status);
+
+    const label = document.createElement("button");
+    label.type = "button";
     label.className = "address-label";
-    label.innerHTML = `${escapeHtml(addr.label)}<span class="voie">${escapeHtml(addr.lieu_dit || addr.nom_voie || "")}</span>`;
-    label.addEventListener("click", () => focusAddress(addr));
-    row.appendChild(label);
+    label.innerHTML = `${escapeHtml(a.label)}`;
+    label.addEventListener("click", () => {
+      const m = state.markers.get(a.id);
+      if (!m) return;
+      state.map.setView(m.getLatLng(), Math.max(state.map.getZoom(), 17));
+      m.openPopup();
+      els.mapEl.scrollIntoView({ behavior: "smooth" });
+    });
 
     const buttons = document.createElement("div");
     buttons.className = "status-buttons";
-    for (const key of ["fait", "absent", "refus"]) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "status-btn";
-      btn.dataset.status = key;
-      btn.title = STATUS_LABELS[key];
-      btn.textContent = STATUS_ICONS[key];
-      btn.classList.toggle("active", addr.status === key);
-      btn.addEventListener("click", () => toggleStatus(slug, addr, key, row));
-      buttons.appendChild(btn);
+    for (const key of Object.keys(STATUS)) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "status-btn";
+      b.dataset.status = key;
+      b.title = STATUS[key].label;
+      b.setAttribute("aria-label", `${STATUS[key].label} : ${a.label}`);
+      b.textContent = STATUS[key].icon;
+      b.classList.toggle("active", a.status === key);
+      b.addEventListener("click", () => toggleStatus(sector, a, key, row));
+      buttons.appendChild(b);
     }
-    row.appendChild(buttons);
+    row.append(label, buttons);
     return row;
   }
 
-  async function toggleStatus(slug, addr, key, row) {
-    const newStatus = addr.status === key ? null : key;
-    const previous = addr.status;
-    addr.status = newStatus;
+  function applyRowStatus(row, status) {
+    row.className = `address-row${status ? ` status-${status}` : ""}`;
+    row.dataset.done = status ? "1" : "0";
+    row.querySelectorAll(".status-btn").forEach((b) => b.classList.toggle("active", b.dataset.status === status));
+  }
 
-    row.className = `address-row status-${newStatus || ""}`;
-    row.querySelectorAll(".status-btn").forEach((b) => b.classList.toggle("active", b.dataset.status === newStatus));
-
-    const marker = state.markersById.get(addr.id);
-    if (marker) marker.setStyle({ fillColor: statusColor(newStatus) });
-
-    recomputeCountsAndRender();
-
+  async function toggleStatus(sector, a, key, row) {
+    const newStatus = a.status === key ? null : key;
+    sector.counts[a.status || "a_faire"]--;
+    sector.counts[newStatus || "a_faire"]++;
+    a.status = newStatus;
+    applyRowStatus(row, newStatus);
+    state.markers.get(a.id)?.setStyle({ fillColor: statusColor(newStatus) });
+    renderProgress(sector);
     try {
-      await postStatus(slug, addr.id, newStatus);
+      await sendStatus(state.slug, a.id, newStatus);
     } catch {
-      addr.status = previous; // la mise à jour reste en file d'attente; on garde l'affichage optimiste
+      const q = readQueue();
+      q.push({ slug: state.slug, addressId: a.id, status: newStatus });
+      writeQueue(q);
+      showToast("Pas de réseau : enregistré sur le téléphone, envoi automatique au retour du réseau.", true);
     }
   }
 
-  function recomputeCountsAndRender() {
-    for (const sector of state.data.sectors) {
-      const counts = { fait: 0, absent: 0, refus: 0, a_faire: 0 };
-      for (const addr of sector.addresses) counts[addr.status || "a_faire"]++;
-      sector.counts = counts;
+  function highlightRow(id) {
+    const row = document.getElementById(`addr-${CSS.escape(id)}`);
+    if (!row) return;
+    if (row.dataset.done === "1" && els.hideDone.checked) {
+      els.hideDone.checked = false;
+      els.list.classList.remove("hide-done");
     }
-    renderProgress(state.data);
-    document.querySelectorAll(".sector-card .chip").forEach((chip, idx) => {
-      const sector = state.data.sectors[idx];
-      if (sector) chip.textContent = `${sector.counts.fait}/${sector.addresses.length} fait`;
-    });
+    row.scrollIntoView({ behavior: "smooth", block: "center" });
+    row.classList.add("flash");
+    setTimeout(() => row.classList.remove("flash"), 1500);
   }
 
-  function focusAddress(addr) {
-    const marker = state.markersById.get(addr.id);
-    if (!marker) return;
-    state.map.setView(marker.getLatLng(), Math.max(state.map.getZoom(), 17));
-    marker.openPopup();
-    document.getElementById("map").classList.remove("collapsed");
+  els.hideDone.addEventListener("change", () => els.list.classList.toggle("hide-done", els.hideDone.checked));
+
+  els.back.addEventListener("click", () => { location.hash = `#/${state.slug}`; });
+
+  els.share.addEventListener("click", async () => {
+    const url = location.href;
+    const title = `Secteur ${state.current?.nom || ""} — calendriers des pompiers`;
+    try {
+      if (navigator.share) { await navigator.share({ title, url }); return; }
+      await navigator.clipboard.writeText(url);
+      showToast("Lien du secteur copié ✓");
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+      window.prompt("Copiez ce lien :", url);
+    }
+  });
+
+  // ---- Navigation ------------------------------------------------------------------
+
+  function parseHash() {
+    const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
+    return { slug: parts[0] ? decodeURIComponent(parts[0]) : null, id: parts[1] ? Number(parts[1]) : null };
   }
 
-  // ---- Chargement d'une commune --------------------------------------------
-  async function loadCommune(slug) {
+  async function route() {
+    let { slug, id } = parseHash();
+    if (!state.communes.some((c) => c.slug === slug)) {
+      const last = storage.get(LAST_KEY, null);
+      slug = state.communes.some((c) => c.slug === last) ? last : state.communes[0].slug;
+      history.replaceState(null, "", `#/${slug}`);
+      id = null;
+    }
+    const sameCommune = slug === state.slug && state.data;
     state.slug = slug;
-    localStorage.setItem("pompiers-last-commune", slug);
-    const data = await fetchJSON(`/api/communes/${slug}`);
-    data.commune.slug = slug;
-    state.data = data;
-    renderMap(data);
-    renderProgress(data);
-    renderSectors(data);
+    storage.set(LAST_KEY, slug);
+    els.select.value = slug;
+    try {
+      // rechargé à chaque navigation pour voir l'avancement des autres équipes
+      state.data = await fetchJSON(`/api/communes/${encodeURIComponent(slug)}`);
+    } catch (err) {
+      if (!sameCommune) throw err; // hors-ligne : on garde les données déjà affichées
+    }
+    const sector = id !== null ? state.data.sectors.find((s) => s.id === id) : null;
+    if (sector) showSector(sector); else showHome();
+  }
+
+  els.select.addEventListener("change", () => { location.hash = `#/${els.select.value}`; });
+  window.addEventListener("hashchange", () => route().catch(onError));
+
+  function onError(err) {
+    console.error(err);
+    showToast("Erreur de chargement des données", true);
   }
 
   async function init() {
     initMap();
     const { communes } = await fetchJSON("/api/communes");
-    els.select.innerHTML = communes.map((c) => `<option value="${c.slug}">${escapeHtml(c.nom)}</option>`).join("");
-    const initial = communes.find((c) => c.slug === state.slug) ? state.slug : communes[0]?.slug;
-    if (!initial) {
-      showToast("Aucune commune disponible — lancez le pipeline de données", true);
+    state.communes = communes;
+    if (!communes.length) {
+      els.noSectors.hidden = false;
+      els.noSectors.textContent = "Aucune donnée disponible pour l'instant.";
       return;
     }
-    els.select.value = initial;
-    els.select.addEventListener("change", () => loadCommune(els.select.value));
-    await loadCommune(initial);
+    els.select.innerHTML = communes.map((c) => `<option value="${escapeHtml(c.slug)}">${escapeHtml(c.nom)}</option>`).join("");
+    await route();
     flushQueue();
   }
 
-  els.toggleMap.addEventListener("click", () => {
-    const mapEl = document.getElementById("map");
-    if (mapEl.classList.contains("expanded")) {
-      mapEl.classList.remove("expanded");
-      els.toggleMap.textContent = "Réduire la carte";
-    } else if (mapEl.classList.contains("collapsed")) {
-      mapEl.classList.remove("collapsed");
-      els.toggleMap.textContent = "Réduire la carte";
-    } else {
-      mapEl.classList.add("collapsed");
-      els.toggleMap.textContent = "Agrandir la carte";
-    }
-    setTimeout(() => state.map && state.map.invalidateSize(), 220);
-  });
-
-  init().catch((err) => {
-    console.error(err);
-    showToast("Erreur de chargement des données", true);
-  });
+  init().catch(onError);
 })();

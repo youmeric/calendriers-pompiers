@@ -1,4 +1,8 @@
-"""Point d'entrée du pipeline: récupère les données et génère les secteurs.
+"""Point d'entrée du pipeline : récupère les données de chaque commune.
+
+Produit, par commune, un fichier JSON contenant les adresses (avec leur groupe
+d'habitations), le réseau routier, les bâtiments et une proposition
+automatique de 4 secteurs, que l'admin peut importer puis retoucher.
 
 Usage:
     python run_pipeline.py                  # Courzieu + Brussieu (défaut)
@@ -12,6 +16,7 @@ import os
 from pathlib import Path
 
 from build_graph import RoadNetwork
+from clusters import assign_groups
 from common import slugify
 from fetch_ban import fetch_ban_addresses
 from fetch_overpass import fetch_buildings, fetch_mairie, fetch_roads
@@ -25,6 +30,15 @@ COMMUNES = [
 
 OUTPUT_DIR = Path(os.environ.get("SECTORS_OUTPUT_DIR") or
                    (Path(__file__).resolve().parent.parent / "backend" / "app" / "data"))
+
+
+def _round_line(nodes, ndigits: int = 5) -> list[list[float]]:
+    return [[round(lat, ndigits), round(lon, ndigits)] for lat, lon in nodes]
+
+
+def _address_label(addr: dict) -> str:
+    parts = [addr.get("numero", ""), addr.get("rep", ""), addr.get("nom_voie") or addr.get("lieu_dit", "")]
+    return " ".join(p for p in parts if p).strip()
 
 
 def run(use_cache: bool = True) -> None:
@@ -54,26 +68,48 @@ def run(use_cache: bool = True) -> None:
         buildings = fetch_buildings(insee, use_cache=use_cache)
         print(f"  {len(buildings)} bâtiments OSM")
 
+        assign_groups(addresses)
+        print(f"  {len({a['groupe_id'] for a in addresses})} groupes d'habitations (bourg/hameaux)")
+
         network = RoadNetwork(roads)
-        result = build_sectors(addresses, mairie, network)
+        auto = build_sectors(addresses, mairie, network)
 
         slug = slugify(nom)
         payload = {
             "commune": {
+                "slug": slug,
                 "nom": commune["nom"],
                 "code_insee": insee,
                 "code_postal": cp,
                 "mairie": mairie,
                 "contour": commune.get("contour"),
             },
-            "sectors": result["sectors"],
-            "buildings": [w["nodes"] for w in buildings],
+            "addresses": [
+                {
+                    "id": a["id"],
+                    "label": _address_label(a),
+                    "numero": a["numero"],
+                    "nom_voie": a["nom_voie"],
+                    "lieu_dit": a["lieu_dit"],
+                    "groupe_id": a["groupe_id"],
+                    "groupe": a["groupe"],
+                    "lat": a["lat"],
+                    "lon": a["lon"],
+                }
+                for a in addresses
+            ],
+            "roads": [
+                {"nom": w["tags"].get("name", ""), "type": w["tags"].get("highway", ""),
+                 "points": _round_line(w["nodes"])}
+                for w in roads if len(w["nodes"]) >= 2
+            ],
+            "buildings": [_round_line(w["nodes"], 6) for w in buildings if len(w["nodes"]) >= 3],
+            "auto_sectors": auto["sectors"],
         }
         out_path = OUTPUT_DIR / f"{slug}.json"
         with open(out_path, "w", encoding="utf-8") as fh:
             json.dump(payload, fh, ensure_ascii=False)
-        print(f"  -> {out_path} ({sum(len(s['addresses']) for s in result['sectors'])} adresses réparties"
-              f" en {len(result['sectors'])} secteurs)")
+        print(f"  -> {out_path} (proposition automatique : {len(auto['sectors'])} secteurs)")
 
         index.append({"slug": slug, "nom": commune["nom"]})
 

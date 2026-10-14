@@ -1,122 +1,140 @@
-# Calendriers Pompiers — Courzieu & Brussieu
+# Calendriers des pompiers — Courzieu & Brussieu
 
-Application web pour organiser la distribution des calendriers des
-sapeurs-pompiers sur les communes de **Courzieu** et **Brussieu** (69690) :
-calcul automatique de 4 secteurs de distribution équilibrés par commune,
-carte interactive, et suivi en temps réel (fait / absent / refus) depuis un
-mobile pendant la tournée.
+Site web pour organiser la distribution des calendriers des sapeurs-pompiers
+sur Courzieu et Brussieu (69690).
 
-## Comment ça marche
+- **Page admin (`/admin`)**, protégée par mot de passe : vous dessinez
+  vous-même les secteurs sur la carte, vous les nommez et leur donnez une
+  couleur. Les tracés **s'aimantent aux routes** OSM et aux bords des secteurs
+  voisins. L'outil vous **alerte** si un hameau est coupé entre deux secteurs,
+  si des adresses ne sont dans aucun secteur, ou si deux secteurs se
+  chevauchent. Une proposition automatique (4 secteurs équilibrés, bourg à
+  pied depuis la mairie) peut servir de point de départ.
+- **Page publique (`/`)**, pensée pour le téléphone : on voit la carte
+  entière avec tous les secteurs, puis on touche **son** secteur. La carte
+  zoome dessus et **assombrit tout ce qui est en dehors**, pour voir exactement
+  où il se termine. On y trouve aussi un bouton 📍 pour se localiser, la
+  liste des adresses du secteur, et des boutons ✓ fait / ⏳ absent / ✕ refus
+  pour chaque adresse (avec mise en attente si le réseau ne passe pas). Chaque
+  secteur a son propre lien (bouton **Partager**), qu'on peut envoyer à chaque
+  équipe.
 
-1. **Récupération des données** (`data_pipeline/`) :
-   - les adresses officielles depuis la **Base Adresse Nationale (BAN)** ;
-   - le réseau routier, les bâtiments et l'emplacement de la mairie depuis
-     **OpenStreetMap** (API Overpass) ;
-   - le code INSEE et le contour de chaque commune depuis
-     `geo.api.gouv.fr`.
-2. **Sectorisation** (`data_pipeline/sectorize.py`) :
-   - les adresses sont regroupées en unités atomiques — un hameau/lieu-dit,
-     ou une rue pour le centre-bourg — **jamais coupées** entre deux
-     secteurs ;
-   - les distances sont calculées **le long du réseau routier réel** (graphe
-     construit à partir d'OSM, plus court chemin de Dijkstra), pas à vol
-     d'oiseau ;
-   - le **Secteur 1 "Le Bourg"** regroupe toutes les unités accessibles à
-     pied depuis la mairie (rayon configurable, 700 m par défaut) ;
-   - les hameaux restants sont répartis en **3 secteurs motorisés**
-     géographiquement contigus (balayage angulaire autour de la mairie),
-     en cherchant la répartition qui **équilibre le temps de distribution
-     estimé** (nombre d'adresses × temps au porte-à-porte + temps de trajet
-     estimé entre hameaux).
-3. **Backend** (`backend/`, FastAPI) : sert les secteurs/adresses en JSON et
-   enregistre le statut de chaque adresse (fait / absent / refus) dans une
-   base SQLite persistante.
-4. **Frontend** (`frontend/`) : carte Leaflet (fond OpenStreetMap), secteurs
-   colorés et nommés, liste des adresses par secteur, boutons de statut
-   pensés pour l'usage au doigt sur mobile, avec file d'attente hors-ligne
-   si le réseau mobile est mauvais sur le terrain.
+## Sources de données
 
-### Limite connue : le tracé des polygones de secteur
+Le pipeline (`data_pipeline/`) récupère :
+- les **adresses** officielles dans la Base Adresse Nationale (export CSV du
+  département, filtré sur chaque commune) ;
+- le **réseau routier**, les **bâtiments** et la **mairie** dans
+  OpenStreetMap (API Overpass) ;
+- le code INSEE et le **contour** de chaque commune sur `geo.api.gouv.fr`.
 
-Les limites de secteurs affichées sur la carte sont l'**enveloppe** des
-adresses/hameaux qui composent chaque secteur (calculée à partir des points
-réels), ce qui leur donne un contour qui suit globalement les zones
-habitées et les routes qui les relient. Ce n'est pas un détourage
-cadastral exact rue par rue. **Le polygone est une aide visuelle : la
-source de vérité est la liste d'adresses de chaque secteur**, dans laquelle
-un hameau n'est jamais scindé.
+Il regroupe aussi les adresses en **groupes d'habitations** (bourg, hameaux,
+fermes isolées : deux maisons à moins de 80 m font partie du même groupe).
+C'est ce qui permet à la page admin de détecter un hameau coupé.
 
-## Démarrage
-
-### 1. Générer les données des secteurs (une fois, puis à chaque nouvelle
-   campagne de calendriers)
+## Installation sur le serveur Debian (avec Nginx Proxy Manager)
 
 ```bash
-docker compose run --rm pipeline
+git clone https://github.com/youmeric/calendriers-pompiers
+cd calendriers-pompiers
+cp .env.example .env
+nano .env        # ADMIN_PASSWORD, PROXY_NETWORK
 ```
 
-Ceci télécharge les adresses BAN et les données OSM pour Courzieu et
-Brussieu, calcule les 4 secteurs de chaque commune, et écrit le résultat
-dans le volume partagé `sectors-data` (consommé ensuite par le backend).
-
-> Le téléchargement interroge `adresse.data.gouv.fr`, `geo.api.gouv.fr` et
-> `overpass-api.de` : il faut que la machine qui exécute cette commande ait
-> un accès Internet sortant normal (c'est le cas d'un serveur Debian
-> classique). Si le téléchargement BAN échoue avec une erreur 404, le
-> chemin d'export de la BAN a probablement changé depuis la rédaction de ce
-> script — vérifier l'URL actuelle sur https://adresse.data.gouv.fr et
-> mettre à jour `BAN_CSV_URL_CANDIDATES` dans
-> `data_pipeline/fetch_ban.py`.
-
-### 2. Démarrer l'application
+**Réseau de Nginx Proxy Manager** : le site rejoint le réseau Docker de NPM
+(déclaré `external` dans `docker-compose.yml`). Pour connaître son nom :
 
 ```bash
-docker compose up -d backend
+docker network ls
+# ou, depuis le conteneur NPM :
+docker inspect <conteneur-npm> -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}'
 ```
 
-L'application est alors disponible sur `http://<votre-serveur>:8000`.
-
-### Mettre à jour les données (nouvelle année)
+Mettez ce nom dans `PROXY_NETWORK` du fichier `.env`. Si vous n'avez pas encore
+de réseau partagé, créez-en un et branchez-y NPM :
 
 ```bash
-docker compose run --rm pipeline --no-cache
+docker network create proxy
+docker network connect proxy <conteneur-npm>
+```
+
+Ensuite :
+
+```bash
+docker compose run --rm --build pipeline   # télécharge adresses, routes, bâtiments
+docker compose up -d --build backend
+```
+
+Dans **Nginx Proxy Manager**, ajoutez un *Proxy Host* :
+- Forward Hostname / IP : `calendriers-pompiers`
+- Forward Port : `8000`
+- onglet SSL : certificat Let's Encrypt + *Force SSL*
+
+Le HTTPS est nécessaire : sans lui, la connexion admin ne fonctionne pas
+(cookie sécurisé, voir `COOKIE_SECURE`), et les téléphones refusent la
+localisation 📍 et le bouton Partager.
+
+Le port `8000` n'est publié que sur `127.0.0.1` du serveur (accès local ou
+tunnel SSH), jamais directement sur Internet.
+
+## Utilisation
+
+1. Ouvrez `https://<votre-domaine>/admin` et connectez-vous avec
+   `ADMIN_PASSWORD`.
+2. Choisissez la commune, puis dessinez les secteurs (« Dessiner un
+   secteur » : cliquez point par point, puis sur le premier point pour
+   fermer). Vous pouvez aussi partir de la proposition automatique (« Autres
+   outils »).
+3. Nommez chaque secteur, choisissez sa couleur, corrigez jusqu'à ce que les
+   alertes disparaissent, puis cliquez **Enregistrer**. C'est publié
+   immédiatement sur la page publique.
+4. Envoyez à chaque équipe le lien de son secteur (page publique → secteur →
+   **Partager**).
+
+Au début d'une nouvelle tournée : « Autres outils » → *Remettre à zéro les
+statuts*.
+
+## Mises à jour
+
+Après un `git pull`, **reconstruisez toujours les images** (sinon Docker
+réutilise l'ancienne version du code) :
+
+```bash
+git pull
+docker compose up -d --build backend
+```
+
+Pour rafraîchir les adresses et les routes (nouvelle année) :
+
+```bash
+docker compose run --rm --build pipeline --no-cache
 docker compose restart backend
 ```
 
-`--no-cache` force le re-téléchargement complet (sinon les données sources
-BAN/OSM déjà téléchargées sont réutilisées). Le statut déjà saisi
-(fait/absent/refus) est conservé dans la base SQLite tant qu'on ne la vide
-pas ; pour repartir à zéro en début de nouvelle tournée, appeler
-`POST /api/communes/<slug>/reset`.
+Les secteurs dessinés sont conservés. Les nouvelles adresses y sont
+automatiquement rattachées, et la page admin signale celles qui tombent hors
+secteur.
 
-## Développement local (sans Docker)
+## Sauvegarde
+
+Tout l'état du site se trouve dans `./data/db/status.db` (secteurs et statuts).
+Une copie de ce fichier suffit.
+
+## Développement local
 
 ```bash
-cd data_pipeline && pip install -r requirements.txt && python run_pipeline.py
-cd ../backend && pip install -r requirements.txt
-uvicorn app.main:app --reload --app-dir backend
+pip install -r data_pipeline/requirements.txt -r backend/requirements.txt
+python data_pipeline/run_pipeline.py
+ADMIN_PASSWORD=test COOKIE_SECURE=false uvicorn backend.app.main:app --reload
 ```
 
-Puis ouvrir `http://localhost:8000`.
+Puis ouvrir `http://localhost:8000` et `http://localhost:8000/admin`.
 
-## Paramètres ajustables
-
-Tout se trouve en tête de `data_pipeline/sectorize.py` :
-
-- `WALK_RADIUS_M` : rayon (mètres, le long des routes) pour qu'une unité
-  soit incluse dans le secteur "Bourg" à pied (défaut 700 m).
-- `HANDLING_MIN_PER_ADDRESS` : temps estimé par porte (défaut 1,5 min).
-- `WALK_SPEED_KMH` / `DRIVE_SPEED_KMH` : vitesses utilisées pour estimer le
-  temps de trajet à pied / en voiture.
-
-Les communes à traiter sont listées dans `data_pipeline/run_pipeline.py`
-(`COMMUNES`), pour ajouter facilement une commune supplémentaire plus tard.
-
-## Architecture des dossiers
+## Organisation du code
 
 ```
-data_pipeline/   scripts Python : récupération BAN/OSM + calcul des secteurs
-backend/         API FastAPI (sert les données + enregistre les statuts)
-frontend/        page web (Leaflet + JS natif, pas de build nécessaire)
+data_pipeline/   récupération BAN / OSM, groupes d'habitations, proposition auto
+backend/         API FastAPI : secteurs (SQLite), statuts, connexion admin
+frontend/        index.html (public) + admin.html, Leaflet et Leaflet-Geoman intégrés
 docker-compose.yml
 ```

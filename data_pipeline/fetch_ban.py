@@ -23,15 +23,23 @@ def department_code(code_insee: str) -> str:
     return code_insee[:2]
 
 
-def _download_department_csv(dept: str) -> "Path":
-    """Télécharge (ou réutilise) le fichier CSV.gz du département, renvoie son
-    chemin local décompressé en cache."""
+_downloaded_this_run: set[str] = set()
+
+
+def _download_department_csv(dept: str, use_cache: bool) -> "Path":
+    """Télécharge (ou réutilise) le fichier CSV.gz du département et renvoie
+    son chemin local. Sans cache, il n'est retéléchargé qu'une fois par
+    exécution même si plusieurs communes sont dans le même département."""
     gz_path = cache_path(f"ban-dept-{dept}.csv.gz")
-    if not gz_path.exists():
+    fresh_needed = not use_cache and dept not in _downloaded_this_run
+    if fresh_needed or not gz_path.exists():
+        _downloaded_this_run.add(dept)
         url = BAN_CSV_URL.format(dept=dept)
         resp = http_get(url, timeout=300)
-        with open(gz_path, "wb") as fh:
+        tmp_path = gz_path.with_suffix(".tmp")
+        with open(tmp_path, "wb") as fh:
             fh.write(resp.content)
+        tmp_path.replace(gz_path)
     return gz_path
 
 
@@ -59,7 +67,7 @@ def fetch_ban_addresses(code_insee: str, use_cache: bool = True) -> list[dict]:
             return cached
 
     dept = department_code(code_insee)
-    gz_path = _download_department_csv(dept)
+    gz_path = _download_department_csv(dept, use_cache)
 
     addresses = []
     for row in _parse_rows(gz_path, {code_insee}):

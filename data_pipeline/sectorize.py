@@ -46,25 +46,16 @@ class Unit:
 
 
 def _group_units(addresses: list[dict]) -> list[Unit]:
-    groups: dict[str, list[dict]] = {}
+    """Une unité = un groupe d'habitations (voir clusters.assign_groups)."""
+    groups: dict[int, list[dict]] = {}
     for addr in addresses:
-        if addr.get("lieu_dit"):
-            key = f"LD::{addr['lieu_dit']}"
-            label = addr["lieu_dit"]
-        elif addr.get("nom_voie"):
-            key = f"RUE::{addr['nom_voie']}"
-            label = addr["nom_voie"]
-        else:
-            key = "RUE::Bourg"
-            label = "Bourg"
-        groups.setdefault(key, []).append(addr)
+        groups.setdefault(addr["groupe_id"], []).append(addr)
 
     units = []
-    for key, addrs in groups.items():
+    for gid, addrs in groups.items():
         lat = sum(a["lat"] for a in addrs) / len(addrs)
         lon = sum(a["lon"] for a in addrs) / len(addrs)
-        units.append(Unit(key=key, label=addrs[0].get("lieu_dit") or addrs[0].get("nom_voie") or "Bourg",
-                           addresses=addrs, lat=lat, lon=lon))
+        units.append(Unit(key=str(gid), label=addrs[0]["groupe"], addresses=addrs, lat=lat, lon=lon))
     return units
 
 
@@ -121,24 +112,35 @@ def _best_contiguous_split(order: list[int], units: list[Unit], dmat: dict[tuple
     points de coupe qui divisent `order` en 3 groupes contigus les plus
     équilibrés en temps (minimise l'écart max-min)."""
     n = len(order)
-    best_groups: list[list[int]] | None = None
-    best_score = float("inf")
+    if n < 3:
+        return [[i] for i in order] + [[] for _ in range(3 - n)], 0.0
 
+    # temps d'un arc circulaire (start, longueur), mémorisé : n² arcs distincts
+    memo: dict[tuple[int, int], float] = {}
+
+    def arc_time(start: int, length: int) -> float:
+        key = (start % n, length)
+        if key not in memo:
+            idx = [order[(start + k) % n] for k in range(length)]
+            memo[key] = _group_time_minutes(idx, units, dmat, mairie_dist)
+        return memo[key]
+
+    best: tuple[int, int, int] | None = None
+    best_score = float("inf")
     for rot in range(n):
-        seq = order[rot:] + order[:rot]
         for cut1 in range(1, n - 1):
+            t1 = arc_time(rot, cut1)
             for cut2 in range(cut1 + 1, n):
-                g1, g2, g3 = seq[:cut1], seq[cut1:cut2], seq[cut2:]
-                if not g1 or not g2 or not g3:
-                    continue
-                t1 = _group_time_minutes(g1, units, dmat, mairie_dist)
-                t2 = _group_time_minutes(g2, units, dmat, mairie_dist)
-                t3 = _group_time_minutes(g3, units, dmat, mairie_dist)
+                t2 = arc_time(rot + cut1, cut2 - cut1)
+                t3 = arc_time(rot + cut2, n - cut2)
                 score = max(t1, t2, t3) - min(t1, t2, t3)
                 if score < best_score:
                     best_score = score
-                    best_groups = [g1, g2, g3]
-    return best_groups or [order, [], []], best_score
+                    best = (rot, cut1, cut2)
+
+    rot, cut1, cut2 = best
+    seq = order[rot:] + order[:rot]
+    return [seq[:cut1], seq[cut1:cut2], seq[cut2:]], best_score
 
 
 def _hull_for_units(indices: list[int], units: list[Unit]) -> list[tuple[float, float]]:
@@ -194,7 +196,7 @@ def build_sectors(addresses: list[dict], mairie: dict, network: RoadNetwork) -> 
         "mode": "pied",
         "temps_estime_min": round(bourg_time, 1),
         "hameaux": sorted({u.label for u in bourg_units}),
-        "addresses": [a for u in bourg_units for a in u.addresses],
+        "nb_adresses": sum(u.count for u in bourg_units),
         "polygon": _hull_for_units(bourg_idx, bourg_units) if bourg_units else [],
     })
 
@@ -208,7 +210,8 @@ def build_sectors(addresses: list[dict], mairie: dict, network: RoadNetwork) -> 
             if not group:
                 continue
             mean_bearing = sum(other_units[i].bearing_deg for i in group) / len(group)
-            hameaux = sorted({other_units[i].label for i in group})
+            by_size = sorted(group, key=lambda i: other_units[i].count, reverse=True)
+            hameaux = list(dict.fromkeys(other_units[i].label for i in by_size))
             nom_zone = _compass_label(mean_bearing)
             time_min = _group_time_minutes(group, other_units, dmat, mairie_dist)
             sectors.append({
@@ -217,14 +220,8 @@ def build_sectors(addresses: list[dict], mairie: dict, network: RoadNetwork) -> 
                 "mode": "voiture",
                 "temps_estime_min": round(time_min, 1),
                 "hameaux": hameaux,
-                "addresses": [a for i in group for a in other_units[i].addresses],
+                "nb_adresses": sum(other_units[i].count for i in group),
                 "polygon": _hull_for_units(group, other_units),
             })
-
-    for sector in sectors:
-        for addr in sector["addresses"]:
-            label_parts = [addr.get("numero", ""), addr.get("rep", ""), addr.get("nom_voie") or addr.get("lieu_dit", "")]
-            addr["label"] = " ".join(p for p in label_parts if p).strip()
-            addr["secteur"] = sector["nom"]
 
     return {"sectors": sectors}

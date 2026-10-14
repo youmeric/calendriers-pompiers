@@ -1,18 +1,44 @@
+# docker-compose.yml — Calendriers des pompiers (Courzieu & Brussieu)
+#
+# Premier lancement (voir README) :
+#   cp .env.example .env && nano .env          # mot de passe admin, réseau NPM
+#   docker compose run --rm --build pipeline    # télécharge adresses + routes
+#   docker compose up -d --build backend
+#
+# Données sur le serveur (bind mounts, faciles à sauvegarder) :
+#   ./data/db/       base SQLite (secteurs dessinés + statuts fait/absent/refus)
+#   ./data/sectors/  fichiers générés par le pipeline
+#   ./data/cache/    téléchargements BAN / OSM
+
 services:
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
     image: calendriers-pompiers-backend
+    container_name: calendriers-pompiers
     restart: unless-stopped
+    # Nginx Proxy Manager joint l'app par le nom du conteneur
+    # (http://calendriers-pompiers:8000) via le réseau Docker partagé.
+    # Le port n'est publié que sur 127.0.0.1 : jamais exposé directement à Internet.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:${HOST_PORT:-8000}:8000"
+    env_file:
+      - ./.env
     environment:
+      - TZ=Europe/Paris
       - DB_PATH=/app/db/status.db
       - SECTORS_DATA_DIR=/app/sectors
     volumes:
-      - sectors-data:/app/sectors
-      - status-db:/app/db
+      - ./data/db:/app/db
+      - ./data/sectors:/app/sectors
+    networks:
+      - proxy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/communes')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   pipeline:
     build:
@@ -24,10 +50,11 @@ services:
       - SECTORS_OUTPUT_DIR=/app/sectors
       - BAN_CACHE_DIR=/app/cache
     volumes:
-      - sectors-data:/app/sectors
-      - pipeline-cache:/app/cache
+      - ./data/sectors:/app/sectors
+      - ./data/cache:/app/cache
 
-volumes:
-  sectors-data:
-  status-db:
-  pipeline-cache:
+networks:
+  proxy:
+    # réseau Docker de Nginx Proxy Manager, créé en dehors de ce projet
+    external: true
+    name: ${PROXY_NETWORK:-proxy}

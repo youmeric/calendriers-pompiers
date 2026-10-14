@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="robots" content="noindex" />
+<title>Admin secteurs — Calendriers Pompiers</title>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
+<link rel="stylesheet" href="vendor/geoman/leaflet-geoman.css" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="admin">
+  <header class="topbar">
+    <h1>Admin · Secteurs</h1>
+    <div class="topbar-actions">
+      <select id="commune-select" aria-label="Choisir la commune" hidden></select>
+      <a class="topbar-link" href="/" target="_blank" rel="noopener">Site public ↗</a>
+      <button id="btn-logout" class="topbar-link" type="button" hidden>Déconnexion</button>
+    </div>
+  </header>
+
+  <section id="login-view" class="login-view" hidden>
+    <form id="login-form" class="card login-card">
+      <h2>Connexion administrateur</h2>
+      <label for="password">Mot de passe</label>
+      <input id="password" type="password" autocomplete="current-password" required />
+      <button type="submit" class="btn primary">Se connecter</button>
+      <p id="login-error" class="error-text" hidden></p>
+    </form>
+  </section>
+
+  <main id="editor-view" class="editor" hidden>
+    <section id="admin-map" aria-label="Carte d'édition des secteurs"></section>
+
+    <aside id="admin-panel">
+      <div class="admin-toolbar">
+        <button id="btn-draw" class="btn" type="button">✏️ Dessiner un secteur</button>
+        <button id="btn-save" class="btn primary" type="button" disabled>Enregistrer</button>
+      </div>
+      <p id="dirty-hint" class="hint dirty" hidden>Modifications non enregistrées</p>
+
+      <details class="help">
+        <summary>Comment ça marche ?</summary>
+        <ul>
+          <li><b>Dessiner</b> : cliquez « Dessiner un secteur », puis cliquez point par point autour de la zone. Cliquez sur le premier point pour fermer le secteur.</li>
+          <li>Les points <b>s'aimantent aux routes</b> et aux bords des autres secteurs : collez deux secteurs voisins en suivant la même route pour qu'il n'y ait ni trou ni chevauchement.</li>
+          <li><b>Modifier un tracé</b> : bouton « Modifier » sur la fiche du secteur, puis déplacez les points (glisser) ; cliquez un point pour le supprimer, ou le petit point au milieu d'un côté pour en ajouter un. Re-cliquez « Terminer ».</li>
+          <li>Les petits points sur la carte sont les adresses : de la couleur du secteur qui les contient, <b>noirs</b> s'ils ne sont dans aucun secteur.</li>
+          <li>Rien n'est publié tant que vous n'avez pas cliqué <b>Enregistrer</b>.</li>
+        </ul>
+      </details>
+
+      <div class="admin-options">
+        <label><input type="checkbox" id="snap-toggle" checked /> Aimanter aux routes et aux secteurs</label>
+        <label><input type="checkbox" id="roads-toggle" checked /> Afficher les routes</label>
+        <label><input type="checkbox" id="buildings-toggle" /> Afficher les bâtiments</label>
+      </div>
+
+      <div id="warnings" class="warnings" aria-live="polite"></div>
+
+      <h2 class="panel-title">Secteurs</h2>
+      <div id="sector-editor-list"></div>
+
+      <details class="tools">
+        <summary>Autres outils</summary>
+        <button id="btn-import-auto" class="btn" type="button">Importer la proposition automatique</button>
+        <p class="hint">Remplace les secteurs affichés par le découpage calculé automatiquement (4 secteurs équilibrés, bourg à pied). Vous pourrez ensuite les retoucher avant d'enregistrer.</p>
+        <button id="btn-reset-status" class="btn danger" type="button">Remettre à zéro les statuts (fait / absent / refus)</button>
+        <p class="hint">À faire au début d'une nouvelle tournée.</p>
+      </details>
+    </aside>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="vendor/geoman/leaflet-geoman.min.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+</html>
