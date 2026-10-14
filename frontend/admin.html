@@ -7,6 +7,7 @@
 <title>Admin secteurs — Calendriers Pompiers</title>
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
 <link rel="stylesheet" href="vendor/geoman/leaflet-geoman.css" />
+<link rel="icon" type="image/png" href="icons/favicon-64.png" />
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body class="admin">
@@ -48,6 +49,9 @@
       <div class="admin-toolbar second">
         <button id="btn-new-hamlets" class="btn" type="button">🏘 Nouveau secteur à partir de hameaux</button>
       </div>
+      <div class="admin-toolbar second">
+        <button id="btn-road-snap" class="btn" type="button">🛣 Recaler toutes les limites sur les routes</button>
+      </div>
       <p id="dirty-hint" class="hint dirty" hidden>Modifications non enregistrées</p>
 
       <details class="help">
@@ -59,6 +63,8 @@
           <li><b>Modifier un tracé</b> : bouton « Modifier le tracé » sur la fiche du secteur, puis déplacez les points (glisser) ; cliquez un point pour le supprimer, ou le petit point au milieu d'un côté pour en ajouter un. Re-cliquez « Terminer ».</li>
           <li>Les petits points sur la carte sont les adresses : de la couleur du secteur qui les contient, <b>noirs</b> s'ils ne sont dans aucun secteur. <b>Cliquez une adresse</b> pour l'exclure (cimetière, bâtiment sans habitant…).</li>
           <li>Un secteur peut être en plusieurs morceaux (hameaux éloignés) ou contenir une enclave (hameau retiré au milieu).</li>
+          <li><b>🛣 Recaler sur les routes</b> : redessine tous les secteurs pour que leurs limites passent par les routes (et la limite de la commune), sans changer aucune maison de secteur. Les zones sans maison, et les maisons hors secteur, vont au secteur le plus proche : toute la commune est couverte.</li>
+          <li><b>✂ Couper</b> un secteur : tracez une ligne qui le traverse (elle s'aimante aux routes). <b>Fusionner</b> : bouton de la fiche, puis clic sur l'autre secteur.</li>
           <li>Une erreur ? <b>↶</b> annule la dernière action (Ctrl+Z), <b>↷</b> la rétablit.</li>
           <li>Les alertes sont des aides : elles <b>n'empêchent jamais d'enregistrer</b>. Rien n'est publié tant que vous n'avez pas cliqué <b>Enregistrer</b>.</li>
         </ul>
@@ -68,6 +74,7 @@
         <label><input type="checkbox" id="snap-toggle" checked /> Aimanter aux routes et aux secteurs</label>
         <label><input type="checkbox" id="roads-toggle" checked /> Afficher les routes</label>
         <label><input type="checkbox" id="buildings-toggle" /> Afficher les bâtiments</label>
+        <label><input type="checkbox" id="neighbours-toggle" checked /> Afficher les secteurs de l'autre commune</label>
       </div>
 
       <div id="warnings" class="warnings" aria-live="polite"></div>

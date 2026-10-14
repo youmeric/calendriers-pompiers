@@ -18,6 +18,14 @@ sur Courzieu et Brussieu (69690).
   - **Exclure une adresse** (cimetière, bâtiment sans habitant…) : clic sur
     l'adresse → « Exclure ». Elle disparaît des comptes et du site public ;
     on peut la réintégrer.
+  - **🛣 Recaler toutes les limites sur les routes** : redécoupe la commune en
+    îlots délimités par les routes et la limite communale, et redessine chaque
+    secteur avec ses îlots ; aucune maison ne change de secteur, et toute la
+    commune se retrouve couverte (↶ pour annuler).
+  - **✂ Couper** un secteur par une ligne (aimantée aux routes) et
+    **fusionner** deux secteurs.
+  - Les secteurs de **l'autre commune** sont affichés en pointillé (et
+    aimantables) pour bien caler les limites à la frontière.
   - Une proposition automatique (4 secteurs équilibrés, bourg à pied depuis la
     mairie) peut servir de point de départ.
   - **Équilibre** : pour chaque secteur, nombre d'adresses, km de routes,
@@ -37,9 +45,17 @@ sur Courzieu et Brussieu (69690).
     qu'elle croise comme repères ;
   - **ce que comprend le secteur** : hameaux, rues, numéros (« Rue X, n° 2 à
     14, côté pair », « en partie » si le reste de la rue est ailleurs) ;
-  - un bouton 📍 pour se localiser, un lien **Partager** propre au secteur, et
-    un bouton **🖨 Plan** (plan A4 du secteur, à imprimer ou enregistrer en
-    PDF). Un plan d'ensemble de la commune est aussi disponible.
+  - un bouton 📍 qui dit **dans quel secteur on se trouve** (« Vous êtes dans
+    ce secteur, limite à 150 m » / « hors de ce secteur »), un lien
+    **Partager** propre au secteur, et un bouton **🖨 Plan** (plan A4 avec
+    **QR code**, à imprimer ou enregistrer en PDF). Un plan d'ensemble des deux
+    communes est aussi disponible.
+  - une **recherche** d'adresse, de rue ou de hameau qui ouvre le bon secteur ;
+  - des **pastilles** (C1, C2… B1…) qui numérotent les secteurs : vue de loin,
+    la carte n'affiche que les pastilles, les noms apparaissent en zoomant ;
+  - trois **fonds de carte** : OpenStreetMap, plan IGN, photo aérienne IGN.
+  - Le site s'**installe sur l'écran d'accueil** du téléphone comme une
+    application (menu du navigateur → « Ajouter à l'écran d'accueil »).
 
 ## Sources de données
 

@@ -226,7 +226,7 @@ def build_sectors(addresses: list[dict], mairie: dict, network: RoadNetwork) -> 
     bourg_time = sum(u.count for u in bourg_units) * HANDLING_MIN_PER_ADDRESS \
         + (max((u.dist_mairie_m for u in bourg_units), default=0) / 1000.0) / WALK_SPEED_KMH * 60.0
     sectors.append({
-        "nom": "Secteur 1 – Le Bourg (à pied)",
+        "nom": "Le Bourg (à pied)",
         "couleur": SECTOR_COLORS[0],
         "mode": "pied",
         "temps_estime_min": round(bourg_time, 1),
@@ -250,7 +250,7 @@ def build_sectors(addresses: list[dict], mairie: dict, network: RoadNetwork) -> 
             nom_zone = _compass_label(mean_bearing)
             time_min = _group_time_minutes(group, other_units, dmat, mairie_dist)
             sectors.append({
-                "nom": f"Secteur {n} – {nom_zone} ({', '.join(hameaux[:3])}{'…' if len(hameaux) > 3 else ''})",
+                "nom": f"{nom_zone} ({', '.join(hameaux[:3])}{'…' if len(hameaux) > 3 else ''})",
                 "couleur": SECTOR_COLORS[(n - 1) % len(SECTOR_COLORS)],
                 "mode": "voiture",
                 "temps_estime_min": round(time_min, 1),

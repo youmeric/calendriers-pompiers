@@ -1,8 +1,9 @@
 (() => {
   "use strict";
   const {
-    escapeHtml, fetchJSON, showToast, osmLayer, labelPoint, renderLimite, renderResume, hameauxPreview,
-    toPolys, outerRings, holeRings,
+    escapeHtml, fetchJSON, showToast, labelPoint, renderLimite, renderResume, hameauxPreview,
+    toPolys, outerRings, holeRings, addBaseLayers, sectorCode, labelHtml, compactLabelsBelow,
+    pointInPolys, distanceToEdge, formatDistance, normalizeText,
   } = window.Common;
 
   const STATUS = {
@@ -22,7 +23,9 @@
     sectorPanel: document.getElementById("sector-panel"),
     back: document.getElementById("btn-back"),
     share: document.getElementById("btn-share"),
-    dot: document.getElementById("sector-dot"),
+    code: document.getElementById("sector-code"),
+    search: document.getElementById("search"),
+    searchResults: document.getElementById("search-results"),
     name: document.getElementById("sector-name"),
     progress: document.getElementById("sector-progress"),
     stats: document.getElementById("sector-stats"),
@@ -44,7 +47,10 @@
     map: null,
     layer: null,
     markers: new Map(),
-    locate: { active: false, marker: null, circle: null, centered: false },
+    locate: { active: false, marker: null, circle: null, centered: false, latlng: null },
+    whereControl: null,
+    searchIndex: [],
+    pendingFocus: null, // élément à montrer après ouverture d'un secteur (recherche)
   };
 
   const storage = {
@@ -86,9 +92,21 @@
 
   function initMap() {
     state.map = L.map("map", { zoomControl: true, zoomSnap: 0.5 }).setView([45.742, 4.57], 13);
-    osmLayer().addTo(state.map);
+    addBaseLayers(state.map);
+    compactLabelsBelow(state.map, 14);
     state.layer = L.layerGroup().addTo(state.map);
     addLocateControl();
+    const Where = L.Control.extend({
+      options: { position: "bottomleft" },
+      onAdd() {
+        const div = L.DomUtil.create("div", "where-chip");
+        div.hidden = true;
+        L.DomEvent.disableClickPropagation(div);
+        return div;
+      },
+    });
+    state.whereControl = new Where();
+    state.map.addControl(state.whereControl);
   }
 
   function addLocateControl() {
@@ -115,14 +133,25 @@
         loc.marker.setLatLng(e.latlng);
         loc.circle.setLatLng(e.latlng).setRadius(e.accuracy);
       }
+      loc.latlng = e.latlng;
+      updateWhere();
       if (!loc.centered) {
         loc.centered = true;
         state.map.setView(e.latlng, Math.max(state.map.getZoom(), 16));
       }
     });
-    state.map.on("locationerror", () => {
-      showToast("Position indisponible : autorisez la localisation pour ce site.", true);
-      stopLocate();
+    state.map.on("locationerror", (e) => {
+      if (e.code === 1) { // refus d'autorisation : inutile d'insister
+        showToast("Position refusée : autorisez la localisation pour ce site.", true);
+        stopLocate();
+        return;
+      }
+      // perte de signal passagère : on continue à suivre la position
+      const box = state.whereControl && state.whereControl.getContainer();
+      if (box && !state.locate.latlng) {
+        box.innerHTML = "📍 Recherche de votre position…";
+        box.hidden = false;
+      }
     });
   }
 
@@ -140,7 +169,40 @@
     loc.active = false;
     if (loc.marker) { state.map.removeLayer(loc.marker); state.map.removeLayer(loc.circle); }
     loc.marker = loc.circle = null;
+    loc.latlng = null;
+    updateWhere();
     document.querySelector(".locate-btn")?.classList.remove("active");
+  }
+
+  /** « Dans quel secteur suis-je ? » : encart mis à jour à chaque position GPS. */
+  function updateWhere() {
+    const box = state.whereControl && state.whereControl.getContainer();
+    if (!box) return;
+    const pos = state.locate.latlng;
+    if (!pos) { box.hidden = true; return; }
+    const { lat, lng } = pos;
+    const here = allSectors().find(({ sector }) => pointInPolys(lat, lng, toPolys(sector.polygon)));
+    const tag = (s) => `<b class="sector-code" style="background:${s.couleur}">${escapeHtml(s.code)}</b> ${escapeHtml(s.nom)}`;
+    let html;
+    if (state.current) {
+      const mine = state.current.sector;
+      const polys = toPolys(mine.polygon);
+      const dist = formatDistance(distanceToEdge(lat, lng, polys));
+      if (pointInPolys(lat, lng, polys)) {
+        html = `<span class="where-ok">✅ Vous êtes dans ce secteur</span><br>limite la plus proche à ${dist}`;
+      } else {
+        html = `<span class="where-out">⚠️ Vous êtes hors de ce secteur</span><br>sa limite est à ${dist}${here ? `<br>vous êtes dans ${tag(here.sector)}` : ""}`;
+      }
+    } else if (here) {
+      const dist = formatDistance(distanceToEdge(lat, lng, toPolys(here.sector.polygon)));
+      html = `📍 Vous êtes dans ${tag(here.sector)}<br><span class="hint">limite à ${dist}</span>
+        <button type="button" class="btn small where-open">Ouvrir ce secteur</button>`;
+    } else {
+      html = `📍 Vous n'êtes dans aucun secteur`;
+    }
+    box.innerHTML = html;
+    box.hidden = false;
+    box.querySelector(".where-open")?.addEventListener("click", () => openSector(here.slug, here.sector.id));
   }
 
   function sectorLabel(sector, small) {
@@ -149,7 +211,7 @@
       keyboard: false,
       icon: L.divIcon({
         className: `sector-label-icon${small ? " small" : ""}`,
-        html: `<span style="border-color:${sector.couleur}">${escapeHtml(sector.nom)}</span>`,
+        html: labelHtml(sector, sector.code),
         iconSize: null,
       }),
     });
@@ -211,6 +273,7 @@
     refreshMapSize(() => {
       if (bounds.isValid()) state.map.fitBounds(bounds, { padding: [16, 16] });
     });
+    updateWhere();
   }
 
   function sectorButton(slug, s) {
@@ -230,14 +293,16 @@
       if (preview) meta += ` · ${escapeHtml(preview)}`;
     }
     btn.innerHTML = `
-      <span class="sector-button-name"><span class="color-dot" style="background:${s.couleur}"></span>${escapeHtml(s.nom)}</span>
+      <span class="sector-button-name"><b class="sector-code" style="background:${s.couleur}">${escapeHtml(s.code)}</b>${escapeHtml(s.nom)}</span>
       <span class="sector-button-meta">${meta}</span>${progress}`;
     btn.addEventListener("click", () => openSector(slug, s.id));
     return btn;
   }
 
   function openSector(slug, id) {
-    location.hash = `#/${encodeURIComponent(slug)}/${id}`;
+    const hash = `#/${encodeURIComponent(slug)}/${id}`;
+    if (location.hash === hash) route().catch(onError); // même secteur : pas d'événement hashchange
+    else location.hash = hash;
   }
 
   // ---- Vue d'un secteur --------------------------------------------------------------
@@ -280,7 +345,8 @@
       state.markers.set(a.id, m);
     }
 
-    els.dot.style.background = sector.couleur;
+    els.code.textContent = sector.code;
+    els.code.style.background = sector.couleur;
     els.name.textContent = sector.nom;
     const communeNom = state.all[slug].commune.nom;
     els.summary.textContent = `${communeNom} · ${sector.addresses.length} adresses${polys.length > 1 ? ` · ${polys.length} morceaux` : ""}`;
@@ -294,7 +360,27 @@
     }
     window.scrollTo({ top: 0 });
 
-    refreshMapSize(() => state.map.fitBounds(outline.getBounds(), { padding: [20, 20] }));
+    refreshMapSize(() => {
+      state.map.fitBounds(outline.getBounds(), { padding: [20, 20] });
+      focusPending();
+    });
+    updateWhere();
+  }
+
+  function focusPending() {
+    const f = state.pendingFocus;
+    state.pendingFocus = null;
+    if (!f) return;
+    if (f.points.length === 1) {
+      const [lat, lon] = f.points[0];
+      state.map.setView([lat, lon], 18);
+      const m = f.id && state.markers.get(f.id);
+      if (m) m.openPopup();
+      else L.popup().setLatLng([lat, lon]).setContent(escapeHtml(f.label)).openOn(state.map);
+    } else {
+      state.map.fitBounds(f.points, { padding: [40, 40], maxZoom: 17 });
+      L.popup().setLatLng(f.points[0]).setContent(`<strong>${escapeHtml(f.label)}</strong>`).openOn(state.map);
+    }
   }
 
   // ne pas écraser className : Leaflet y a mis ses propres classes (leaflet-container…)
@@ -443,7 +529,73 @@
     if (!loaded && !Object.keys(state.all).length) throw new Error("données indisponibles");
     const any = Object.values(state.all)[0];
     state.suivi = Boolean(any && any.suivi);
+    for (const c of state.communes) {
+      const d = state.all[c.slug];
+      if (d) d.sectors.forEach((s, i) => { s.code = sectorCode(d.commune.nom, i); });
+    }
+    buildSearchIndex();
   }
+
+  // ---- Recherche d'adresse / rue / hameau -------------------------------------------
+
+  function buildSearchIndex() {
+    const index = [];
+    for (const { slug, sector } of allSectors()) {
+      const commune = state.all[slug].commune.nom;
+      const where = `${commune} · ${sector.code} ${sector.nom}`;
+      const groups = new Map();
+      const voies = new Map();
+      for (const a of sector.addresses) {
+        index.push({ kind: "adresse", label: a.label, where, slug, sector, id: a.id, points: [[a.lat, a.lon]], norm: normalizeText(`${a.label} ${a.groupe} ${commune}`) });
+        if (!groups.has(a.groupe)) groups.set(a.groupe, []);
+        groups.get(a.groupe).push([a.lat, a.lon]);
+        if (a.nom_voie) {
+          if (!voies.has(a.nom_voie)) voies.set(a.nom_voie, []);
+          voies.get(a.nom_voie).push([a.lat, a.lon]);
+        }
+      }
+      groups.forEach((points, name) => index.push({ kind: "hameau", label: name, where, slug, sector, points, norm: normalizeText(`${name} ${commune}`) }));
+      voies.forEach((points, name) => index.push({ kind: "rue", label: name, where, slug, sector, points, norm: normalizeText(`${name} ${commune}`) }));
+    }
+    state.searchIndex = index;
+  }
+
+  const KIND_ORDER = { hameau: 0, rue: 1, adresse: 2 };
+  const KIND_LABEL = { hameau: "Hameau", rue: "Rue", adresse: "Adresse" };
+
+  function runSearch() {
+    const tokens = normalizeText(els.search.value).split(" ").filter(Boolean);
+    if (!tokens.length) { els.searchResults.hidden = true; return; }
+    const results = state.searchIndex
+      .filter((e) => tokens.every((t) => e.norm.includes(t)))
+      .sort((x, y) => KIND_ORDER[x.kind] - KIND_ORDER[y.kind] || x.label.localeCompare(y.label, "fr", { numeric: true }))
+      .slice(0, 8);
+    els.searchResults.innerHTML = "";
+    if (!results.length) {
+      els.searchResults.innerHTML = `<p class="hint search-empty">Aucun résultat dans les secteurs.</p>`;
+    }
+    for (const r of results) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "search-result";
+      b.innerHTML = `<span class="search-kind">${KIND_LABEL[r.kind]}</span> <strong>${escapeHtml(r.label)}</strong>
+        <span class="search-where"><b class="sector-code" style="background:${r.sector.couleur}">${escapeHtml(r.sector.code)}</b> ${escapeHtml(r.where)}</span>`;
+      b.addEventListener("click", () => {
+        state.pendingFocus = { id: r.id, label: r.label, points: r.points };
+        els.search.value = "";
+        els.searchResults.hidden = true;
+        openSector(r.slug, r.sector.id);
+      });
+      els.searchResults.appendChild(b);
+    }
+    els.searchResults.hidden = false;
+  }
+
+  els.search.addEventListener("input", runSearch);
+  els.search.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") els.searchResults.querySelector(".search-result")?.click();
+    if (e.key === "Escape") { els.search.value = ""; els.searchResults.hidden = true; }
+  });
 
   async function route() {
     const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
@@ -474,6 +626,10 @@
     }
     await route();
     flushQueue();
+  }
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
   }
 
   init().catch(onError);

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
 import time
 from contextlib import asynccontextmanager
@@ -17,6 +18,8 @@ from .models import ExclusionIn, LoginIn, SectorsIn, SettingsIn, StatusUpdate
 from .resume import build_resume, commune_voie_counts
 
 DATA_DIR = Path(os.environ.get("SECTORS_DATA_DIR") or (Path(__file__).resolve().parent / "data"))
+
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 
 def _resolve_frontend_dir() -> Path:

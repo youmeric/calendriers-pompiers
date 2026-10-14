@@ -1,8 +1,8 @@
 (() => {
   "use strict";
   const {
-    PALETTE, escapeHtml, fetchJSON, showToast, osmLayer, labelPoint, formatDistance, formatDuration,
-    toPolys, pointInPolys, OFF_ROAD,
+    PALETTE, escapeHtml, fetchJSON, showToast, labelPoint, formatDistance, formatDuration,
+    toPolys, pointInPolys, OFF_ROAD, addBaseLayers, sectorCode, labelHtml,
   } = window.Common;
   const Geometry = window.Geometry;
 
@@ -23,6 +23,8 @@
     logout: $("btn-logout"),
     draw: $("btn-draw"),
     newHamlets: $("btn-new-hamlets"),
+    roadSnap: $("btn-road-snap"),
+    neighbours: $("neighbours-toggle"),
     undo: $("btn-undo"),
     redo: $("btn-redo"),
     save: $("btn-save"),
@@ -65,6 +67,9 @@
     selected: null,
     hamletTarget: null, // secteur en cours de construction par hameaux
     hamletNew: false, // le prochain clic crée un nouveau secteur
+    cutTarget: null, // secteur à couper par une ligne
+    mergeSource: null, // secteur auquel on réunit le prochain secteur cliqué
+    neighboursLayer: null, // secteurs des autres communes (repère, aimantables)
     history: [],
     future: [],
     savedSnapshot: "[]",
@@ -130,7 +135,7 @@
   function initMap() {
     // une vue initiale est indispensable avant d'ajouter des calques (rendu canvas)
     state.map = L.map("admin-map", { zoomControl: true }).setView([45.742, 4.57], 13);
-    osmLayer().addTo(state.map);
+    addBaseLayers(state.map);
     state.canvas = L.canvas({ padding: 0.5, tolerance: 6 });
     state.map.pm.setLang("fr");
     state.map.pm.setGlobalOptions({ snappable: true, snapDistance: SNAP_DISTANCE, allowSelfIntersection: false });
@@ -140,6 +145,11 @@
     state.map.on("pm:drawstart", () => { els.draw.textContent = "✖ Annuler le dessin"; els.draw.classList.add("active"); });
     state.map.on("pm:drawend", () => { els.draw.textContent = "✏️ Dessiner un secteur"; els.draw.classList.remove("active"); });
     state.map.on("pm:create", (e) => {
+      if (e.shape === "Line") {
+        state.map.removeLayer(e.layer);
+        finishCut(e.layer.getLatLngs().map((p) => [p.lat, p.lng]));
+        return;
+      }
       const polys = polysOf(e.layer);
       state.map.removeLayer(e.layer);
       const sector = addSector({ id: null, nom: `Secteur ${state.sectors.length + 1}`, couleur: nextColor(), polygon: polys });
@@ -164,7 +174,7 @@
 
   function clearCommuneLayers() {
     state.map.pm.disableDraw();
-    stopHamletMode();
+    stopAllModes();
     clearSectorLayers();
     for (const layer of [state.roadsLayer, state.buildingsLayer, state.contourLayer]) {
       if (layer) state.map.removeLayer(layer);
@@ -237,7 +247,7 @@
   }
 
   function onMapClick(e) {
-    if (state.map.pm.globalDrawModeEnabled() || state.editing) return;
+    if (state.map.pm.globalDrawModeEnabled() || state.editing || state.mergeSource) return;
     const idx = nearestAddress(e.latlng);
     if (idx === null) return;
     const a = state.data.addresses[idx];
@@ -286,12 +296,13 @@
     return { color: sector.couleur, fillColor: sector.couleur, weight: selected ? 4 : 2, fillOpacity: selected ? 0.25 : 0.15 };
   }
 
+  function codeOf(sector) {
+    const i = state.sectors.indexOf(sector);
+    return sectorCode(state.data && state.data.commune.nom, i < 0 ? state.sectors.length : i);
+  }
+
   function labelIcon(sector) {
-    return L.divIcon({
-      className: "sector-label-icon",
-      html: `<span style="border-color:${sector.couleur}">${escapeHtml(sector.nom)}</span>`,
-      iconSize: null,
-    });
+    return L.divIcon({ className: "sector-label-icon", html: labelHtml(sector, codeOf(sector)), iconSize: null });
   }
 
   function addSector({ id, nom, couleur, polygon }) {
@@ -303,6 +314,7 @@
       icon: labelIcon(sector), interactive: false, keyboard: false, pmIgnore: true, snapIgnore: true,
     }).addTo(state.map);
     sector.layer.on("click", () => {
+      if (state.mergeSource) { finishMerge(sector); return; }
       if (state.map.pm.globalDrawModeEnabled() || state.hamletTarget || state.hamletNew) return;
       selectSector(sector, true);
     });
@@ -367,10 +379,14 @@
   }
 
   function updateBanner() {
-    const active = state.hamletTarget || state.hamletNew;
+    const active = state.hamletTarget || state.hamletNew || state.cutTarget || state.mergeSource;
     els.banner.hidden = !active;
-    state.map.getContainer().classList.toggle("hamlet-mode", Boolean(active));
-    if (state.hamletNew) {
+    state.map.getContainer().classList.toggle("hamlet-mode", Boolean(state.hamletTarget || state.hamletNew));
+    if (state.cutTarget) {
+      els.bannerText.textContent = `Couper « ${state.cutTarget.nom} » : tracez une ligne qui le traverse de part en part, puis recliquez le dernier point.`;
+    } else if (state.mergeSource) {
+      els.bannerText.textContent = `Cliquez le secteur à réunir avec « ${state.mergeSource.nom} ».`;
+    } else if (state.hamletNew) {
       els.bannerText.textContent = "Nouveau secteur : cliquez une maison pour y mettre tout son hameau.";
     } else if (state.hamletTarget) {
       els.bannerText.textContent = `« ${state.hamletTarget.nom} » : cliquez une maison pour ajouter son hameau (recliquez pour le retirer).`;
@@ -454,7 +470,100 @@
   els.newHamlets.addEventListener("click", () => {
     if (state.hamletNew) stopHamletMode(); else startHamletMode(null);
   });
-  els.bannerDone.addEventListener("click", stopHamletMode);
+  els.bannerDone.addEventListener("click", stopAllModes);
+
+  function stopAllModes() {
+    stopHamletMode();
+    if (state.cutTarget) { state.cutTarget = null; state.map.pm.disableDraw(); }
+    state.mergeSource = null;
+    updateBanner();
+  }
+
+  // ---- Couper / fusionner ------------------------------------------------------------
+
+  function startCut(sector) {
+    stopAllModes();
+    stopEditing();
+    state.cutTarget = sector;
+    selectSector(sector, false);
+    updateBanner();
+    state.map.pm.enableDraw("Line", {
+      snappable: els.snap.checked, snapDistance: SNAP_DISTANCE,
+      templineStyle: { color: "#d00", weight: 3 }, hintlineStyle: { color: "#d00", dashArray: [5, 5] },
+    });
+  }
+
+  function finishCut(line) {
+    const target = state.cutTarget;
+    state.cutTarget = null;
+    updateBanner();
+    if (!target || line.length < 2) return;
+    let halves = null;
+    try { halves = Geometry.splitByLine(polysOf(target.layer), line); } catch (err) { console.error(err); }
+    if (!halves) {
+      showToast("La ligne doit traverser complètement le secteur (d'un bord à l'autre).", true);
+      return;
+    }
+    setSectorPolys(target, halves[0]);
+    const other = addSector({ id: null, nom: `${target.nom} (2)`, couleur: nextColor(), polygon: halves[1] });
+    changed();
+    renderList();
+    selectSector(other, true);
+    focusName(other);
+    showToast("Secteur coupé en deux : renommez la nouvelle partie.");
+  }
+
+  function startMerge(sector) {
+    stopAllModes();
+    stopEditing();
+    state.mergeSource = sector;
+    selectSector(sector, false);
+    updateBanner();
+  }
+
+  function finishMerge(other) {
+    const target = state.mergeSource;
+    state.mergeSource = null;
+    updateBanner();
+    if (!target || other === target) return;
+    const a = polysOf(target.layer);
+    const b = polysOf(other.layer);
+    let merged;
+    try { merged = Geometry.unionPolys(a, b); } catch { merged = null; }
+    if (!merged || !merged.length) merged = [...a, ...b]; // repli exact : les deux contours côte à côte
+    setSectorPolys(target, merged);
+    removeSector(other);
+    changed();
+    renderList();
+    showToast(`« ${other.nom} » réuni à « ${target.nom} ».`);
+  }
+
+  // ---- Recalage sur les routes -------------------------------------------------------
+
+  els.roadSnap.addEventListener("click", () => {
+    if (!state.sectors.length) { showToast("Créez d'abord des secteurs.", true); return; }
+    if (!confirm("Redessiner toutes les limites pour qu'elles passent par les routes ?\n\n"
+      + "Aucune maison ne change de secteur. Les zones sans maison et les maisons hors secteur "
+      + "sont rattachées au secteur le plus proche : toute la commune sera couverte.\n\n(↶ pour annuler ensuite)")) return;
+    stopAllModes();
+    stopEditing();
+    showToast("Calcul en cours…");
+    setTimeout(() => {
+      try {
+        const addresses = state.data.addresses.map((a, idx) => ({ lat: a.lat, lon: a.lon, sector: state.owners[idx] }));
+        const result = Geometry.roadPartition({
+          roads: state.data.roads, contour: state.data.commune.contour, addresses, nSectors: state.sectors.length,
+        });
+        result.forEach((polys, i) => { if (polys) setSectorPolys(state.sectors[i], polys); });
+        changed();
+        renderList();
+        showToast("Limites recalées sur les routes ✓ (↶ pour revenir en arrière)");
+      } catch (err) {
+        console.error(err);
+        showToast(`Recalage impossible : ${err.message}`, true);
+      }
+    }, 50);
+  });
 
   // ---- Adresses exclues ------------------------------------------------------------
 
@@ -582,7 +691,7 @@
   els.redo.addEventListener("click", redo);
   document.addEventListener("keydown", (e) => {
     if (els.editorView.hidden) return;
-    if (e.key === "Escape") { stopHamletMode(); return; }
+    if (e.key === "Escape") { stopAllModes(); return; }
     if (!(e.ctrlKey || e.metaKey)) return;
     if (["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) return; // annulation native du texte
     const key = e.key.toLowerCase();
@@ -757,6 +866,7 @@
   }
 
   function renderList() {
+    state.sectors.forEach((s) => s.label.setIcon(labelIcon(s)));
     els.list.innerHTML = "";
     state.sectors.forEach((sector, index) => {
       const card = document.createElement("div");
@@ -798,7 +908,11 @@
       name.addEventListener("change", changed);
       name.addEventListener("focus", () => selectSector(sector, false));
 
-      row.append(color, name);
+      const code = document.createElement("b");
+      code.className = "sector-code";
+      code.style.background = sector.couleur;
+      code.textContent = codeOf(sector);
+      row.append(code, color, name);
 
       const meta = document.createElement("div");
       meta.className = "sector-edit-meta";
@@ -822,6 +936,11 @@
         button("Centrer", "btn small", () => {
           selectSector(sector, false);
           state.map.fitBounds(sector.layer.getBounds(), { padding: [30, 30] });
+        }),
+        button("✂ Couper", "btn small", () => startCut(sector)),
+        button("Fusionner…", "btn small", () => {
+          if (state.sectors.length < 2) { showToast("Il faut au moins deux secteurs.", true); return; }
+          startMerge(sector);
         }),
         button("🖨 Plan", "btn small", () => {
           if (savedInfo(sector).status !== "saved" || isDirty()) {
@@ -969,10 +1088,42 @@
 
   // ---- Chargement ------------------------------------------------------------------
 
+  async function loadNeighbours(slug) {
+    if (state.neighboursLayer) { state.map.removeLayer(state.neighboursLayer); state.neighboursLayer = null; }
+    const { communes } = await fetchJSON("/api/communes");
+    const others = await Promise.all(communes.filter((c) => c.slug !== slug)
+      .map((c) => fetchJSON(`/api/communes/${encodeURIComponent(c.slug)}`).catch(() => null)));
+    const layers = [];
+    for (const d of others.filter(Boolean)) {
+      if (d.commune.contour) {
+        layers.push(L.geoJSON(d.commune.contour, {
+          style: { color: "#555", weight: 2, dashArray: "6 6", fill: false }, interactive: false, pmIgnore: true, snapIgnore: false,
+        }));
+      }
+      d.sectors.forEach((s, i) => {
+        layers.push(L.polygon(toPolys(s.polygon), {
+          color: s.couleur, weight: 2, dashArray: "5 5", fillOpacity: 0.06, interactive: false, pmIgnore: true, snapIgnore: false,
+        }));
+        layers.push(L.marker(labelPoint(s, s.addresses), {
+          icon: L.divIcon({ className: "sector-label-icon small", html: labelHtml(s, sectorCode(d.commune.nom, i)), iconSize: null }),
+          interactive: false, keyboard: false, pmIgnore: true, snapIgnore: true,
+        }));
+      });
+    }
+    state.neighboursLayer = L.layerGroup(layers);
+    if (els.neighbours.checked) state.neighboursLayer.addTo(state.map);
+  }
+
+  els.neighbours.addEventListener("change", () => {
+    if (!state.neighboursLayer) return;
+    if (els.neighbours.checked) state.neighboursLayer.addTo(state.map); else state.map.removeLayer(state.neighboursLayer);
+  });
+
   async function loadCommune(slug) {
     state.slug = slug;
     const data = await fetchJSON(`/api/admin/communes/${slug}`);
     clearCommuneLayers();
+    loadNeighbours(slug).catch((err) => console.error(err));
     state.data = data;
     state.excluded = new Set(data.excluded || []);
     buildBaseLayers(data);

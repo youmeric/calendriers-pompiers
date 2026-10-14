@@ -73,6 +73,78 @@ window.Common = (() => {
     });
   }
 
+  // Fonds IGN de la Géoplateforme : libres, sans clé d'accès.
+  function ignLayer(layer, format, maxNativeZoom) {
+    return L.tileLayer(
+      "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0"
+      + `&LAYER=${layer}&STYLE=normal&FORMAT=${format}&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`,
+      { maxZoom: 19, maxNativeZoom, attribution: '&copy; <a href="https://www.ign.fr/">IGN</a> – Géoplateforme' },
+    );
+  }
+
+  const BASE_KEY = "fond-de-carte";
+
+  /** Ajoute les fonds de carte (OSM, plan IGN, photo aérienne) et un sélecteur ; mémorise le choix. */
+  function addBaseLayers(map) {
+    const layers = {
+      "Plan OpenStreetMap": osmLayer(),
+      "Plan IGN": ignLayer("GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2", "image/png", 18),
+      "Photo aérienne (IGN)": ignLayer("ORTHOIMAGERY.ORTHOPHOTOS", "image/jpeg", 19),
+    };
+    let saved = null;
+    try { saved = localStorage.getItem(BASE_KEY); } catch { /* indisponible */ }
+    const current = layers[saved] || layers["Plan OpenStreetMap"];
+    current.addTo(map);
+    L.control.layers(layers, null, { position: "topright" }).addTo(map);
+    map.on("baselayerchange", (e) => { try { localStorage.setItem(BASE_KEY, e.name); } catch { /* indisponible */ } });
+    return current;
+  }
+
+  /** Code court d'un secteur pour les pastilles : initiale de la commune + rang (C1, B2…). */
+  function sectorCode(communeNom, index) {
+    return `${(communeNom || "?").trim().charAt(0).toUpperCase()}${index + 1}`;
+  }
+
+  /** Étiquette de secteur : pastille avec le code, puis le nom (masqué quand on est loin). */
+  function labelHtml(sector, code) {
+    return `<span class="sector-tag" style="border-color:${sector.couleur}">`
+      + `<b class="sector-code" style="background:${sector.couleur}">${escapeHtml(code)}</b>`
+      + `<span class="sector-name">${escapeHtml(sector.nom)}</span></span>`;
+  }
+
+  /** En dessous de ce zoom, seules les pastilles sont affichées (évite les noms qui se chevauchent). */
+  function compactLabelsBelow(map, zoom) {
+    const update = () => map.getContainer().classList.toggle("labels-compact", map.getZoom() < zoom);
+    map.on("zoomend", update);
+    update();
+  }
+
+  /** Distance (m) d'un point au bord le plus proche d'un secteur (contours et enclaves). */
+  function distanceToEdge(lat, lon, polys) {
+    const kx = 111320 * Math.cos((lat * Math.PI) / 180);
+    const ky = 110540;
+    let best = Infinity;
+    for (const poly of polys) {
+      for (const ring of poly) {
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+          const ax = (ring[j][1] - lon) * kx, ay = (ring[j][0] - lat) * ky;
+          const bx = (ring[i][1] - lon) * kx, by = (ring[i][0] - lat) * ky;
+          const dx = bx - ax, dy = by - ay;
+          const l2 = dx * dx + dy * dy;
+          const t = l2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l2)) : 0;
+          best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
+        }
+      }
+    }
+    return best;
+  }
+
+  /** Texte comparable pour la recherche : minuscules, sans accents ni ponctuation. */
+  function normalizeText(s) {
+    return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ").trim();
+  }
+
   function labelPoint(sector, addresses) {
     const polys = toPolys(sector.polygon);
     if (addresses && addresses.length) {
@@ -172,5 +244,6 @@ window.Common = (() => {
     PALETTE, escapeHtml, fetchJSON, showToast, pointInPolygon, osmLayer, labelPoint,
     formatDistance, formatDuration, renderLimite, renderResume, hameauxPreview,
     toPolys, pointInPolys, outerRings, holeRings, OFF_ROAD,
+    addBaseLayers, sectorCode, labelHtml, compactLabelsBelow, distanceToEdge, normalizeText,
   };
 })();

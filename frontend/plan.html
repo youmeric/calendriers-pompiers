@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Plan de secteur — Calendriers des pompiers</title>
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
+<link rel="icon" type="image/png" href="icons/favicon-64.png" />
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body class="plan">
@@ -20,7 +21,10 @@
         <h1 id="plan-title"></h1>
         <p id="plan-subtitle" class="sheet-subtitle"></p>
       </div>
-      <span id="plan-dot" class="sheet-dot"></span>
+      <figure class="sheet-qr">
+        <div id="plan-qr"></div>
+        <figcaption>Scannez pour ouvrir sur le téléphone</figcaption>
+      </figure>
     </header>
 
     <div id="plan-map"></div>
@@ -46,6 +50,7 @@
   <div id="toast" class="toast" hidden></div>
 
   <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="vendor/qrcode/qrcode.js"></script>
   <script src="js/common.js"></script>
   <script src="js/plan.js"></script>
 </body>
