@@ -35,6 +35,8 @@
     <aside id="admin-panel">
       <div class="admin-toolbar">
         <button id="btn-draw" class="btn" type="button">✏️ Dessiner un secteur</button>
+        <button id="btn-undo" class="btn icon" type="button" title="Annuler (Ctrl+Z)" aria-label="Annuler" disabled>↶</button>
+        <button id="btn-redo" class="btn icon" type="button" title="Rétablir (Ctrl+Y)" aria-label="Rétablir" disabled>↷</button>
         <button id="btn-save" class="btn primary" type="button" disabled>Enregistrer</button>
       </div>
       <p id="dirty-hint" class="hint dirty" hidden>Modifications non enregistrées</p>
@@ -46,6 +48,7 @@
           <li>Les points <b>s'aimantent aux routes</b> et aux bords des autres secteurs : collez deux secteurs voisins en suivant la même route pour qu'il n'y ait ni trou ni chevauchement.</li>
           <li><b>Modifier un tracé</b> : bouton « Modifier » sur la fiche du secteur, puis déplacez les points (glisser) ; cliquez un point pour le supprimer, ou le petit point au milieu d'un côté pour en ajouter un. Re-cliquez « Terminer ».</li>
           <li>Les petits points sur la carte sont les adresses : de la couleur du secteur qui les contient, <b>noirs</b> s'ils ne sont dans aucun secteur.</li>
+          <li>Une erreur ? <b>↶</b> annule la dernière action (Ctrl+Z), <b>↷</b> la rétablit.</li>
           <li>Rien n'est publié tant que vous n'avez pas cliqué <b>Enregistrer</b>.</li>
         </ul>
       </details>
@@ -58,15 +61,42 @@
 
       <div id="warnings" class="warnings" aria-live="polite"></div>
 
+      <section class="balance" aria-labelledby="balance-title">
+        <div class="balance-head">
+          <h2 id="balance-title" class="panel-title">Équilibre des secteurs</h2>
+          <label class="balance-param">
+            <input type="number" id="min-per-address" min="0.5" max="15" step="0.5" value="2" />
+            min / porte
+          </label>
+        </div>
+        <div id="balance-rows"></div>
+        <p class="hint">Estimation grossière : minutes par porte × nombre d'adresses + 2 min par km de route dans le secteur.</p>
+      </section>
+
       <h2 class="panel-title">Secteurs</h2>
       <div id="sector-editor-list"></div>
 
+      <section class="settings-card">
+        <h2 class="panel-title">Page publique</h2>
+        <label class="setting-row">
+          <input type="checkbox" id="suivi-toggle" />
+          <span>Afficher le suivi des adresses (boutons fait / absent / refus et compteurs)</span>
+        </label>
+        <p class="hint">Désactivé : la page publique sert uniquement de plan des secteurs.</p>
+      </section>
+
       <details class="tools">
         <summary>Autres outils</summary>
+        <button id="btn-versions" class="btn" type="button">Versions enregistrées…</button>
+        <div id="versions-list" class="versions-list"></div>
+        <p class="hint">Chaque enregistrement garde une copie (30 dernières). Charger une version la remet dans l'éditeur : il faut ensuite cliquer Enregistrer pour la republier.</p>
         <button id="btn-import-auto" class="btn" type="button">Importer la proposition automatique</button>
         <p class="hint">Remplace les secteurs affichés par le découpage calculé automatiquement (4 secteurs équilibrés, bourg à pied). Vous pourrez ensuite les retoucher avant d'enregistrer.</p>
-        <button id="btn-reset-status" class="btn danger" type="button">Remettre à zéro les statuts (fait / absent / refus)</button>
-        <p class="hint">À faire au début d'une nouvelle tournée.</p>
+        <a id="btn-print-all" class="btn print-link" href="#" target="_blank" rel="noopener">🖨 Plan d'ensemble à imprimer</a>
+        <div id="reset-status-block">
+          <button id="btn-reset-status" class="btn danger" type="button">Remettre à zéro les statuts (fait / absent / refus)</button>
+          <p class="hint">À faire au début d'une nouvelle tournée.</p>
+        </div>
       </details>
     </aside>
   </main>

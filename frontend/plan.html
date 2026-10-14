@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Plan de secteur — Calendriers des pompiers</title>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="plan">
+  <div class="plan-toolbar no-print">
+    <button id="btn-print" class="btn primary" type="button" disabled>Chargement de la carte…</button>
+    <span class="hint">Dans la fenêtre d'impression, choisissez « Enregistrer au format PDF » pour obtenir un fichier. Vous pouvez déplacer/zoomer la carte avant d'imprimer.</span>
+  </div>
+
+  <article class="sheet">
+    <header class="sheet-header">
+      <div>
+        <p class="sheet-kicker">Calendriers des sapeurs-pompiers · <span id="plan-commune"></span></p>
+        <h1 id="plan-title"></h1>
+        <p id="plan-subtitle" class="sheet-subtitle"></p>
+      </div>
+      <span id="plan-dot" class="sheet-dot"></span>
+    </header>
+
+    <div id="plan-map"></div>
+
+    <section id="plan-legend" class="sheet-section" hidden>
+      <h2>Secteurs</h2>
+      <table class="legend-table"><tbody id="plan-legend-body"></tbody></table>
+    </section>
+
+    <section id="plan-limite-block" class="sheet-section" hidden>
+      <h2>Où s'arrête le secteur</h2>
+      <div id="plan-limite"></div>
+    </section>
+
+    <section id="plan-resume-block" class="sheet-section" hidden>
+      <h2>Ce que comprend le secteur</h2>
+      <div id="plan-resume" class="resume-columns"></div>
+    </section>
+
+    <p class="sheet-footer">Fond de carte © contributeurs OpenStreetMap · adresses : Base Adresse Nationale · <span id="plan-date"></span></p>
+  </article>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/plan.js"></script>
+</body>
+</html>

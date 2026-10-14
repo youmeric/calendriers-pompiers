@@ -12,7 +12,9 @@ from fastapi.staticfiles import StaticFiles
 
 from . import auth, db
 from .geo import point_in_polygon
-from .models import LoginIn, SectorsIn, StatusUpdate
+from .limits import RoadIndex, describe_limit
+from .models import LoginIn, SectorsIn, SettingsIn, StatusUpdate
+from .resume import build_resume, commune_voie_counts
 
 DATA_DIR = Path(os.environ.get("SECTORS_DATA_DIR") or (Path(__file__).resolve().parent / "data"))
 
@@ -40,22 +42,44 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="Calendriers Pompiers - Courzieu & Brussieu", lifespan=lifespan)
 
 # fichiers produits par le pipeline, rechargés s'ils sont régénérés
-_communes_cache: dict[str, tuple[float, dict]] = {}
+_communes_cache: dict[str, dict] = {}
 
 
 def _load_commune(slug: str) -> dict:
     path = DATA_DIR / f"{slug}.json"
     if not slug.replace("-", "").isalnum() or not path.exists():
         raise HTTPException(status_code=404, detail=f"Commune inconnue: {slug}")
-    mtime = path.stat().st_mtime
+    mtime = str(path.stat().st_mtime)
     cached = _communes_cache.get(slug)
-    if cached and cached[0] == mtime:
-        return cached[1]
+    if cached and cached["_mtime"] == mtime:
+        return cached
     with open(path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
+    data["_mtime"] = mtime
     data["_address_ids"] = {a["id"] for a in data["addresses"]}
-    _communes_cache[slug] = (mtime, data)
+    data["_voie_counts"] = commune_voie_counts(data["addresses"])
+    _communes_cache[slug] = data
     return data
+
+
+def _road_index(data: dict) -> RoadIndex:
+    if "_road_index" not in data:
+        mairie = data["commune"].get("mairie") or {"lat": data["addresses"][0]["lat"], "lon": data["addresses"][0]["lon"]}
+        data["_road_index"] = RoadIndex(data.get("roads", []), data["commune"].get("contour"),
+                                        mairie["lat"], mairie["lon"])
+    return data["_road_index"]
+
+
+def _sectors_with_limits(slug: str, data: dict) -> list[dict]:
+    """Secteurs enregistrés, avec la description de leur limite (recalculée si
+    le tracé ou les données de la commune ont changé)."""
+    sectors = db.list_sectors(slug)
+    for s in sectors:
+        if s["limite_src"] != data["_mtime"]:
+            s["limite"] = describe_limit(s["polygon"], _road_index(data))
+            db.set_sector_limite(s["id"], s["limite"], data["_mtime"])
+        s.pop("limite_src", None)
+    return sectors
 
 
 def _assign(addresses: list[dict], sectors: list[dict]) -> tuple[dict[int, list[dict]], list[dict]]:
@@ -72,6 +96,10 @@ def _assign(addresses: list[dict], sectors: list[dict]) -> tuple[dict[int, list[
     return by_sector, outside
 
 
+def _suivi_enabled() -> bool:
+    return db.get_setting("suivi_adresses", "0") == "1"
+
+
 # ---- API publique --------------------------------------------------------------
 
 @app.get("/api/communes")
@@ -86,24 +114,31 @@ def list_communes():
 @app.get("/api/communes/{slug}")
 def get_commune(slug: str):
     data = _load_commune(slug)
-    sectors = db.list_sectors(slug)
-    statuses = db.get_statuses(slug)
+    sectors = _sectors_with_limits(slug, data)
+    suivi = _suivi_enabled()
+    statuses = db.get_statuses(slug) if suivi else {}
     by_sector, outside = _assign(data["addresses"], sectors)
 
     out = []
     for s in sectors:
-        counts = {"fait": 0, "absent": 0, "refus": 0, "a_faire": 0}
+        mine = by_sector[s["id"]]
         addresses = []
-        for a in by_sector[s["id"]]:
-            status = statuses.get(a["id"], {}).get("status")
-            counts[status or "a_faire"] += 1
-            addresses.append({k: a[k] for k in ("id", "label", "groupe", "nom_voie", "numero", "lat", "lon")}
-                             | {"status": status})
-        out.append({**s, "addresses": addresses, "counts": counts})
+        counts = {"fait": 0, "absent": 0, "refus": 0, "a_faire": 0}
+        for a in mine:
+            item = {k: a.get(k, "") for k in ("id", "label", "groupe", "nom_voie", "numero", "lat", "lon")}
+            if suivi:
+                item["status"] = statuses.get(a["id"], {}).get("status")
+                counts[item["status"] or "a_faire"] += 1
+            addresses.append(item)
+        sector = {**s, "addresses": addresses, "resume": build_resume(mine, data["_voie_counts"])}
+        if suivi:
+            sector["counts"] = counts
+        out.append(sector)
 
     commune = data["commune"]
     return {
         "commune": {"slug": slug, "nom": commune["nom"], "mairie": commune.get("mairie")},
+        "suivi": suivi,
         "sectors": out,
         "hors_secteur": len(outside),
     }
@@ -111,6 +146,8 @@ def get_commune(slug: str):
 
 @app.post("/api/communes/{slug}/addresses/{address_id}/status")
 def update_status(slug: str, address_id: str, payload: StatusUpdate):
+    if not _suivi_enabled():
+        raise HTTPException(status_code=403, detail="Le suivi des adresses est désactivé")
     data = _load_commune(slug)
     if address_id not in data["_address_ids"]:
         raise HTTPException(status_code=404, detail="Adresse inconnue")
@@ -144,12 +181,23 @@ def me():
     return {"admin": True}
 
 
+@app.get("/api/admin/settings", dependencies=[Depends(auth.require_admin)])
+def admin_get_settings():
+    return {"suivi_adresses": _suivi_enabled()}
+
+
+@app.put("/api/admin/settings", dependencies=[Depends(auth.require_admin)])
+def admin_save_settings(payload: SettingsIn):
+    db.set_setting("suivi_adresses", "1" if payload.suivi_adresses else "0")
+    return {"suivi_adresses": payload.suivi_adresses}
+
+
 @app.get("/api/admin/communes/{slug}", dependencies=[Depends(auth.require_admin)])
 def admin_get_commune(slug: str):
     data = _load_commune(slug)
     return {
         "commune": data["commune"],
-        "sectors": db.list_sectors(slug),
+        "sectors": _sectors_with_limits(slug, data),
         "addresses": data["addresses"],
         "roads": data.get("roads", []),
         "buildings": data.get("buildings", []),
@@ -162,8 +210,23 @@ def admin_get_commune(slug: str):
 
 @app.put("/api/admin/communes/{slug}/sectors", dependencies=[Depends(auth.require_admin)])
 def admin_save_sectors(slug: str, payload: SectorsIn):
+    data = _load_commune(slug)
+    db.replace_sectors(slug, [s.model_dump() for s in payload.sectors])
+    return {"sectors": _sectors_with_limits(slug, data)}
+
+
+@app.get("/api/admin/communes/{slug}/versions", dependencies=[Depends(auth.require_admin)])
+def admin_list_versions(slug: str):
     _load_commune(slug)
-    sectors = db.replace_sectors(slug, [s.model_dump() for s in payload.sectors])
+    return {"versions": db.list_versions(slug)}
+
+
+@app.get("/api/admin/communes/{slug}/versions/{version_id}", dependencies=[Depends(auth.require_admin)])
+def admin_get_version(slug: str, version_id: int):
+    _load_commune(slug)
+    sectors = db.get_version(slug, version_id)
+    if sectors is None:
+        raise HTTPException(status_code=404, detail="Version inconnue")
     return {"sectors": sectors}
 
 

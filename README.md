@@ -10,14 +10,25 @@ sur Courzieu et Brussieu (69690).
   si des adresses ne sont dans aucun secteur, ou si deux secteurs se
   chevauchent. Une proposition automatique (4 secteurs équilibrés, bourg à
   pied depuis la mairie) peut servir de point de départ.
+  - **Équilibre** : pour chaque secteur, nombre d'adresses, km de routes,
+    temps estimé et écart à la moyenne (minutes par porte réglables).
+  - **↶ / ↷** (Ctrl+Z / Ctrl+Y) pour annuler ou rétablir, et **versions** :
+    chaque enregistrement garde une copie (30 dernières) qu'on peut recharger.
+  - **Option « suivi des adresses »** : désactivée par défaut, la page
+    publique sert uniquement de plan. Activée, elle ajoute les boutons
+    ✓ fait / ⏳ absent / ✕ refus par adresse.
 - **Page publique (`/`)**, pensée pour le téléphone : on voit la carte
   entière avec tous les secteurs, puis on touche **son** secteur. La carte
   zoome dessus et **assombrit tout ce qui est en dehors**, pour voir exactement
-  où il se termine. On y trouve aussi un bouton 📍 pour se localiser, la
-  liste des adresses du secteur, et des boutons ✓ fait / ⏳ absent / ✕ refus
-  pour chaque adresse (avec mise en attente si le réseau ne passe pas). Chaque
-  secteur a son propre lien (bouton **Partager**), qu'on peut envoyer à chaque
-  équipe.
+  où il se termine. On y trouve :
+  - **où s'arrête le secteur**, en mots : les routes suivies par la limite
+    (dans le sens des aiguilles d'une montre depuis le nord), avec les routes
+    qu'elle croise comme repères ;
+  - **ce que comprend le secteur** : hameaux, rues, numéros (« Rue X, n° 2 à
+    14, côté pair », « en partie » si le reste de la rue est ailleurs) ;
+  - un bouton 📍 pour se localiser, un lien **Partager** propre au secteur, et
+    un bouton **🖨 Plan** (plan A4 du secteur, à imprimer ou enregistrer en
+    PDF). Un plan d'ensemble de la commune est aussi disponible.
 
 ## Sources de données
 
@@ -91,8 +102,12 @@ tunnel SSH), jamais directement sur Internet.
 4. Envoyez à chaque équipe le lien de son secteur (page publique → secteur →
    **Partager**).
 
-Au début d'une nouvelle tournée : « Autres outils » → *Remettre à zéro les
-statuts*.
+Si vous activez le suivi des adresses, pensez au début de chaque nouvelle
+tournée : « Autres outils » → *Remettre à zéro les statuts*.
+
+La description des limites suit les routes **réellement** collées par le
+tracé : dessinez avec l'aimantation activée pour obtenir « suit la D50 sur
+1,2 km » plutôt que « à travers champs ».
 
 ## Mises à jour
 

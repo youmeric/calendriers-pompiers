@@ -49,8 +49,20 @@ def init_db() -> None:
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS sector_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                commune_slug TEXT NOT NULL,
+                saved_at TEXT NOT NULL,
+                data TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS versions_commune ON sector_versions (commune_slug, id);
             """
         )
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(sectors)")}
+        if "limite" not in columns:
+            conn.execute("ALTER TABLE sectors ADD COLUMN limite TEXT")
+        if "limite_src" not in columns:
+            conn.execute("ALTER TABLE sectors ADD COLUMN limite_src TEXT")
         conn.commit()
 
 
@@ -71,15 +83,45 @@ def get_or_create_secret() -> str:
         return conn.execute("SELECT value FROM settings WHERE key = 'session_secret'").fetchone()[0]
 
 
+def get_setting(key: str, default: str | None = None) -> str | None:
+    with get_conn() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row[0] if row else default
+
+
+def set_setting(key: str, value: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+        conn.commit()
+
+
 # ---- Secteurs ----------------------------------------------------------------
+
+MAX_VERSIONS = 30
+
 
 def list_sectors(commune_slug: str) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT id, nom, couleur, polygon FROM sectors WHERE commune_slug = ? ORDER BY position, id",
+            "SELECT id, nom, couleur, polygon, limite, limite_src FROM sectors "
+            "WHERE commune_slug = ? ORDER BY position, id",
             (commune_slug,),
         ).fetchall()
-    return [{"id": r[0], "nom": r[1], "couleur": r[2], "polygon": json.loads(r[3])} for r in rows]
+    return [
+        {"id": r[0], "nom": r[1], "couleur": r[2], "polygon": json.loads(r[3]),
+         "limite": json.loads(r[4]) if r[4] else None, "limite_src": r[5]}
+        for r in rows
+    ]
+
+
+def set_sector_limite(sector_id: int, limite: list[dict], src: str) -> None:
+    with get_conn() as conn:
+        conn.execute("UPDATE sectors SET limite = ?, limite_src = ? WHERE id = ?",
+                     (json.dumps(limite, ensure_ascii=False), src, sector_id))
+        conn.commit()
 
 
 def replace_sectors(commune_slug: str, sectors: list[dict]) -> list[dict]:
@@ -93,8 +135,10 @@ def replace_sectors(commune_slug: str, sectors: list[dict]) -> list[dict]:
         for position, s in enumerate(sectors):
             polygon = json.dumps(s["polygon"])
             if s.get("id") in existing:
+                # limite_src remis à zéro : la description sera recalculée
                 conn.execute(
-                    "UPDATE sectors SET position = ?, nom = ?, couleur = ?, polygon = ?, updated_at = ? WHERE id = ?",
+                    "UPDATE sectors SET position = ?, nom = ?, couleur = ?, polygon = ?, updated_at = ?, "
+                    "limite_src = NULL WHERE id = ?",
                     (position, s["nom"], s["couleur"], polygon, now, s["id"]),
                 )
                 kept.add(s["id"])
@@ -107,7 +151,42 @@ def replace_sectors(commune_slug: str, sectors: list[dict]) -> list[dict]:
         for sector_id in existing - kept:
             conn.execute("DELETE FROM sectors WHERE id = ?", (sector_id,))
         conn.commit()
-    return list_sectors(commune_slug)
+    saved = list_sectors(commune_slug)
+    _add_version(commune_slug, saved, now)
+    return saved
+
+
+def _add_version(commune_slug: str, sectors: list[dict], now: str) -> None:
+    snapshot = [{k: s[k] for k in ("id", "nom", "couleur", "polygon")} for s in sectors]
+    with get_conn() as conn:
+        conn.execute("INSERT INTO sector_versions (commune_slug, saved_at, data) VALUES (?, ?, ?)",
+                     (commune_slug, now, json.dumps(snapshot, ensure_ascii=False)))
+        conn.execute(
+            "DELETE FROM sector_versions WHERE commune_slug = ? AND id NOT IN "
+            "(SELECT id FROM sector_versions WHERE commune_slug = ? ORDER BY id DESC LIMIT ?)",
+            (commune_slug, commune_slug, MAX_VERSIONS),
+        )
+        conn.commit()
+
+
+def list_versions(commune_slug: str) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, saved_at, data FROM sector_versions WHERE commune_slug = ? ORDER BY id DESC",
+            (commune_slug,),
+        ).fetchall()
+    out = []
+    for vid, saved_at, data in rows:
+        sectors = json.loads(data)
+        out.append({"id": vid, "saved_at": saved_at, "nb": len(sectors), "noms": [s["nom"] for s in sectors]})
+    return out
+
+
+def get_version(commune_slug: str, version_id: int) -> list[dict] | None:
+    with get_conn() as conn:
+        row = conn.execute("SELECT data FROM sector_versions WHERE commune_slug = ? AND id = ?",
+                           (commune_slug, version_id)).fetchone()
+    return json.loads(row[0]) if row else None
 
 
 # ---- Statuts des adresses -----------------------------------------------------

@@ -37,5 +37,9 @@ class SectorIn(BaseModel):
         return v
 
 
+class SettingsIn(BaseModel):
+    suivi_adresses: bool
+
+
 class SectorsIn(BaseModel):
     sectors: list[SectorIn] = Field(max_length=50)

@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const { escapeHtml, fetchJSON, showToast, osmLayer, labelPoint } = window.Common;
+  const { escapeHtml, fetchJSON, showToast, osmLayer, labelPoint, renderLimite, renderResume, hameauxPreview } = window.Common;
 
   const STATUS = {
     fait: { label: "Fait", icon: "✓", color: "#2e9e5b" },
@@ -27,6 +27,12 @@
     stats: document.getElementById("sector-stats"),
     hideDone: document.getElementById("hide-done"),
     list: document.getElementById("address-list"),
+    printAll: document.getElementById("btn-print-all"),
+    print: document.getElementById("btn-print"),
+    summary: document.getElementById("sector-summary"),
+    limite: document.getElementById("sector-limite"),
+    resume: document.getElementById("sector-resume"),
+    suiviBlock: document.getElementById("suivi-block"),
   };
 
   const state = {
@@ -63,7 +69,12 @@
     if (!q.length) return;
     const remaining = [];
     for (const item of q) {
-      try { await sendStatus(item.slug, item.addressId, item.status); } catch (err) { if (err.status !== 404) remaining.push(item); }
+      try {
+        await sendStatus(item.slug, item.addressId, item.status);
+      } catch (err) {
+        // 403 : suivi désactivé par l'admin, 404 : adresse disparue -> on abandonne
+        if (err.status !== 403 && err.status !== 404) remaining.push(item);
+      }
     }
     writeQueue(remaining);
     if (!remaining.length) showToast("Modifications hors-ligne synchronisées ✓");
@@ -73,7 +84,7 @@
   // ---- Carte -----------------------------------------------------------------------
 
   function initMap() {
-    state.map = L.map("map", { zoomControl: true }).setView([45.742, 4.57], 13);
+    state.map = L.map("map", { zoomControl: true, zoomSnap: 0.5 }).setView([45.742, 4.57], 13);
     osmLayer().addTo(state.map);
     state.layer = L.layerGroup().addTo(state.map);
     addLocateControl();
@@ -167,19 +178,30 @@
       sectorLabel(s, false).addTo(state.layer);
       bounds.extend(poly.getBounds());
 
-      const total = s.addresses.length || 1;
-      const done = s.counts.fait + s.counts.absent + s.counts.refus;
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "sector-button";
       btn.style.borderLeftColor = s.couleur;
+      let meta = `${s.addresses.length} adresses`;
+      let progress = "";
+      if (state.data.suivi) {
+        const total = s.addresses.length || 1;
+        const done = s.counts.fait + s.counts.absent + s.counts.refus;
+        meta += ` · ${Math.round((done / total) * 100)} % traité`;
+        progress = `<span class="mini-progress"><span style="width:${(done / total) * 100}%;background:${s.couleur}"></span></span>`;
+      } else {
+        const preview = hameauxPreview(s.resume);
+        if (preview) meta += ` · ${escapeHtml(preview)}`;
+      }
       btn.innerHTML = `
         <span class="sector-button-name"><span class="color-dot" style="background:${s.couleur}"></span>${escapeHtml(s.nom)}</span>
-        <span class="sector-button-meta">${s.addresses.length} adresses · ${Math.round((done / total) * 100)} % traité</span>
-        <span class="mini-progress"><span style="width:${(done / total) * 100}%;background:${s.couleur}"></span></span>`;
+        <span class="sector-button-meta">${meta}</span>${progress}`;
       btn.addEventListener("click", () => openSector(s.id));
       els.buttons.appendChild(btn);
     }
+
+    els.printAll.hidden = sectors.length === 0;
+    els.printAll.href = `plan.html#/${encodeURIComponent(state.slug)}`;
 
     refreshMapSize(() => {
       if (bounds.isValid()) state.map.fitBounds(bounds, { padding: [16, 16] });
@@ -212,18 +234,28 @@
     const outline = L.polygon(sector.polygon, { color: sector.couleur, weight: 5, fill: false, interactive: false })
       .addTo(state.layer);
 
+    const suivi = state.data.suivi;
     for (const a of sector.addresses) {
-      const m = L.circleMarker([a.lat, a.lon], { radius: 6, color: "#fff", weight: 1.5, fillColor: statusColor(a.status), fillOpacity: 1 });
+      const m = L.circleMarker([a.lat, a.lon], {
+        radius: suivi ? 6 : 4, color: "#fff", weight: 1.5, fillColor: suivi ? statusColor(a.status) : TODO_COLOR, fillOpacity: 1,
+      });
       m.bindPopup(`<strong>${escapeHtml(a.label)}</strong><br>${escapeHtml(a.groupe)}`);
-      m.on("click", () => highlightRow(a.id));
+      if (suivi) m.on("click", () => highlightRow(a.id));
       m.addTo(state.layer);
       state.markers.set(a.id, m);
     }
 
     els.dot.style.background = sector.couleur;
     els.name.textContent = sector.nom;
-    renderProgress(sector);
-    renderAddressList(sector);
+    els.summary.textContent = `${sector.addresses.length} adresses`;
+    els.print.href = `plan.html#/${encodeURIComponent(state.slug)}/${sector.id}`;
+    renderLimite(els.limite, sector.limite);
+    renderResume(els.resume, sector.resume);
+    els.suiviBlock.hidden = !suivi;
+    if (suivi) {
+      renderProgress(sector);
+      renderAddressList(sector);
+    }
     window.scrollTo({ top: 0 });
 
     refreshMapSize(() => state.map.fitBounds(outline.getBounds(), { padding: [20, 20] }));

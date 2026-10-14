@@ -22,19 +22,36 @@
       <h2 class="panel-title">Choisissez votre secteur</h2>
       <div id="sector-buttons" class="sector-buttons"></div>
       <p id="no-sectors" class="empty" hidden>Les secteurs n'ont pas encore été définis. Revenez un peu plus tard.</p>
+      <a id="btn-print-all" class="btn print-link" href="#" target="_blank" rel="noopener" hidden>🖨 Plan d'ensemble à imprimer</a>
     </section>
 
     <!-- Vue d'un secteur -->
     <section id="sector-panel" class="panel" hidden>
       <div class="sector-bar">
-        <button id="btn-back" class="btn" type="button">← Tous les secteurs</button>
+        <button id="btn-back" class="btn" type="button">← Secteurs</button>
+        <a id="btn-print" class="btn" href="#" target="_blank" rel="noopener">🖨 Plan</a>
         <button id="btn-share" class="btn" type="button">Partager</button>
       </div>
       <h2 class="sector-heading"><span id="sector-dot" class="color-dot"></span><span id="sector-name"></span></h2>
-      <div id="sector-progress" class="progress-bar" aria-hidden="true"></div>
-      <p id="sector-stats" class="hint"></p>
-      <label class="toggle"><input type="checkbox" id="hide-done" /> Masquer les adresses déjà traitées</label>
-      <div id="address-list"></div>
+      <p id="sector-summary" class="hint"></p>
+
+      <section class="info-card">
+        <h3>Où s'arrête le secteur</h3>
+        <div id="sector-limite"></div>
+      </section>
+
+      <section class="info-card">
+        <h3>Ce que comprend le secteur</h3>
+        <div id="sector-resume"></div>
+      </section>
+
+      <section id="suivi-block" hidden>
+        <h3 class="suivi-title">Suivi de la distribution</h3>
+        <div id="sector-progress" class="progress-bar" aria-hidden="true"></div>
+        <p id="sector-stats" class="hint"></p>
+        <label class="toggle"><input type="checkbox" id="hide-done" /> Masquer les adresses déjà traitées</label>
+        <div id="address-list"></div>
+      </section>
     </section>
   </main>
 

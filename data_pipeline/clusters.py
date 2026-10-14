@@ -65,3 +65,15 @@ def assign_groups(addresses: list[dict]) -> None:
         for i in members:
             addresses[i]["groupe_id"] = gid
             addresses[i]["groupe"] = name
+
+
+def name_bourg(addresses: list[dict], mairie: dict, max_distance_m: float = 300.0) -> None:
+    """Renomme « Le bourg » le groupe d'habitations où se trouve la mairie."""
+    if not addresses:
+        return
+    nearest = min(addresses, key=lambda a: haversine_m(a["lat"], a["lon"], mairie["lat"], mairie["lon"]))
+    if haversine_m(nearest["lat"], nearest["lon"], mairie["lat"], mairie["lon"]) > max_distance_m:
+        return
+    for a in addresses:
+        if a["groupe_id"] == nearest["groupe_id"]:
+            a["groupe"] = "Le bourg"

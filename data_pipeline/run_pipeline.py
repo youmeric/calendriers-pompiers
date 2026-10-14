@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 
 from build_graph import RoadNetwork
-from clusters import assign_groups
+from clusters import assign_groups, name_bourg
 from common import slugify
 from fetch_ban import fetch_ban_addresses
 from fetch_overpass import fetch_buildings, fetch_mairie, fetch_roads
@@ -69,6 +69,7 @@ def run(use_cache: bool = True) -> None:
         print(f"  {len(buildings)} bâtiments OSM")
 
         assign_groups(addresses)
+        name_bourg(addresses, mairie)
         print(f"  {len({a['groupe_id'] for a in addresses})} groupes d'habitations (bourg/hameaux)")
 
         network = RoadNetwork(roads)
@@ -89,6 +90,7 @@ def run(use_cache: bool = True) -> None:
                     "id": a["id"],
                     "label": _address_label(a),
                     "numero": a["numero"],
+                    "rep": a.get("rep", ""),
                     "nom_voie": a["nom_voie"],
                     "lieu_dit": a["lieu_dit"],
                     "groupe_id": a["groupe_id"],
@@ -99,8 +101,8 @@ def run(use_cache: bool = True) -> None:
                 for a in addresses
             ],
             "roads": [
-                {"nom": w["tags"].get("name", ""), "type": w["tags"].get("highway", ""),
-                 "points": _round_line(w["nodes"])}
+                {"nom": w["tags"].get("name", ""), "ref": w["tags"].get("ref", ""),
+                 "type": w["tags"].get("highway", ""), "points": _round_line(w["nodes"])}
                 for w in roads if len(w["nodes"]) >= 2
             ],
             "buildings": [_round_line(w["nodes"], 6) for w in buildings if len(w["nodes"]) >= 3],
