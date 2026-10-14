@@ -60,27 +60,29 @@ class RoadNetwork:
     def _snap_distance(self, lat: float, lon: float, node) -> float:
         return haversine_m(lat, lon, node[0], node[1])
 
-    def distances_from(self, lat: float, lon: float) -> dict:
+    def distances_from(self, lat: float, lon: float, cutoff: float | None = None) -> dict:
         """Distances (mètres) le long du réseau routier depuis un point d'origine
         vers tous les nœuds du graphe atteignables (inclut le "dernier mètre"
-        entre le point d'origine et son nœud d'accroche)."""
+        entre le point d'origine et son nœud d'accroche). `cutoff` limite
+        l'exploration aux nœuds à moins de cette distance."""
         origin = self.nearest_node(lat, lon)
         if origin is None:
             return {}
         snap = self._snap_distance(lat, lon, origin)
-        lengths = nx.single_source_dijkstra_path_length(self.graph, origin, weight="weight")
+        lengths = nx.single_source_dijkstra_path_length(self.graph, origin, cutoff=cutoff, weight="weight")
         return {node: dist + snap for node, dist in lengths.items()}
 
     def network_distance(self, lat1: float, lon1: float, lat2: float, lon2: float,
-                          distances_cache: dict | None = None) -> tuple[float, bool]:
+                          distances_cache: dict | None = None, node2=None) -> tuple[float, bool]:
         """Distance (mètres) entre deux points le long des routes.
 
         Retourne (distance, via_reseau). via_reseau=False signifie un repli en
         distance directe (points non reliés dans le graphe routier, ou point
-        trop éloigné de toute route cartographiée).
+        trop éloigné de toute route cartographiée). `node2` évite de rechercher
+        à nouveau le nœud d'accroche du point d'arrivée s'il est déjà connu.
         """
         if distances_cache is not None:
-            node2 = self.nearest_node(lat2, lon2)
+            node2 = node2 if node2 is not None else self.nearest_node(lat2, lon2)
             if node2 is not None and node2 in distances_cache:
                 snap2 = self._snap_distance(lat2, lon2, node2)
                 if snap2 <= self.MAX_SNAP_M:

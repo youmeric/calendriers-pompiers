@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import time
 from pathlib import Path
 
 from build_graph import RoadNetwork
@@ -41,39 +42,60 @@ def _address_label(addr: dict) -> str:
     return " ".join(p for p in parts if p).strip()
 
 
+class _Step:
+    """Affiche une étape et sa durée : on voit toujours où en est le pipeline."""
+
+    def __init__(self, label: str):
+        self.label = label
+
+    def __enter__(self):
+        print(f"  … {self.label}", flush=True)
+        self.start = time.time()
+        return self
+
+    def __exit__(self, *exc):
+        if exc[0] is None:
+            print(f"    ({time.time() - self.start:.1f} s)", flush=True)
+
+
 def run(use_cache: bool = True) -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     index = []
 
     for commune_def in COMMUNES:
         nom, cp = commune_def["nom"], commune_def["code_postal"]
-        print(f"== {nom} ({cp}) ==")
+        print(f"== {nom} ({cp}) ==", flush=True)
         commune = resolve_commune(nom, cp)
         insee = commune["code_insee"]
         print(f"  code INSEE: {insee}")
 
-        mairie = fetch_mairie(insee, use_cache=use_cache)
+        with _Step("mairie (OpenStreetMap)"):
+            mairie = fetch_mairie(insee, use_cache=use_cache)
         if mairie is None:
             mairie = {"lat": commune["centre"]["lat"], "lon": commune["centre"]["lon"]}
             print("  ! mairie non trouvée dans OSM, utilisation du centre commune en repli")
         else:
             print(f"  mairie: {mairie}")
 
-        addresses = fetch_ban_addresses(insee, use_cache=use_cache)
+        with _Step("adresses (Base Adresse Nationale, fichier du département au 1er lancement)"):
+            addresses = fetch_ban_addresses(insee, use_cache=use_cache)
         print(f"  {len(addresses)} adresses BAN")
 
-        roads = fetch_roads(insee, use_cache=use_cache)
+        with _Step("réseau routier (OpenStreetMap, peut prendre 1-2 min au 1er lancement)"):
+            roads = fetch_roads(insee, use_cache=use_cache)
         print(f"  {len(roads)} segments de route OSM")
 
-        buildings = fetch_buildings(insee, use_cache=use_cache)
+        with _Step("bâtiments (OpenStreetMap)"):
+            buildings = fetch_buildings(insee, use_cache=use_cache)
         print(f"  {len(buildings)} bâtiments OSM")
 
         assign_groups(addresses)
         name_bourg(addresses, mairie)
         print(f"  {len({a['groupe_id'] for a in addresses})} groupes d'habitations (bourg/hameaux)")
 
-        network = RoadNetwork(roads)
-        auto = build_sectors(addresses, mairie, network)
+        with _Step("proposition automatique de secteurs"):
+            network = RoadNetwork(roads)
+            auto = build_sectors(addresses, mairie, network)
 
         slug = slugify(nom)
         payload = {

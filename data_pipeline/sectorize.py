@@ -64,75 +64,110 @@ def _compass_label(bearing: float) -> str:
     return best[1]
 
 
-def _pairwise_distances(units: list[Unit], network: RoadNetwork) -> dict[tuple[int, int], float]:
-    dmat: dict[tuple[int, int], float] = {}
-    caches = [network.distances_from(u.lat, u.lon) for u in units]
+# Au-delà de ce rayon on n'explore plus le réseau routier : les paires éloignées
+# n'interviennent pas dans les arbres de tournée et passent en estimation directe.
+PAIRWISE_CUTOFF_M = 4000.0
+
+
+def _pairwise_distances(units: list[Unit], network: RoadNetwork) -> list[list[float]]:
+    """Matrice n×n des distances par la route entre groupes d'habitations."""
+    n = len(units)
+    nodes = [network.nearest_node(u.lat, u.lon) for u in units]
+    dmat = [[0.0] * n for _ in range(n)]
     for i, ui in enumerate(units):
-        for j, uj in enumerate(units):
-            if j <= i:
-                continue
-            dist, _ = network.network_distance(ui.lat, ui.lon, uj.lat, uj.lon, distances_cache=caches[i])
-            dmat[(i, j)] = dmat[(j, i)] = dist
+        cache = network.distances_from(ui.lat, ui.lon, cutoff=PAIRWISE_CUTOFF_M)
+        for j in range(i + 1, n):
+            uj = units[j]
+            dist, _ = network.network_distance(ui.lat, ui.lon, uj.lat, uj.lon,
+                                               distances_cache=cache, node2=nodes[j])
+            dmat[i][j] = dmat[j][i] = dist
     return dmat
 
 
-def _mst_length(indices: list[int], dmat: dict[tuple[int, int], float]) -> float:
+def _mst_length(indices: list[int], dmat: list[list[float]]) -> float:
+    """Longueur de l'arbre couvrant minimal (Prim, O(k²))."""
     if len(indices) <= 1:
         return 0.0
-    in_tree = {indices[0]}
-    remaining = set(indices[1:])
+    first, rest = indices[0], indices[1:]
+    best = {j: dmat[first][j] for j in rest}
     total = 0.0
-    while remaining:
-        best = None
-        for a in in_tree:
-            for b in remaining:
-                d = dmat[(a, b)]
-                if best is None or d < best[0]:
-                    best = (d, b)
-        total += best[0]
-        in_tree.add(best[1])
-        remaining.remove(best[1])
+    while best:
+        j = min(best, key=best.get)
+        total += best.pop(j)
+        row = dmat[j]
+        for k in best:
+            if row[k] < best[k]:
+                best[k] = row[k]
     return total
 
 
-def _group_time_minutes(indices: list[int], units: list[Unit], dmat: dict[tuple[int, int], float],
+def _travel_minutes(meters: float) -> float:
+    return (meters / 1000.0) / DRIVE_SPEED_KMH * 60.0
+
+
+def _group_time_minutes(indices: list[int], units: list[Unit], dmat: list[list[float]],
                          mairie_dist: dict[int, float]) -> float:
     if not indices:
         return 0.0
     n_addr = sum(units[i].count for i in indices)
-    handling = n_addr * HANDLING_MIN_PER_ADDRESS
     travel_m = _mst_length(indices, dmat) + min(mairie_dist[i] for i in indices)
-    travel_min = (travel_m / 1000.0) / DRIVE_SPEED_KMH * 60.0
-    return handling + travel_min
+    return n_addr * HANDLING_MIN_PER_ADDRESS + _travel_minutes(travel_m)
 
 
-def _best_contiguous_split(order: list[int], units: list[Unit], dmat: dict[tuple[int, int], float],
+def _arc_times(order: list[int], units: list[Unit], dmat: list[list[float]],
+               mairie_dist: dict[int, float]) -> list[list[float]]:
+    """times[s][L] = temps estimé de l'arc de L groupes commençant en s.
+
+    L'arbre de tournée est construit de proche en proche (chaque groupe ajouté
+    est relié au plus proche déjà présent) : approximation de l'arbre couvrant
+    minimal en O(n³) au total au lieu de O(n⁵)."""
+    n = len(order)
+    times = [[0.0] * n for _ in range(n)]
+    for s in range(n):
+        members: list[int] = []
+        tree = 0.0
+        n_addr = 0
+        to_mairie = float("inf")
+        for length in range(1, n):
+            u = order[(s + length - 1) % n]
+            if members:
+                row = dmat[u]
+                tree += min(row[m] for m in members)
+            members.append(u)
+            n_addr += units[u].count
+            to_mairie = min(to_mairie, mairie_dist[u])
+            times[s][length] = n_addr * HANDLING_MIN_PER_ADDRESS + _travel_minutes(tree + to_mairie)
+    return times
+
+
+def _best_contiguous_split(order: list[int], units: list[Unit], dmat: list[list[float]],
                             mairie_dist: dict[int, float]) -> tuple[list[list[int]], float]:
-    """Cherche, pour un ordre circulaire donné, la meilleure rotation + les 2
-    points de coupe qui divisent `order` en 3 groupes contigus les plus
-    équilibrés en temps (minimise l'écart max-min)."""
+    """Cherche la rotation et les 2 points de coupe qui divisent l'ordre
+    circulaire `order` en 3 arcs contigus les plus équilibrés en temps."""
     n = len(order)
     if n < 3:
         return [[i] for i in order] + [[] for _ in range(3 - n)], 0.0
 
-    # temps d'un arc circulaire (start, longueur), mémorisé : n² arcs distincts
-    memo: dict[tuple[int, int], float] = {}
-
-    def arc_time(start: int, length: int) -> float:
-        key = (start % n, length)
-        if key not in memo:
-            idx = [order[(start + k) % n] for k in range(length)]
-            memo[key] = _group_time_minutes(idx, units, dmat, mairie_dist)
-        return memo[key]
-
+    times = _arc_times(order, units, dmat, mairie_dist)
     best: tuple[int, int, int] | None = None
     best_score = float("inf")
     for rot in range(n):
         for cut1 in range(1, n - 1):
-            t1 = arc_time(rot, cut1)
-            for cut2 in range(cut1 + 1, n):
-                t2 = arc_time(rot + cut1, cut2 - cut1)
-                t3 = arc_time(rot + cut2, n - cut2)
+            t1 = times[rot][cut1]
+            s2 = (rot + cut1) % n
+            # t2 croît et t3 décroît avec cut2 : on cherche leur croisement par dichotomie
+            lo, hi = cut1 + 1, n - 1
+            while lo < hi:
+                mid = (lo + hi) // 2
+                if times[s2][mid - cut1] < times[(rot + mid) % n][n - mid]:
+                    lo = mid + 1
+                else:
+                    hi = mid
+            for cut2 in (lo - 1, lo, lo + 1):
+                if not cut1 < cut2 < n:
+                    continue
+                t2 = times[s2][cut2 - cut1]
+                t3 = times[(rot + cut2) % n][n - cut2]
                 score = max(t1, t2, t3) - min(t1, t2, t3)
                 if score < best_score:
                     best_score = score
