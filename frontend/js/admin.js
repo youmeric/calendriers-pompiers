@@ -142,8 +142,9 @@
 
     state.map.on("click", onMapClick);
     state.map.on("mousemove", onMapMove);
+    const drawLabel = els.draw.innerHTML;
     state.map.on("pm:drawstart", () => { els.draw.textContent = "✖ Annuler le dessin"; els.draw.classList.add("active"); });
-    state.map.on("pm:drawend", () => { els.draw.textContent = "✏️ Dessiner un secteur"; els.draw.classList.remove("active"); });
+    state.map.on("pm:drawend", () => { els.draw.innerHTML = drawLabel; els.draw.classList.remove("active"); });
     state.map.on("pm:create", (e) => {
       if (e.shape === "Line") {
         state.map.removeLayer(e.layer);

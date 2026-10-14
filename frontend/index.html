@@ -3,71 +3,94 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#c62828" />
+<meta name="theme-color" content="#ffffff" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-title" content="Secteurs" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
 <title>Calendriers des pompiers — Courzieu &amp; Brussieu</title>
+<link rel="preload" href="vendor/inter/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
 <link rel="stylesheet" href="css/style.css?v=__V__" />
 </head>
 <body class="public">
   <header class="topbar">
-    <h1>🚒 Calendriers des pompiers</h1>
-    <span class="topbar-sub">Courzieu · Brussieu</span>
+    <a class="brand" href="#/">
+      <img class="brand-logo" src="icons/icon-192.png" alt="" width="34" height="34" />
+      <span class="brand-text">
+        <span class="brand-title">Calendriers des pompiers</span>
+        <span class="topbar-sub">Courzieu · Brussieu</span>
+      </span>
+    </a>
   </header>
 
   <main class="public-main">
     <section id="map" aria-label="Carte des secteurs"></section>
 
-    <!-- Téléphone : barre pour replier la liste et agrandir la carte -->
-    <div id="panel-handle" class="panel-handle">
-      <button id="handle-back" class="btn small" type="button" hidden>← Secteurs</button>
-      <button id="panel-toggle" class="panel-toggle" type="button" aria-expanded="true" aria-controls="home-panel sector-panel"></button>
+    <div id="drawer" class="drawer">
+      <!-- Téléphone : barre pour replier la liste et agrandir la carte -->
+      <div id="panel-handle" class="panel-handle">
+        <button id="handle-back" class="btn small" type="button" hidden>
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>Secteurs
+        </button>
+        <button id="panel-toggle" class="panel-toggle" type="button" aria-expanded="true" aria-controls="home-panel sector-panel"></button>
+      </div>
+
+      <div id="drawer-body" class="drawer-body">
+        <!-- Vue d'ensemble : tous les secteurs -->
+        <section id="home-panel" class="panel">
+          <div class="search">
+            <svg class="ico search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+            <input id="search" type="search" autocomplete="off" placeholder="Adresse, rue, hameau…" aria-label="Rechercher une adresse, une rue ou un hameau" />
+            <div id="search-results" class="search-results" hidden></div>
+          </div>
+          <h2 class="panel-title">Choisissez votre secteur</h2>
+          <div id="sector-buttons" class="sector-buttons"></div>
+          <p id="no-sectors" class="empty" hidden>Les secteurs n'ont pas encore été définis. Revenez un peu plus tard.</p>
+          <a id="btn-print-all" class="btn print-link" href="#" target="_blank" rel="noopener" hidden>
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6" /><rect x="3" y="9" width="18" height="8" rx="2" /><path d="M7 14h10v7H7z" /></svg>Plan d'ensemble à imprimer
+          </a>
+        </section>
+
+        <!-- Vue d'un secteur -->
+        <section id="sector-panel" class="panel" hidden>
+          <div class="sector-bar">
+            <button id="btn-back" class="btn" type="button">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>Secteurs
+            </button>
+            <span class="sector-bar-actions">
+              <a id="btn-print" class="btn" href="#" target="_blank" rel="noopener">
+                <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6" /><rect x="3" y="9" width="18" height="8" rx="2" /><path d="M7 14h10v7H7z" /></svg>Plan
+              </a>
+              <button id="btn-share" class="btn" type="button">
+                <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v13" /><path d="M7 8l5-5 5 5" /><path d="M5 13v6a2 2 0 002 2h10a2 2 0 002-2v-6" /></svg>Partager
+              </button>
+            </span>
+          </div>
+          <h2 class="sector-heading"><b id="sector-code" class="sector-code"></b><span id="sector-name"></span></h2>
+          <p id="sector-summary" class="hint"></p>
+
+          <section class="info-card">
+            <h3>Où s'arrête le secteur</h3>
+            <div id="sector-limite"></div>
+          </section>
+
+          <section class="info-card">
+            <h3>Ce que comprend le secteur</h3>
+            <div id="sector-resume"></div>
+          </section>
+
+          <section id="suivi-block" hidden>
+            <h3 class="suivi-title">Suivi de la distribution</h3>
+            <div id="sector-progress" class="progress-bar" aria-hidden="true"></div>
+            <p id="sector-stats" class="hint"></p>
+            <label class="toggle"><input type="checkbox" id="hide-done" /> Masquer les adresses déjà traitées</label>
+            <div id="address-list"></div>
+          </section>
+        </section>
+      </div>
     </div>
-
-    <!-- Vue d'ensemble : tous les secteurs -->
-    <section id="home-panel" class="panel">
-      <div class="search">
-        <input id="search" type="search" autocomplete="off" placeholder="🔍 Rechercher une adresse, une rue, un hameau…" aria-label="Rechercher une adresse, une rue ou un hameau" />
-        <div id="search-results" class="search-results" hidden></div>
-      </div>
-      <h2 class="panel-title">Choisissez votre secteur</h2>
-      <div id="sector-buttons" class="sector-buttons"></div>
-      <p id="no-sectors" class="empty" hidden>Les secteurs n'ont pas encore été définis. Revenez un peu plus tard.</p>
-      <a id="btn-print-all" class="btn print-link" href="#" target="_blank" rel="noopener" hidden>🖨 Plan d'ensemble à imprimer</a>
-    </section>
-
-    <!-- Vue d'un secteur -->
-    <section id="sector-panel" class="panel" hidden>
-      <div class="sector-bar">
-        <button id="btn-back" class="btn" type="button">← Secteurs</button>
-        <a id="btn-print" class="btn" href="#" target="_blank" rel="noopener">🖨 Plan</a>
-        <button id="btn-share" class="btn" type="button">Partager</button>
-      </div>
-      <h2 class="sector-heading"><b id="sector-code" class="sector-code"></b><span id="sector-name"></span></h2>
-      <p id="sector-summary" class="hint"></p>
-
-      <section class="info-card">
-        <h3>Où s'arrête le secteur</h3>
-        <div id="sector-limite"></div>
-      </section>
-
-      <section class="info-card">
-        <h3>Ce que comprend le secteur</h3>
-        <div id="sector-resume"></div>
-      </section>
-
-      <section id="suivi-block" hidden>
-        <h3 class="suivi-title">Suivi de la distribution</h3>
-        <div id="sector-progress" class="progress-bar" aria-hidden="true"></div>
-        <p id="sector-stats" class="hint"></p>
-        <label class="toggle"><input type="checkbox" id="hide-done" /> Masquer les adresses déjà traitées</label>
-        <div id="address-list"></div>
-      </section>
-    </section>
   </main>
 
   <div id="toast" class="toast" hidden></div>

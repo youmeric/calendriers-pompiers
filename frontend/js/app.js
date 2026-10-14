@@ -38,6 +38,7 @@
     resume: document.getElementById("sector-resume"),
     suiviBlock: document.getElementById("suivi-block"),
     panelToggle: document.getElementById("panel-toggle"),
+    drawerBody: document.getElementById("drawer-body"),
     handleBack: document.getElementById("handle-back"),
   };
 
@@ -119,7 +120,7 @@
         btn.type = "button";
         btn.title = "Me localiser";
         btn.setAttribute("aria-label", "Me localiser");
-        btn.textContent = "📍";
+        btn.innerHTML = `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="2.5" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /></svg>`;
         L.DomEvent.disableClickPropagation(btn);
         L.DomEvent.on(btn, "click", () => toggleLocate(btn));
         return btn;
@@ -283,7 +284,7 @@
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "sector-button";
-    btn.style.borderLeftColor = s.couleur;
+    btn.style.setProperty("--c", s.couleur);
     let meta = `${s.addresses.length} adresses`;
     let progress = "";
     if (state.suivi && s.counts) {
@@ -296,8 +297,12 @@
       if (preview) meta += ` · ${escapeHtml(preview)}`;
     }
     btn.innerHTML = `
-      <span class="sector-button-name"><b class="sector-code" style="background:${s.couleur}">${escapeHtml(s.code)}</b>${escapeHtml(s.nom)}</span>
-      <span class="sector-button-meta">${meta}</span>${progress}`;
+      <b class="sector-code" style="background:${s.couleur}">${escapeHtml(s.code)}</b>
+      <span class="sector-button-text">
+        <span class="sector-button-name">${escapeHtml(s.nom)}</span>
+        <span class="sector-button-meta">${meta}</span>${progress}
+      </span>
+      <svg class="ico chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>`;
     btn.addEventListener("click", () => openSector(slug, s.id));
     return btn;
   }
@@ -320,7 +325,7 @@
 
     const polys = toPolys(sector.polygon);
     // tout ce qui est hors du secteur est assombri
-    const mask = { stroke: false, fillColor: "#0b1220", fillOpacity: 0.5, interactive: false };
+    const mask = { stroke: false, fillColor: "#0f172a", fillOpacity: 0.38, interactive: false };
     L.polygon([WORLD, ...outerRings(polys)], mask).addTo(state.layer);
     // les enclaves ne font pas partie du secteur : assombries elles aussi
     holeRings(polys).forEach((hole) => L.polygon(hole, mask).addTo(state.layer));
@@ -363,6 +368,7 @@
       renderAddressList(slug, sector);
     }
     window.scrollTo({ top: 0 });
+    els.drawerBody.scrollTop = 0;
 
     refreshMapSize(() => {
       state.map.fitBounds(outline.getBounds(), { padding: [20, 20] });
@@ -400,10 +406,10 @@
   function updateHandle() {
     const collapsed = document.body.classList.contains("panel-collapsed");
     els.panelToggle.textContent = !collapsed
-      ? "▾ Replier pour agrandir la carte"
+      ? "Replier pour agrandir la carte"
       : state.current
-        ? `▴ ${els.code.textContent} · ${els.name.textContent} — détails`
-        : "▴ Afficher la liste des secteurs";
+        ? `${els.code.textContent} · ${els.name.textContent} — détails`
+        : "Afficher la liste des secteurs";
     els.panelToggle.setAttribute("aria-expanded", String(!collapsed));
     els.handleBack.hidden = !(collapsed && state.current);
   }
@@ -412,7 +418,6 @@
     document.body.classList.toggle("panel-collapsed", collapsed);
     storage.set(PANEL_KEY, collapsed ? "1" : "0");
     updateHandle();
-    window.scrollTo({ top: 0 });
     if (state.map) refreshMapSize(() => {});
   }
 
