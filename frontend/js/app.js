@@ -110,6 +110,12 @@
     });
     state.whereControl = new Where();
     state.map.addControl(state.whereControl);
+    state.map.on("click", (e) => {
+      const m = nearestAddressMarker(e.latlng, 24);
+      if (!m) return;
+      m.openPopup();
+      if (state.suivi) highlightRow(m.addressId);
+    });
   }
 
   function addLocateControl() {
@@ -347,7 +353,8 @@
       const m = L.circleMarker([a.lat, a.lon], {
         radius: suivi ? 6 : 4, color: "#fff", weight: 1.5, fillColor: suivi ? statusColor(a.status) : TODO_COLOR, fillOpacity: 1,
       });
-      m.bindPopup(`<strong>${escapeHtml(a.label)}</strong><br>${escapeHtml(a.groupe)}`);
+      m.bindPopup(placePopup(a.label, a.groupe, a.lat, a.lon));
+      m.addressId = a.id;
       if (suivi) m.on("click", () => highlightRow(a.id));
       m.addTo(state.layer);
       state.markers.set(a.id, m);
@@ -386,11 +393,52 @@
       state.map.setView([lat, lon], 18);
       const m = f.id && state.markers.get(f.id);
       if (m) m.openPopup();
-      else L.popup().setLatLng([lat, lon]).setContent(escapeHtml(f.label)).openOn(state.map);
+      else L.popup().setLatLng([lat, lon]).setContent(placePopup(f.label, "", lat, lon)).openOn(state.map);
     } else {
       state.map.fitBounds(f.points, { padding: [40, 40], maxZoom: 17 });
-      L.popup().setLatLng(f.points[0]).setContent(`<strong>${escapeHtml(f.label)}</strong>`).openOn(state.map);
+      const [lat, lon] = f.points[0];
+      L.popup().setLatLng(f.points[0]).setContent(placePopup(f.label, "", lat, lon)).openOn(state.map);
     }
+  }
+
+  // ---- « Y aller » : ouvre le GPS du téléphone vers une adresse ----------------------
+
+  const UA = navigator.userAgent;
+  const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const IS_ANDROID = /Android/.test(UA);
+
+  function navLinks(lat, lon, label) {
+    const ll = `${Number(lat).toFixed(6)},${Number(lon).toFixed(6)}`;
+    const google = `https://www.google.com/maps/dir/?api=1&destination=${ll}&travelmode=driving`;
+    const waze = `https://waze.com/ul?ll=${ll}&navigate=yes`;
+    const apple = `https://maps.apple.com/?daddr=${ll}&dirflg=d`;
+    // Android : « geo: » propose toutes les applis de navigation installées
+    const main = IS_IOS ? apple : IS_ANDROID ? `geo:${ll}?q=${ll}(${encodeURIComponent(label)})` : google;
+    return { main, others: main === google ? [["Waze", waze]] : [["Google Maps", google], ["Waze", waze]] };
+  }
+
+  function placePopup(label, detail, lat, lon) {
+    const nav = navLinks(lat, lon, label);
+    const target = nav.main.startsWith("geo:") ? "" : ' target="_blank" rel="noopener"';
+    return `<div class="place-popup">
+      <strong>${escapeHtml(label)}</strong>${detail ? `<span class="place-detail">${escapeHtml(detail)}</span>` : ""}
+      <a class="btn small primary nav-go" href="${escapeHtml(nav.main)}"${target}>
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8z" /></svg>Y aller</a>
+      <span class="nav-alt">ou avec ${nav.others.map(([n, u]) => `<a href="${escapeHtml(u)}" target="_blank" rel="noopener">${n}</a>`).join(" · ")}</span>
+    </div>`;
+  }
+
+  /** Les points d'adresse sont petits : un appui à côté ouvre l'adresse la plus proche. */
+  function nearestAddressMarker(latlng, maxPx) {
+    if (!state.current) return null;
+    const p = state.map.latLngToContainerPoint(latlng);
+    let best = null;
+    let bestD = maxPx;
+    for (const m of state.markers.values()) {
+      const d = p.distanceTo(state.map.latLngToContainerPoint(m.getLatLng()));
+      if (d < bestD) { bestD = d; best = m; }
+    }
+    return best;
   }
 
   // ne pas écraser className : Leaflet y a mis ses propres classes (leaflet-container…)
@@ -399,33 +447,118 @@
     els.mapEl.classList.toggle("map-sector", mode === "map-sector");
   }
 
-  // ---- Téléphone : liste repliable pour naviguer sur la carte en plein écran ----------
+  // ---- Téléphone : feuille du bas qu'on glisse (repliée / mi-hauteur / plein écran) ---
 
-  const PANEL_KEY = "panneau-replie";
+  const PANEL_KEY = "panneau-replie"; // "1" repliée, "0" mi-hauteur, "2" plein écran
+  const SHEET_STATES = ["collapsed", "half", "full"]; // de la plus basse à la plus haute
+  const mobileQuery = window.matchMedia("(max-width: 899px)");
+  const drawer = document.getElementById("drawer");
+  const handle = document.getElementById("panel-handle");
+  let sheet = { 1: "collapsed", 2: "full" }[storage.get(PANEL_KEY, "0")] || "half";
+
+  /** Titre de secteur sans répéter le code quand le nom le contient déjà (« B1 - Le bourg »). */
+  function sectorTitle() {
+    const code = els.code.textContent;
+    const name = els.name.textContent;
+    return name.toUpperCase().startsWith(code.toUpperCase()) ? name : `${code} · ${name}`;
+  }
 
   function updateHandle() {
-    const collapsed = document.body.classList.contains("panel-collapsed");
-    els.panelToggle.textContent = !collapsed
+    const collapsed = sheet === "collapsed";
+    const text = !collapsed
       ? "Replier pour agrandir la carte"
       : state.current
-        ? `${els.code.textContent} · ${els.name.textContent} — détails`
+        ? `${sectorTitle()} — détails`
         : "Afficher la liste des secteurs";
+    els.panelToggle.innerHTML = `<span class="toggle-text">${escapeHtml(text)}</span>`;
     els.panelToggle.setAttribute("aria-expanded", String(!collapsed));
     els.handleBack.hidden = !(collapsed && state.current);
   }
 
-  function setCollapsed(collapsed) {
-    document.body.classList.toggle("panel-collapsed", collapsed);
-    storage.set(PANEL_KEY, collapsed ? "1" : "0");
-    updateHandle();
-    if (state.map) refreshMapSize(() => {});
+  /** Hauteurs (px) de la feuille dans chaque position. */
+  function sheetHeights() {
+    const total = drawer.parentElement.clientHeight;
+    const pad = parseFloat(getComputedStyle(drawer).paddingBottom) || 0;
+    const collapsed = handle.offsetHeight + pad;
+    return {
+      collapsed,
+      half: Math.max(collapsed, Math.round(total * 0.56)),
+      full: Math.max(collapsed, Math.round(total * 0.9)),
+    };
   }
 
-  els.panelToggle.addEventListener("click", () => {
-    setCollapsed(!document.body.classList.contains("panel-collapsed"));
+  function applySheet() {
+    document.body.classList.toggle("panel-collapsed", sheet === "collapsed");
+    document.body.classList.toggle("panel-full", sheet === "full");
+    drawer.style.height = mobileQuery.matches ? `${sheetHeights()[sheet]}px` : "";
+    updateHandle();
+  }
+
+  function setSheet(next) {
+    sheet = next;
+    storage.set(PANEL_KEY, next === "collapsed" ? "1" : next === "full" ? "2" : "0");
+    applySheet();
+    // la carte change de taille pendant l'animation de la feuille
+    setTimeout(() => state.map && state.map.invalidateSize(), 300);
+  }
+
+  // glisser la petite barre (ou le bouton) vers le haut ou le bas
+  let drag = null;
+  let suppressClick = false;
+  handle.addEventListener("pointerdown", (e) => {
+    if (!mobileQuery.matches || (e.pointerType === "mouse" && e.button !== 0)) return;
+    drag = { id: e.pointerId, y: e.clientY, h: drawer.getBoundingClientRect().height, from: sheet, moved: false, lastY: e.clientY, lastT: e.timeStamp, v: 0 };
   });
+  window.addEventListener("pointermove", (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dy = e.clientY - drag.y;
+    if (!drag.moved) {
+      if (Math.abs(dy) < 6) return; // simple appui : c'est un clic
+      drag.moved = true;
+      document.body.classList.add("sheet-dragging");
+      document.body.classList.remove("panel-collapsed"); // le contenu apparaît pendant le geste
+    }
+    const { collapsed, full } = sheetHeights();
+    drawer.style.height = `${Math.min(full, Math.max(collapsed, drag.h - dy))}px`;
+    const dt = e.timeStamp - drag.lastT;
+    if (dt > 0) drag.v = 0.6 * ((e.clientY - drag.lastY) / dt) + 0.4 * drag.v; // px/ms, positif vers le bas
+    drag.lastY = e.clientY;
+    drag.lastT = e.timeStamp;
+  });
+  const endDrag = (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const d = drag;
+    drag = null;
+    if (!d.moved) return;
+    document.body.classList.remove("sheet-dragging");
+    suppressClick = true;
+    setTimeout(() => { suppressClick = false; }, 50);
+    const h = drawer.getBoundingClientRect().height;
+    const heights = sheetHeights();
+    const step = (dir) => SHEET_STATES[Math.max(0, Math.min(SHEET_STATES.length - 1, SHEET_STATES.indexOf(d.from) + dir))];
+    let next;
+    if (Math.abs(d.v) > 0.5) {
+      next = step(d.v < 0 ? 1 : -1); // geste rapide : une position dans le sens du geste
+    } else {
+      // geste lent : la position la plus proche de là où on a lâché
+      next = SHEET_STATES.reduce((best, st) => (Math.abs(heights[st] - h) < Math.abs(heights[best] - h) ? st : best));
+      if (next === d.from && Math.abs(h - d.h) > 40) next = step(h > d.h ? 1 : -1);
+    }
+    setSheet(next);
+  };
+  // suivi sur toute la fenêtre : le doigt (ou la souris) sort vite de la petite barre
+  window.addEventListener("pointerup", endDrag);
+  window.addEventListener("pointercancel", endDrag);
+  // après un glissé, le relâchement ne doit pas compter comme un clic sur les boutons
+  handle.addEventListener("click", (e) => {
+    if (suppressClick) { e.stopPropagation(); e.preventDefault(); }
+  }, true);
+
+  els.panelToggle.addEventListener("click", () => setSheet(sheet === "collapsed" ? "half" : "collapsed"));
   els.handleBack.addEventListener("click", () => { location.hash = "#/"; });
-  document.body.classList.toggle("panel-collapsed", storage.get(PANEL_KEY, "0") === "1");
+  window.addEventListener("resize", applySheet);
+  mobileQuery.addEventListener?.("change", applySheet);
+  applySheet();
 
   function refreshMapSize(then) {
     setTimeout(() => { state.map.invalidateSize(); then(); }, 60);
@@ -671,6 +804,67 @@
     await route();
     flushQueue();
   }
+
+  // ---- Installer l'application (écran d'accueil) ------------------------------------
+
+  const install = {
+    card: document.getElementById("install-card"),
+    link: document.getElementById("btn-install-link"),
+    dialog: document.getElementById("install-dialog"),
+    steps: document.getElementById("install-steps"),
+    prompt: null, // évènement « beforeinstallprompt » (Android / Chrome)
+  };
+  const INSTALL_KEY = "installer-masque";
+  const SHARE_ICON = `<svg class="ico inline-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v13" /><path d="M7 8l5-5 5 5" /><path d="M5 13v6a2 2 0 002 2h10a2 2 0 002-2v-6" /></svg>`;
+
+  function isInstalled() {
+    return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  }
+
+  function refreshInstall() {
+    const possible = !isInstalled() && (install.prompt || IS_IOS || IS_ANDROID);
+    const dismissed = storage.get(INSTALL_KEY, "0") === "1";
+    install.card.hidden = !possible || dismissed;
+    install.link.hidden = !possible || !dismissed; // la carte masquée laisse un simple bouton en bas
+  }
+
+  async function startInstall() {
+    if (install.prompt) {
+      const ev = install.prompt;
+      install.prompt = null;
+      ev.prompt();
+      const choice = await ev.userChoice.catch(() => null);
+      if (choice && choice.outcome === "accepted") showToast("Application installée ✓");
+      refreshInstall();
+      return;
+    }
+    install.steps.innerHTML = IS_IOS
+      ? `<li>Touchez le bouton <b>Partager</b> ${SHARE_ICON} (en bas dans Safari, en haut à droite dans Chrome).</li>
+         <li>Faites défiler puis choisissez <b>« Sur l'écran d'accueil »</b>.</li>
+         <li>Touchez <b>« Ajouter »</b> : l'écusson apparaît sur l'écran d'accueil.</li>`
+      : `<li>Ouvrez le menu du navigateur <b>⋮</b> (en haut à droite).</li>
+         <li>Choisissez <b>« Installer l'application »</b> ou <b>« Ajouter à l'écran d'accueil »</b>.</li>
+         <li>Confirmez : l'écusson apparaît sur l'écran d'accueil.</li>`;
+    if (install.dialog.showModal) install.dialog.showModal(); else install.dialog.setAttribute("open", "");
+  }
+
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault(); // on garde la proposition pour notre bouton
+    install.prompt = e;
+    refreshInstall();
+  });
+  window.addEventListener("appinstalled", () => { install.prompt = null; refreshInstall(); });
+  document.getElementById("btn-install").addEventListener("click", startInstall);
+  install.link.addEventListener("click", startInstall);
+  document.getElementById("install-close").addEventListener("click", () => {
+    storage.set(INSTALL_KEY, "1");
+    refreshInstall();
+  });
+  document.getElementById("install-ok").addEventListener("click", () => {
+    if (install.dialog.close) install.dialog.close(); else install.dialog.removeAttribute("open");
+  });
+  install.dialog.addEventListener("click", (e) => { if (e.target === install.dialog) install.dialog.close(); });
+  refreshInstall();
 
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));

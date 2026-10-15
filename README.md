@@ -57,9 +57,16 @@ sur Courzieu et Brussieu (69690).
     **Partager** propre au secteur, et un bouton **🖨 Plan** (plan A4 avec
     **QR code**, à imprimer ou enregistrer en PDF). Un plan d'ensemble des deux
     communes est aussi disponible.
-  - sur téléphone, une barre sous la carte **replie la liste** pour naviguer
-    sur la carte en plein écran (elle garde le nom du secteur ouvert et un
-    bouton « ← Secteurs ») ; on la déplie d'une touche. Le choix est mémorisé.
+  - sur téléphone, la liste est dans une **feuille qu'on glisse** avec la
+    petite barre : repliée (carte en plein écran, avec le nom du secteur et
+    « ← Secteurs »), mi-hauteur ou plein écran. Un appui sur la barre la
+    replie / déplie aussi. La position est mémorisée ;
+  - **« Y aller »** : toucher une maison sur la carte (ou un résultat de
+    recherche) ouvre une bulle avec un bouton qui lance le GPS (Plans sur
+    iPhone, choix des applis sur Android) et des liens Google Maps / Waze ;
+  - **« Installer l'application »** : sur téléphone, une carte en haut de la
+    liste installe le site sur l'écran d'accueil (Android : en un appui ;
+    iPhone : les étapes Partager → « Sur l'écran d'accueil » sont expliquées).
 - **Plan à imprimer / télécharger (`plan.html`)** : la liste « Plan » en haut
   choisit **un secteur seul**, **une commune** ou **l'ensemble**. Le bouton
   ⚙ Options règle ce qui est imprimé (choix mémorisés) :

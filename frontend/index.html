@@ -40,6 +40,17 @@
       <div id="drawer-body" class="drawer-body">
         <!-- Vue d'ensemble : tous les secteurs -->
         <section id="home-panel" class="panel">
+          <div id="install-card" class="install-card" hidden>
+            <img src="icons/icon-192.png" alt="" width="44" height="44" />
+            <span class="install-text">
+              <strong>Installer l'application</strong>
+              <span>Sur l'écran d'accueil, ouverture en un geste</span>
+            </span>
+            <button id="btn-install" class="btn small primary" type="button">Installer</button>
+            <button id="install-close" class="install-close" type="button" aria-label="Masquer">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            </button>
+          </div>
           <div class="search">
             <svg class="ico search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
             <input id="search" type="search" autocomplete="off" placeholder="Adresse, rue, hameau…" aria-label="Rechercher une adresse, une rue ou un hameau" />
@@ -49,6 +60,9 @@
           <p id="communes-names" class="hint panel-sub"></p>
           <div id="sector-buttons" class="sector-buttons"></div>
           <p id="no-sectors" class="empty" hidden>Les secteurs n'ont pas encore été définis. Revenez un peu plus tard.</p>
+          <button id="btn-install-link" class="btn print-link" type="button" hidden>
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3" /><path d="M12 7v7M9 11l3 3 3-3" /></svg>Installer l'application
+          </button>
           <a id="btn-print-all" class="btn print-link" href="#" target="_blank" rel="noopener" hidden>
             <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6" /><rect x="3" y="9" width="18" height="8" rx="2" /><path d="M7 14h10v7H7z" /></svg>Plan d'ensemble à imprimer
           </a>
@@ -93,6 +107,13 @@
       </div>
     </div>
   </main>
+
+  <dialog id="install-dialog" class="install-dialog" aria-labelledby="install-title">
+    <img src="img/logo-courzieu.png" alt="" width="43" height="60" />
+    <h3 id="install-title">Installer l'application</h3>
+    <ol id="install-steps"></ol>
+    <button id="install-ok" class="btn primary" type="button">J'ai compris</button>
+  </dialog>
 
   <div id="toast" class="toast" hidden></div>
 

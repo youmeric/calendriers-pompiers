@@ -264,13 +264,16 @@ body.public #map { flex: 1 1 auto; min-height: 0; height: auto; isolation: isola
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  max-height: 56%;
+  height: 56%; /* la hauteur exacte est posée par le script selon la position */
   margin-top: -20px;
   background: var(--card);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   box-shadow: 0 -10px 30px rgba(15, 23, 42, 0.12);
   padding-bottom: env(safe-area-inset-bottom);
+  transition: height 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
+body.sheet-dragging .drawer { transition: none; }
+body.sheet-dragging { user-select: none; -webkit-user-select: none; }
 .drawer-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 
 .panel-handle {
@@ -279,7 +282,12 @@ body.public #map { flex: 1 1 auto; min-height: 0; height: auto; isolation: isola
   align-items: center;
   gap: 8px;
   padding: 16px 14px 2px;
+  touch-action: none; /* le geste fait glisser la feuille, pas la page */
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
 }
+body.sheet-dragging .panel-handle { cursor: grabbing; }
 .panel-handle::before {
   content: "";
   position: absolute;
@@ -322,6 +330,7 @@ body.public #map { flex: 1 1 auto; min-height: 0; height: auto; isolation: isola
   transform: translateY(-2px) rotate(45deg);
 }
 .panel-toggle:hover { background: var(--surface-2); }
+.toggle-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 body.panel-collapsed .panel-toggle { background: var(--surface-2); color: var(--text); font-size: 14px; }
 body.panel-collapsed .panel-toggle::after { transform: translateY(2px) rotate(-135deg); }
 body.public.panel-collapsed .drawer-body { display: none; }
@@ -330,7 +339,8 @@ body.public.panel-collapsed .drawer-body { display: none; }
   .public-main { flex-direction: row; }
   .drawer {
     width: 420px;
-    max-height: none;
+    height: auto;
+    transition: none;
     margin: 0;
     border-radius: 0;
     box-shadow: -1px 0 0 var(--border);
@@ -339,6 +349,10 @@ body.public.panel-collapsed .drawer-body { display: none; }
   .panel-handle { display: none; }
   body.public.panel-collapsed .drawer-body { display: block; }
   .panel { padding: 16px 20px 32px; }
+}
+
+@media (max-width: 899px) {
+  body.public .leaflet-bottom { bottom: 22px; }
 }
 
 /* ---- Recherche ---- */
@@ -576,6 +590,15 @@ body.public.panel-collapsed .drawer-body { display: none; }
 .labels-compact .sector-label-icon .sector-name { display: none; }
 .labels-compact .sector-label-icon .sector-tag { padding: 2px; }
 
+/* ---- Bulle d'adresse : « Y aller » ---- */
+.place-popup { display: flex; flex-direction: column; gap: 6px; min-width: 190px; }
+.place-popup strong { font-size: 15px; line-height: 1.3; }
+.place-detail { color: var(--muted); font-size: 13px; margin-top: -4px; }
+.leaflet-container .place-popup a.nav-go { color: #fff; margin-top: 4px; min-height: 40px; font-size: 14px; }
+.place-popup .nav-go .ico { width: 16px; height: 16px; }
+.nav-alt { font-size: 12px; color: var(--muted); text-align: center; }
+.leaflet-container .nav-alt a { color: var(--link); font-weight: 600; text-decoration: none; }
+
 /* ---- « Où suis-je » ---- */
 .where-chip {
   background: rgba(255, 255, 255, 0.96);
@@ -598,7 +621,7 @@ body.public.panel-collapsed .drawer-body { display: none; }
   body.public .topbar, body.public .panel-handle, body.public .search, body.public .sector-bar,
   body.public .print-link, body.public .leaflet-control-container, body.public #suivi-block,
   body.public #toast { display: none !important; }
-  body.public .public-main, body.public .drawer { display: block; margin: 0; box-shadow: none; max-height: none; width: auto; }
+  body.public .public-main, body.public .drawer { display: block; margin: 0; box-shadow: none; max-height: none; height: auto !important; width: auto; }
   body.public.panel-collapsed .drawer-body, body.public .drawer-body { display: block; overflow: visible; }
   body.public #map { width: 100% !important; height: 150mm !important; break-inside: avoid; }
   body.public .sector-button { break-inside: avoid; }
@@ -841,3 +864,52 @@ body.plan-landscape .resume-columns { columns: 3; }
 .setting-year { align-items: center; justify-content: space-between; font-weight: 600; cursor: default; }
 .setting-year input { width: 88px; height: auto; margin: 0; padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: 15px; font-weight: 600; text-align: center; }
 .setting-year input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+
+/* ---- Installer l'application ---- */
+.install-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 14px;
+  padding: 10px 8px 10px 10px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #fff5f5, #eef3ff);
+  border: 1px solid #f1e3e6;
+}
+.install-card img { border-radius: 11px; flex-shrink: 0; box-shadow: var(--shadow-sm); }
+.install-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; line-height: 1.25; }
+.install-text strong { font-size: 14px; }
+.install-text span { font-size: 12px; color: var(--muted); }
+.install-card .btn { flex-shrink: 0; }
+.install-close {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+.install-close .ico { width: 16px; height: 16px; }
+.install-close:hover { background: rgba(15, 23, 42, 0.06); }
+
+.install-dialog {
+  width: min(92vw, 400px);
+  border: none;
+  border-radius: var(--radius-lg);
+  padding: 22px 22px 18px;
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+.install-dialog::backdrop { background: rgba(15, 23, 42, 0.45); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+.install-dialog img { width: auto; height: 60px; }
+.install-dialog h3 { margin: 8px 0 12px; font-size: 18px; }
+.install-dialog ol { text-align: left; margin: 0 0 16px; padding-left: 22px; font-size: 15px; line-height: 1.55; }
+.install-dialog li { margin-bottom: 8px; }
+.install-dialog .btn { width: 100%; }
+.inline-ico { width: 17px; height: 17px; vertical-align: -3px; color: #2563eb; }
