@@ -24,6 +24,20 @@
 
     <form id="plan-options" class="plan-options" hidden>
       <fieldset>
+        <legend>Mise en page</legend>
+        <label class="opt-strong"><input type="checkbox" id="opt-pleinePage" /> Carte seule, en pleine page</label>
+        <p class="hint opt-help">Ni titre, ni texte, ni sources : uniquement la carte, sur toute la feuille.</p>
+        <label class="opt-sub"><input type="checkbox" id="opt-entete" /> En-tête (logo, titre)</label>
+        <label class="opt-sub"><input type="checkbox" id="opt-qr" /> QR code</label>
+        <label class="opt-sub"><input type="checkbox" id="opt-pied" /> Sources en bas de page</label>
+        <label>Orientation
+          <select id="opt-orientation">
+            <option value="portrait">portrait</option>
+            <option value="landscape">paysage</option>
+          </select>
+        </label>
+      </fieldset>
+      <fieldset>
         <legend>Sur la carte</legend>
         <label class="only-sector">Autour du secteur
           <select id="opt-outside">
@@ -51,21 +65,14 @@
         </label>
         <label><input type="checkbox" id="opt-contour" /> Limite de commune</label>
       </fieldset>
-      <fieldset>
-        <legend>Sur la feuille</legend>
+      <fieldset id="fs-feuille">
+        <legend>Sous la carte</legend>
         <label class="only-sector"><input type="checkbox" id="opt-equipe" /> Équipe (responsable, équipiers, date)</label>
         <label class="only-sector"><input type="checkbox" id="opt-limite" /> Description de la limite</label>
         <label class="only-sector"><input type="checkbox" id="opt-resume" /> Hameaux et rues du secteur</label>
         <label class="only-sector"><input type="checkbox" id="opt-adresses" /> Liste de toutes les adresses</label>
         <label class="only-overview"><input type="checkbox" id="opt-legend" /> Tableau des secteurs</label>
         <label class="only-overview"><input type="checkbox" id="opt-equipes" /> Équipes dans le tableau</label>
-        <label><input type="checkbox" id="opt-qr" /> QR code</label>
-        <label>Orientation
-          <select id="opt-orientation">
-            <option value="portrait">portrait</option>
-            <option value="landscape">paysage</option>
-          </select>
-        </label>
       </fieldset>
       <p class="hint">Les choix sont mémorisés. Vous pouvez aussi déplacer/zoomer la carte avant d'imprimer ;
         <button id="btn-refit" class="link-btn" type="button">recadrer</button>.</p>
@@ -113,7 +120,7 @@
       <div id="plan-adresses" class="adresses-columns"></div>
     </section>
 
-    <p class="sheet-footer">Fond de carte © contributeurs OpenStreetMap / IGN · adresses : Base Adresse Nationale · <span id="plan-date"></span></p>
+    <p id="plan-footer" class="sheet-footer">Fond de carte © contributeurs OpenStreetMap / IGN · adresses : Base Adresse Nationale · <span id="plan-date"></span></p>
   </article>
 
   <div id="toast" class="toast" hidden></div>

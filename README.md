@@ -100,7 +100,12 @@ sur Courzieu et Brussieu (69690).
     des adresses par voie ; pour l'ensemble, tableau des secteurs et
     étiquettes (code et nom, code seul, aucune). Sans détail, la carte prend
     toute la page ;
-  - QR code oui / non, orientation **portrait ou paysage**.
+  - **Carte seule, en pleine page** : ni titre, ni texte, ni tableau, ni
+    sources ; uniquement la carte sur toute la feuille (marges de 6 mm), en
+    portrait ou en paysage, toujours sur une seule page ;
+  - sinon, au choix : en-tête (logo, titre), QR code, sources en bas de page,
+    orientation **portrait ou paysage**. Quand rien n'est imprimé sous la carte,
+    elle s'agrandit pour remplir la page.
   « ⬇ Télécharger en PDF » ouvre la fenêtre d'impression : choisir
   « Enregistrer au format PDF ».
   - une **recherche** d'adresse, de rue ou de hameau qui ouvre le bon secteur ;

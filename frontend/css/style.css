@@ -827,8 +827,16 @@ body.plan-landscape .sheet { width: calc(277mm + 16mm); }
 #plan-map { width: 100%; height: 150mm; border: 1px solid var(--border); border-radius: 6px; background: #fff; }
 body.plan-overview #plan-map { height: 175mm; }
 /* sans le détail, la carte prend toute la page */
-body.plan-no-detail #plan-map { height: 228mm; }
+body.plan-no-detail #plan-map { height: var(--map-h, 228mm); }
 body.plan-landscape #plan-map { height: 148mm; }
+body.plan-landscape.plan-no-detail #plan-map { height: var(--map-h, 160mm); }
+/* carte seule : marges de 6 mm, la feuille fait toute la largeur utile */
+body.plan-map-only .sheet { width: calc(198mm + 16mm); }
+body.plan-map-only.plan-landscape .sheet { width: calc(285mm + 16mm); }
+.plan-options .opt-strong { font-weight: 700; }
+.plan-options .opt-help { margin: 0 0 2px 25px; }
+.plan-options .opt-sub { padding-left: 2px; }
+.plan-options fieldset:disabled, .plan-options label:has(input:disabled) { opacity: 0.45; }
 .sheet-section { margin-top: 5mm; break-inside: avoid-page; }
 .sheet-section h2 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 0 0 6px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
 #plan-adresses-block { break-inside: auto; }
@@ -846,11 +854,14 @@ body.plan-landscape .resume-columns { columns: 3; }
 .sheet-qr figcaption { font-size: 9px; color: var(--muted); line-height: 1.2; margin-top: 2px; }
 
 @media print {
-  body.plan { background: #fff; }
+  html, body.plan { background: #fff; }
   .no-print, .leaflet-control-zoom, .leaflet-control-attribution, #toast { display: none !important; }
   .leaflet-control-layers { display: none !important; }
-  .sheet, body.plan-landscape .sheet { width: auto; max-width: none; margin: 0; padding: 0; box-shadow: none; border-radius: 0; }
+  .sheet, body.plan-landscape .sheet, body.plan-map-only .sheet, body.plan-map-only.plan-landscape .sheet {
+    width: auto; max-width: none; margin: 0; padding: 0; box-shadow: none; border-radius: 0;
+  }
   #plan-map { border-radius: 0; }
+  body.plan-map-only #plan-map { border: none; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 

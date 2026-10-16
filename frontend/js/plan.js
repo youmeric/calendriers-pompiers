@@ -10,11 +10,13 @@
   const DEFAULTS = {
     secteur: {
       outside: "blanc", houses: true, others: false, contour: false,
-      equipe: true, limite: true, resume: true, adresses: false, qr: true, orientation: "portrait",
+      equipe: true, limite: true, resume: true, adresses: false,
+      pleinePage: false, entete: true, qr: true, pied: true, orientation: "portrait",
     },
     ensemble: {
       outsideAll: "blanc", houses: false, labels: "noms", contour: true,
-      legend: true, equipes: true, qr: true, orientation: "portrait",
+      legend: true, equipes: true,
+      pleinePage: false, entete: true, qr: true, pied: true, orientation: "portrait",
     },
   };
   const MASKS = {
@@ -128,29 +130,58 @@
 
   function applyOptions() {
     const sector = mode === "secteur";
+    const full = opts.pleinePage; // carte seule : rien d'autre sur la feuille
     show("contour", opts.contour);
     show("houses", opts.houses);
     if (sector) {
       buildMask(groups.mask, ctx.polys, MASKS[opts.outside]);
       show("others", opts.others);
-      $("plan-equipe-block").hidden = !opts.equipe || !ctx.hasEquipe;
-      $("plan-limite-block").hidden = !opts.limite;
-      $("plan-resume-block").hidden = !opts.resume;
-      $("plan-adresses-block").hidden = !opts.adresses;
+      $("plan-equipe-block").hidden = full || !opts.equipe || !ctx.hasEquipe;
+      $("plan-limite-block").hidden = full || !opts.limite;
+      $("plan-resume-block").hidden = full || !opts.resume;
+      $("plan-adresses-block").hidden = full || !opts.adresses;
     } else {
       buildMask(groups.mask, ctx.communeRings, MASKS[opts.outsideAll]);
       show("labels", opts.labels !== "aucune");
       map.getContainer().classList.toggle("labels-compact", opts.labels === "codes");
-      $("plan-legend").hidden = !opts.legend;
+      $("plan-legend").hidden = full || !opts.legend;
       document.body.classList.toggle("plan-team-col", opts.equipes && ctx.hasEquipe);
     }
     $("plan-qr").closest("figure").hidden = !opts.qr || !ctx.qrOk;
+    const header = !full && (opts.entete || (opts.qr && ctx.qrOk));
+    document.querySelector(".sheet-header").hidden = !header;
+    document.querySelector(".sheet-logo").hidden = !opts.entete;
+    document.querySelector(".sheet-heading").hidden = !opts.entete;
+    $("plan-footer").hidden = full || !opts.pied;
+    // en carte seule, les autres réglages de la feuille sont sans effet
+    $("fs-feuille").disabled = full;
+    document.querySelectorAll(".opt-sub input").forEach((input) => { input.disabled = full; });
 
-    const detail = sector ? ((opts.equipe && ctx.hasEquipe) || opts.limite || opts.resume || opts.adresses) : opts.legend;
+    const detail = !full && (sector ? ((opts.equipe && ctx.hasEquipe) || opts.limite || opts.resume || opts.adresses) : opts.legend);
     document.body.classList.toggle("plan-no-detail", !detail);
+    document.body.classList.toggle("plan-no-header", !header);
+    document.body.classList.toggle("plan-map-only", full);
     document.body.classList.toggle("plan-landscape", opts.orientation === "landscape");
-    $("page-size").textContent = `@page { size: A4 ${opts.orientation}; margin: 10mm; }`;
+    $("page-size").textContent = `@page { size: A4 ${opts.orientation}; margin: ${full ? 6 : 10}mm; }`;
+    sizeMap();
     refit();
+  }
+
+  /** Sans rien sous la carte, elle prend toute la hauteur restante de la page :
+      hauteur utile de la feuille moins ce qui est réellement imprimé autour (en-tête, sources). */
+  function sizeMap() {
+    const sheet = document.querySelector(".sheet");
+    if (!document.body.classList.contains("plan-no-detail")) {
+      sheet.style.removeProperty("--map-h");
+      return;
+    }
+    const MM = 96 / 25.4; // px CSS par mm
+    const pageH = (opts.orientation === "landscape" ? 210 : 297) - 2 * (opts.pleinePage ? 6 : 10);
+    const style = getComputedStyle(sheet);
+    const inner = sheet.getBoundingClientRect().height - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+    const around = (inner - $("plan-map").getBoundingClientRect().height) / MM;
+    const h = Math.max(80, pageH - around - 3); // 3 mm de marge : jamais de seconde page
+    sheet.style.setProperty("--map-h", `${h.toFixed(1)}mm`);
   }
 
   function refit() {
@@ -344,7 +375,7 @@
 
     bindOptions();
     applyOptions();
-    window.addEventListener("beforeprint", refit);
+    window.addEventListener("beforeprint", () => { sizeMap(); refit(); });
   }
 
   function renderQr(url) {
