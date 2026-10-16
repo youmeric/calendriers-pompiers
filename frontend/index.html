@@ -53,7 +53,7 @@
           </div>
           <div class="search">
             <svg class="ico search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
-            <input id="search" type="search" autocomplete="off" placeholder="Adresse, rue, hameau…" aria-label="Rechercher une adresse, une rue ou un hameau" />
+            <input id="search" type="search" autocomplete="off" placeholder="Adresse, rue, hameau, nom…" aria-label="Rechercher une adresse, une rue, un hameau ou une personne" />
             <div id="search-results" class="search-results" hidden></div>
           </div>
           <h2 class="panel-title">Choisissez votre secteur</h2>
@@ -85,6 +85,11 @@
           </div>
           <h2 class="sector-heading"><b id="sector-code" class="sector-code"></b><span id="sector-name"></span></h2>
           <p id="sector-summary" class="hint"></p>
+
+          <section id="equipe-card" class="info-card equipe-card" hidden>
+            <h3>Équipe</h3>
+            <div id="sector-equipe"></div>
+          </section>
 
           <section class="info-card">
             <h3>Où s'arrête le secteur</h3>

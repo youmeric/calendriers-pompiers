@@ -39,6 +39,15 @@
     </form>
   </section>
 
+  <nav id="admin-tabs" class="admin-tabs" hidden aria-label="Rubriques">
+    <a href="#secteurs" class="admin-tab" data-tab="secteurs">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></svg>Secteurs
+    </a>
+    <a href="#equipes" class="admin-tab" data-tab="equipes">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5" /><circle cx="17" cy="9" r="2.6" /><path d="M16.5 14.6c2.6.2 4.4 1.8 5 4.4" /></svg>Équipes
+    </a>
+  </nav>
+
   <main id="editor-view" class="editor" hidden>
     <div class="map-wrap">
       <section id="admin-map" aria-label="Carte d'édition des secteurs"></section>
@@ -139,6 +148,66 @@
     </aside>
   </main>
 
+  <!-- Équipes : qui fait quel secteur -->
+  <main id="teams-view" class="teams" hidden>
+    <header class="teams-head">
+      <div>
+        <h2 id="teams-title">Équipes de la tournée</h2>
+        <p id="teams-summary" class="hint"></p>
+      </div>
+      <div class="teams-actions">
+        <span id="teams-saved" class="saved-badge" hidden>Enregistré ✓</span>
+        <a class="btn" href="plan.html#/" target="_blank" rel="noopener">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6" /><rect x="3" y="9" width="18" height="8" rx="2" /><path d="M7 14h10v7H7z" /></svg>Imprimer le tableau
+        </a>
+        <button id="teams-export" class="btn" type="button">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5" /><path d="M5 21h14" /></svg>Exporter (Excel)
+        </button>
+      </div>
+    </header>
+
+    <div id="teams-alerts" class="warnings"></div>
+
+    <div class="teams-grid">
+      <aside class="people-panel">
+        <h3 class="people-title">Personnes <span id="people-count" class="count-pill">0</span></h3>
+        <form id="person-form" class="person-form">
+          <input id="person-name" type="text" placeholder="Prénom Nom" maxlength="80" autocomplete="off" required aria-label="Nom de la personne" />
+          <input id="person-tel" type="tel" placeholder="Téléphone (facultatif)" maxlength="30" autocomplete="off" aria-label="Téléphone" />
+          <button class="btn primary" type="submit">Ajouter</button>
+        </form>
+        <details class="bulk">
+          <summary>Ajouter toute une liste d'un coup</summary>
+          <textarea id="bulk-names" rows="6" placeholder="Une personne par ligne, téléphone après un point-virgule :&#10;Jean Dupont ; 06 12 34 56 78&#10;Marie Curie"></textarea>
+          <button id="bulk-add" class="btn" type="button">Ajouter la liste</button>
+        </details>
+        <div class="people-tools">
+          <input id="people-filter" type="search" placeholder="Filtrer les noms…" aria-label="Filtrer les personnes" />
+          <label class="mini-toggle"><input type="checkbox" id="people-free" /> Sans secteur</label>
+        </div>
+        <ul id="people-list" class="people-list"></ul>
+        <p class="hint">Sur ordinateur, <b>glissez une personne</b> sur la zone « Responsable » ou « Équipiers » d'un secteur. Partout, le bouton <b>+ Ajouter</b> de chaque secteur fait la même chose.</p>
+      </aside>
+
+      <section class="team-board">
+        <div id="team-cards" class="team-cards"></div>
+
+        <section class="settings-card">
+          <h3 class="panel-title">Sur le site public</h3>
+          <label class="setting-row">
+            <input type="checkbox" id="equipes-public" />
+            <span>Afficher les équipes (responsable, équipiers, date, avancement) sur chaque secteur</span>
+          </label>
+          <label class="setting-row">
+            <input type="checkbox" id="telephones-public" />
+            <span>Afficher aussi les numéros de téléphone (le site est accessible à toute personne qui a le lien)</span>
+          </label>
+          <p class="hint">Les numéros restent toujours visibles ici et sur les plans imprimés depuis l'admin.</p>
+        </section>
+      </section>
+    </div>
+  </main>
+
   <div id="toast" class="toast" hidden></div>
 
   <script src="vendor/leaflet/leaflet.js"></script>
@@ -146,6 +215,7 @@
   <script src="vendor/turf/turf.min.js"></script>
   <script src="js/common.js?v=__V__"></script>
   <script src="js/geometry.js?v=__V__"></script>
+  <script src="js/equipes.js?v=__V__"></script>
   <script src="js/admin.js?v=__V__"></script>
 </body>
 </html>

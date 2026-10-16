@@ -16,7 +16,8 @@ from fastapi.staticfiles import StaticFiles
 from . import auth, db
 from .geo import point_in_polys
 from .limits import RoadIndex, describe_limit_polys
-from .models import ExclusionIn, LoginIn, SectorsIn, SettingsIn, StatusUpdate
+from .models import (EquipeIn, ExclusionIn, LoginIn, PersonneIn, PersonnesIn, SectorsIn, SettingsIn,
+                     StatusUpdate)
 from .resume import build_resume, commune_voie_counts
 
 DATA_DIR = Path(os.environ.get("SECTORS_DATA_DIR") or (Path(__file__).resolve().parent / "data"))
@@ -142,6 +143,32 @@ def _suivi_enabled() -> bool:
 
 # ---- API publique --------------------------------------------------------------
 
+def _flag(key: str, default: bool) -> bool:
+    return db.get_setting(key, "1" if default else "0") == "1"
+
+
+def _public_teams() -> dict[int, dict]:
+    """Équipes telles que montrées au public (sans téléphone sauf si l'admin l'a permis)."""
+    if not _flag("equipes_public", True):
+        return {}
+    with_tel = _flag("telephones_public", False)
+    people = {p["id"]: p for p in db.list_personnes()}
+    out = {}
+    for sector_id, team in db.get_teams().items():
+        view = {k: team[k] for k in ("date", "creneau", "statut", "note")}
+        view["responsables"], view["equipiers"] = [], []
+        for m in team["membres"]:
+            p = people.get(m["personne_id"])
+            if not p:
+                continue
+            item = {"id": p["id"], "nom": p["nom"]}
+            if with_tel and p["telephone"]:
+                item["telephone"] = p["telephone"]
+            view["responsables" if m["role"] == "responsable" else "equipiers"].append(item)
+        out[sector_id] = view
+    return out
+
+
 def _annee() -> int:
     """Année de la tournée : réglée dans l'admin, sinon l'année des calendriers
     distribués à cette saison (à partir de juillet, ceux de l'année suivante)."""
@@ -171,6 +198,7 @@ def get_commune(slug: str):
     addresses_all = _active_addresses(slug, data)
     voie_counts = commune_voie_counts(addresses_all)
     by_sector, outside = _assign(addresses_all, sectors)
+    teams = _public_teams() if _flag("equipes_public", True) else None
 
     out = []
     for s in sectors:
@@ -186,6 +214,9 @@ def get_commune(slug: str):
         sector = {**s, "addresses": addresses, "resume": build_resume(mine, voie_counts)}
         if suivi:
             sector["counts"] = counts
+        if teams is not None:
+            sector["equipe"] = teams.get(s["id"]) or {
+                "date": "", "creneau": "", "statut": "a_faire", "note": "", "responsables": [], "equipiers": []}
         out.append(sector)
 
     commune = data["commune"]
@@ -237,7 +268,8 @@ def me():
 
 @app.get("/api/admin/settings", dependencies=[Depends(auth.require_admin)])
 def admin_get_settings():
-    return {"suivi_adresses": _suivi_enabled(), "annee": _annee()}
+    return {"suivi_adresses": _suivi_enabled(), "annee": _annee(),
+            "equipes_public": _flag("equipes_public", True), "telephones_public": _flag("telephones_public", False)}
 
 
 @app.put("/api/admin/settings", dependencies=[Depends(auth.require_admin)])
@@ -246,7 +278,55 @@ def admin_save_settings(payload: SettingsIn):
         db.set_setting("suivi_adresses", "1" if payload.suivi_adresses else "0")
     if payload.annee is not None:
         db.set_setting("annee", str(payload.annee))
+    for key in ("equipes_public", "telephones_public"):
+        value = getattr(payload, key)
+        if value is not None:
+            db.set_setting(key, "1" if value else "0")
     return admin_get_settings()
+
+
+# ---- Équipes ---------------------------------------------------------------------
+
+@app.get("/api/admin/equipes", dependencies=[Depends(auth.require_admin)])
+def admin_get_equipes():
+    sector_ids = db.existing_sector_ids()
+    teams = {sid: t for sid, t in db.get_teams().items() if sid in sector_ids}
+    return {"personnes": db.list_personnes(), "equipes": teams}
+
+
+@app.post("/api/admin/personnes", dependencies=[Depends(auth.require_admin)])
+def admin_add_personnes(payload: PersonnesIn):
+    if len(db.list_personnes()) + len(payload.personnes) > 500:
+        raise HTTPException(status_code=422, detail="Trop de personnes (500 au maximum)")
+    return {"personnes": db.add_personnes([p.model_dump() for p in payload.personnes])}
+
+
+@app.put("/api/admin/personnes/{personne_id}", dependencies=[Depends(auth.require_admin)])
+def admin_update_personne(personne_id: int, payload: PersonneIn):
+    person = db.update_personne(personne_id, payload.nom, payload.telephone)
+    if person is None:
+        raise HTTPException(status_code=404, detail="Personne inconnue")
+    return person
+
+
+@app.delete("/api/admin/personnes/{personne_id}", dependencies=[Depends(auth.require_admin)])
+def admin_delete_personne(personne_id: int):
+    if not db.delete_personne(personne_id):
+        raise HTTPException(status_code=404, detail="Personne inconnue")
+    return {"ok": True}
+
+
+@app.put("/api/admin/secteurs/{sector_id}/equipe", dependencies=[Depends(auth.require_admin)])
+def admin_set_equipe(sector_id: int, payload: EquipeIn):
+    if sector_id not in db.existing_sector_ids():
+        raise HTTPException(status_code=404, detail="Secteur inconnu (a-t-il été supprimé ?)")
+    known = {p["id"] for p in db.list_personnes()}
+    unknown = [m.personne_id for m in payload.membres if m.personne_id not in known]
+    if unknown:
+        raise HTTPException(status_code=404, detail="Personne inconnue dans l'équipe")
+    plan = payload.model_dump(exclude={"membres"})
+    db.set_team(sector_id, plan, [m.model_dump() for m in payload.membres])
+    return db.get_teams().get(sector_id)
 
 
 @app.get("/api/admin/communes/{slug}", dependencies=[Depends(auth.require_admin)])

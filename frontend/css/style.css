@@ -35,6 +35,7 @@
   --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.16);
   --ring: 0 0 0 3px rgba(229, 56, 59, 0.22);
   --header-h: 60px;
+  --tabs-h: 48px;
   color-scheme: light;
 }
 
@@ -709,7 +710,7 @@ body.public.panel-collapsed .drawer-body { display: none; }
 .sector-edit-limite { font-size: 12px; margin: 0 0 8px; line-height: 1.45; }
 
 @media (min-width: 900px) {
-  .editor { flex-direction: row; height: calc(100vh - var(--header-h)); }
+  .editor { flex-direction: row; height: calc(100vh - var(--header-h) - var(--tabs-h)); }
   #admin-map { flex: 1; height: 100%; }
   #admin-panel { width: 410px; flex-shrink: 0; overflow-y: auto; border-left: 1px solid var(--border); }
   .map-wrap { flex: 1; height: 100%; }
@@ -913,3 +914,318 @@ body.plan-landscape .resume-columns { columns: 3; }
 .install-dialog li { margin-bottom: 8px; }
 .install-dialog .btn { width: 100%; }
 .inline-ico { width: 17px; height: 17px; vertical-align: -3px; color: #2563eb; }
+
+/* ================================ Admin : onglets ================================ */
+.admin-tabs {
+  position: sticky;
+  top: calc(var(--header-h) + env(safe-area-inset-top));
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--tabs-h);
+  padding: 0 14px;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+}
+.admin-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+}
+.admin-tab:hover { background: var(--surface-2); color: var(--text); }
+.admin-tab.active { background: var(--accent-soft); color: var(--accent-dark); }
+
+/* ================================ Admin : équipes ================================ */
+.teams { padding: 18px 16px 40px; max-width: 1440px; margin: 0 auto; }
+.teams-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.teams-head h2 { margin: 0; font-size: 22px; font-weight: 750; }
+.teams-head .hint { margin: 4px 0 0; }
+.teams-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.saved-badge { font-size: 13px; font-weight: 600; color: var(--fait); }
+.saved-badge.pop { animation: saved-pop 1.8s ease forwards; }
+@keyframes saved-pop { 0% { opacity: 0; } 10%, 70% { opacity: 1; } 100% { opacity: 0; } }
+
+.teams-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 8px; }
+@media (min-width: 900px) {
+  .teams-grid { grid-template-columns: 340px minmax(0, 1fr); align-items: start; }
+  .people-panel {
+    position: sticky;
+    top: calc(var(--header-h) + var(--tabs-h) + 14px);
+    max-height: calc(100vh - var(--header-h) - var(--tabs-h) - 28px);
+    overflow-y: auto;
+  }
+}
+
+/* personnes */
+.people-panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 14px; }
+.people-title { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 16px; }
+.count-pill { font-size: 12px; font-weight: 700; color: var(--muted); background: var(--surface-2); border-radius: 999px; padding: 1px 9px; }
+.person-form { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
+.person-form #person-name { grid-column: 1 / -1; }
+.person-form input, .person-edit input, .people-tools input[type="search"], .bulk textarea {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 14px;
+}
+.person-form input:focus, .person-edit input:focus, .people-tools input:focus, .bulk textarea:focus,
+.team-note:focus, .team-when input:focus, .team-when select:focus {
+  outline: none;
+  background: #fff;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+.person-form .btn { min-height: 40px; }
+.bulk { margin: 8px 0 4px; font-size: 13px; }
+.bulk summary { cursor: pointer; color: var(--link); font-weight: 600; padding: 4px 0; }
+.bulk textarea { margin: 6px 0; resize: vertical; font-family: inherit; }
+.bulk .btn { width: 100%; }
+.people-tools { display: flex; align-items: center; gap: 8px; margin: 10px 0 6px; }
+.people-tools input[type="search"] { flex: 1; min-width: 0; }
+.mini-toggle { display: flex; align-items: center; gap: 5px; font-size: 13px; white-space: nowrap; color: var(--muted); }
+.mini-toggle input { accent-color: var(--accent); }
+
+.people-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.person-row { display: flex; align-items: center; gap: 10px; padding: 7px 6px 7px 8px; border-radius: 12px; cursor: grab; }
+.person-row:hover { background: var(--surface-2); }
+.person-row.editing { cursor: default; background: var(--surface-2); }
+.person-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.person-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.person-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+.person-sub a { color: var(--link); text-decoration: none; }
+.hint-inline { color: #94a3b8; }
+.assign-tags { display: inline-flex; flex-wrap: wrap; gap: 3px; }
+.assign-tag {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 0 6px;
+  border-radius: 6px;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 12%, white);
+  border: 1px solid color-mix(in srgb, var(--c) 35%, white);
+}
+.assign-tag.lead { color: #fff; background: var(--c); border-color: var(--c); }
+.free-tag { font-size: 11px; font-weight: 700; color: #92400e; background: #fef3c7; border-radius: 6px; padding: 0 6px; }
+.person-actions { display: flex; gap: 2px; opacity: 0.55; transition: opacity 0.15s; }
+.person-row:hover .person-actions, .person-row:focus-within .person-actions { opacity: 1; }
+@media (hover: none) { .person-actions { opacity: 1; } }
+.person-edit { display: grid; grid-template-columns: 1fr; gap: 6px; width: 100%; }
+.person-edit-actions { display: flex; gap: 6px; }
+.people-empty { padding: 14px 8px; color: var(--muted); font-size: 13px; text-align: center; }
+.people-panel > .hint { margin-top: 12px; }
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.avatar.sm { width: 26px; height: 26px; font-size: 10.5px; }
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.icon-btn .ico { width: 16px; height: 16px; }
+.icon-btn:hover { background: #fff; color: var(--text); }
+.icon-btn.danger:hover { background: #fef2f2; color: var(--refus); }
+
+/* fiches des secteurs */
+.team-board { min-width: 0; }
+.team-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; align-items: start; }
+.team-commune { grid-column: 1 / -1; margin: 6px 0 -6px; }
+.team-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--c);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+}
+.team-card.statut-termine { background: #fbfefc; }
+.team-card-head { display: flex; align-items: center; gap: 10px; }
+.team-card-head .sector-code { height: 32px; min-width: 40px; font-size: 14px; border-radius: 10px; }
+.team-card-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.team-card-name { font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-card-meta { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.statut-select {
+  appearance: none;
+  -webkit-appearance: none;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 999px;
+  padding: 5px 24px 5px 11px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--surface-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 8px center / 11px;
+  color: var(--muted);
+}
+.statut-select.statut-en_cours { background-color: #fef3c7; color: #92400e; }
+.statut-select.statut-termine { background-color: #dcfce7; color: #166534; }
+
+.team-when { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.team-when label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.team-when input, .team-when select {
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text);
+}
+
+.role-zone {
+  padding: 8px;
+  border: 1.5px dashed transparent;
+  border-radius: 12px;
+  background: var(--bg);
+  transition: border-color 0.15s, background 0.15s;
+}
+.teams.dragging .role-zone { border-color: var(--border-strong); }
+.role-zone.drop-over { border-color: var(--c) !important; background: color-mix(in srgb, var(--c) 9%, white); }
+.role-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+.role-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+.role-zone[data-role="responsable"] .role-label { color: #b45309; }
+.role-count { font-size: 11px; background: #fff; border-radius: 999px; padding: 0 6px; margin-left: 2px; }
+.add-member {
+  max-width: 58%;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--link);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 30px; }
+.drop-hint { font-size: 12px; font-style: italic; color: #94a3b8; }
+.member-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 2px 3px 2px 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: grab;
+}
+.member-chip.lead { border-color: #fbbf24; background: #fffbeb; }
+.member-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 2px; }
+.member-tel { display: inline-flex; color: var(--fait); padding: 2px; }
+.member-tel .ico { width: 14px; height: 14px; }
+.chip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.chip-btn:hover { background: var(--surface-2); color: var(--text); }
+.member-chip.lead .chip-btn[data-action="role"] { color: #f59e0b; }
+.team-note {
+  width: 100%;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  font: inherit;
+  font-size: 13px;
+}
+.team-warn { margin: 0; font-size: 12px; font-weight: 600; color: #b45309; }
+.team-board .settings-card { margin-top: 18px; }
+
+/* ================================ Équipes : site public ================================ */
+.statut-pill {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.statut-pill.statut-en_cours { background: #fef3c7; color: #92400e; }
+.statut-pill.statut-termine { background: #dcfce7; color: #166534; }
+.statut-pill.statut-termine::before { content: "✓ "; }
+.team-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 3px; font-size: 12px; font-weight: 600; color: var(--text); }
+
+.equipe-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+.equipe-date { font-size: 15px; font-weight: 700; }
+.equipe-date::first-letter { text-transform: uppercase; }
+.equipe-date.muted { color: var(--muted); font-weight: 600; font-size: 14px; }
+.equipe-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px 12px; }
+.equipe-member { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.equipe-who { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.equipe-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.equipe-role { font-size: 11px; font-weight: 700; color: #b45309; text-transform: uppercase; letter-spacing: 0.05em; }
+.equipe-member.lead .avatar { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #fbbf24; }
+.equipe-tel { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--link); text-decoration: none; white-space: nowrap; }
+.equipe-note { margin: 10px 0 0; padding: 8px 10px; border-radius: 10px; background: #fff; font-size: 13px; line-height: 1.45; border-left: 3px solid var(--accent); }
+.info-card.equipe-card { background: linear-gradient(135deg, #fff7ed, #f6f7f9 60%); }
+
+/* ---- Équipes sur les plans imprimés ---- */
+.col-equipe { display: none; }
+body.plan-team-col .col-equipe { display: table-cell; }
+body.plan-team-col .col-hameaux { display: none; }
+.col-equipe { width: 42%; }
+.team-cell-tel { white-space: nowrap; color: var(--muted); font-weight: 500; }
+.team-cell { display: flex; flex-direction: column; gap: 2px; font-size: 12px; line-height: 1.35; }
+.team-cell .statut-pill { align-self: flex-start; }
+.team-cell-date { font-weight: 700; }
+.team-cell-date::first-letter { text-transform: uppercase; }
+#plan-equipe .equipe-list { grid-template-columns: repeat(3, 1fr); }
+#plan-equipe .equipe-note { background: #f6f7f9; }
+@media print {
+  #plan-equipe .equipe-tel { color: var(--text); }
+}

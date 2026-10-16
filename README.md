@@ -42,6 +42,29 @@ sur Courzieu et Brussieu (69690).
   apparaît dans l'en-tête, sur la connexion admin, sur les plans imprimés et
   comme icône de l'application. Pour le remplacer, changer
   `frontend/img/logo-courzieu.png` (et les icônes de `frontend/icons/`).
+- **Équipes (admin, onglet « Équipes »)** : qui fait quel secteur.
+  - **Personnes** : la liste des membres de la caserne (nom, téléphone
+    facultatif), à saisir un par un ou en collant toute une liste
+    (« Nom ; téléphone », une personne par ligne).
+  - **Une fiche par secteur** (des deux communes) : **responsable(s)** ★ puis
+    **équipiers**, **date** et **créneau** (journée, matin, après-midi, soir),
+    **avancement** (à faire / en cours / terminé) et **consignes** (rendez-vous,
+    clés, véhicule…). On place les personnes avec « + Ajouter », ou en les
+    **glissant** depuis la liste sur ordinateur (on peut aussi glisser une
+    personne d'un secteur à l'autre) ; ☆ nomme responsable, × retire.
+  - **Alertes** : secteur sans responsable, secteur sans personne, une même
+    personne prévue sur deux secteurs le même jour.
+  - Tout est **enregistré aussitôt**. **Exporter (Excel)** donne le tableau
+    complet ; **Imprimer le tableau** sort le plan d'ensemble avec les équipes.
+  - Sur le site public, chaque secteur affiche son équipe (et la liste des
+    secteurs montre le responsable, la date et l'avancement) ; on peut
+    **chercher son nom** pour trouver son secteur. Les **téléphones ne sont pas
+    publiés** sauf si on coche l'option ; ils figurent toujours sur les plans
+    imprimés depuis un navigateur connecté à l'admin. Les équipes peuvent aussi
+    être masquées complètement du site public.
+  - Une équipe reste attachée à son secteur quand on modifie son tracé ; elle
+    disparaît si le secteur est supprimé (ou remplacé par « Importer la
+    proposition automatique »).
 - **Page publique (`/`)**, pensée pour le téléphone : on voit la carte
   entière avec tous les secteurs **des deux communes**, puis on touche **son**
   secteur. La carte
@@ -189,7 +212,7 @@ secteur.
 
 ## Sauvegarde
 
-Tout l'état du site se trouve dans `./data/db/status.db` (secteurs et statuts).
+Tout l'état du site se trouve dans `./data/db/status.db` (secteurs, équipes, réglages et statuts).
 Une copie de ce fichier suffit.
 
 ## Développement local

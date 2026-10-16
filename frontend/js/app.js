@@ -3,7 +3,7 @@
   const {
     escapeHtml, fetchJSON, showToast, labelPoint, renderLimite, renderResume, hameauxPreview,
     toPolys, outerRings, holeRings, addBaseLayers, sectorCode, labelHtml, compactLabelsBelow,
-    pointInPolys, distanceToEdge, formatDistance, normalizeText, tourneeTitle,
+    pointInPolys, distanceToEdge, formatDistance, normalizeText, tourneeTitle, teamLine, renderEquipe, hasTeam,
   } = window.Common;
 
   const STATUS = {
@@ -306,7 +306,7 @@
       <b class="sector-code" style="background:${s.couleur}">${escapeHtml(s.code)}</b>
       <span class="sector-button-text">
         <span class="sector-button-name">${escapeHtml(s.nom)}</span>
-        <span class="sector-button-meta">${meta}</span>${progress}
+        <span class="sector-button-meta">${meta}</span>${teamLine(s.equipe)}${progress}
       </span>
       <svg class="ico chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>`;
     btn.addEventListener("click", () => openSector(slug, s.id));
@@ -369,6 +369,9 @@
     els.print.href = `plan.html#/${encodeURIComponent(slug)}/${sector.id}`;
     renderLimite(els.limite, sector.limite);
     renderResume(els.resume, sector.resume);
+    const equipeCard = document.getElementById("equipe-card");
+    equipeCard.hidden = !hasTeam(sector.equipe);
+    if (!equipeCard.hidden) renderEquipe(document.getElementById("sector-equipe"), sector.equipe);
     els.suiviBlock.hidden = !suivi;
     if (suivi) {
       renderProgress(sector);
@@ -725,14 +728,22 @@
           voies.get(a.nom_voie).push([a.lat, a.lon]);
         }
       }
+      const e = sector.equipe;
+      if (e) {
+        for (const [role, list] of [["Responsable", e.responsables], ["Équipier", e.equipiers]]) {
+          for (const p of list) {
+            index.push({ kind: "personne", label: p.nom, where: `${role} · ${where}`, slug, sector, points: [], norm: normalizeText(p.nom) });
+          }
+        }
+      }
       groups.forEach((points, name) => index.push({ kind: "hameau", label: name, where, slug, sector, points, norm: normalizeText(`${name} ${commune}`) }));
       voies.forEach((points, name) => index.push({ kind: "rue", label: name, where, slug, sector, points, norm: normalizeText(`${name} ${commune}`) }));
     }
     state.searchIndex = index;
   }
 
-  const KIND_ORDER = { hameau: 0, rue: 1, adresse: 2 };
-  const KIND_LABEL = { hameau: "Hameau", rue: "Rue", adresse: "Adresse" };
+  const KIND_ORDER = { personne: 0, hameau: 1, rue: 2, adresse: 3 };
+  const KIND_LABEL = { personne: "Équipe", hameau: "Hameau", rue: "Rue", adresse: "Adresse" };
 
   function runSearch() {
     const tokens = normalizeText(els.search.value).split(" ").filter(Boolean);
@@ -752,7 +763,7 @@
       b.innerHTML = `<span class="search-kind">${KIND_LABEL[r.kind]}</span> <strong>${escapeHtml(r.label)}</strong>
         <span class="search-where"><b class="sector-code" style="background:${r.sector.couleur}">${escapeHtml(r.sector.code)}</b> ${escapeHtml(r.where)}</span>`;
       b.addEventListener("click", () => {
-        state.pendingFocus = { id: r.id, label: r.label, points: r.points };
+        state.pendingFocus = r.points.length ? { id: r.id, label: r.label, points: r.points } : null;
         els.search.value = "";
         els.searchResults.hidden = true;
         openSector(r.slug, r.sector.id);

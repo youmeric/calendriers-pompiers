@@ -10,11 +10,11 @@
   const DEFAULTS = {
     secteur: {
       outside: "blanc", houses: true, others: false, contour: false,
-      limite: true, resume: true, adresses: false, qr: true, orientation: "portrait",
+      equipe: true, limite: true, resume: true, adresses: false, qr: true, orientation: "portrait",
     },
     ensemble: {
       outsideAll: "blanc", houses: false, labels: "noms", contour: true,
-      legend: true, qr: true, orientation: "portrait",
+      legend: true, equipes: true, qr: true, orientation: "portrait",
     },
   };
   const MASKS = {
@@ -133,6 +133,7 @@
     if (sector) {
       buildMask(groups.mask, ctx.polys, MASKS[opts.outside]);
       show("others", opts.others);
+      $("plan-equipe-block").hidden = !opts.equipe || !ctx.hasEquipe;
       $("plan-limite-block").hidden = !opts.limite;
       $("plan-resume-block").hidden = !opts.resume;
       $("plan-adresses-block").hidden = !opts.adresses;
@@ -141,10 +142,11 @@
       show("labels", opts.labels !== "aucune");
       map.getContainer().classList.toggle("labels-compact", opts.labels === "codes");
       $("plan-legend").hidden = !opts.legend;
+      document.body.classList.toggle("plan-team-col", opts.equipes && ctx.hasEquipe);
     }
     $("plan-qr").closest("figure").hidden = !opts.qr || !ctx.qrOk;
 
-    const detail = sector ? (opts.limite || opts.resume || opts.adresses) : opts.legend;
+    const detail = sector ? ((opts.equipe && ctx.hasEquipe) || opts.limite || opts.resume || opts.adresses) : opts.legend;
     document.body.classList.toggle("plan-no-detail", !detail);
     document.body.classList.toggle("plan-landscape", opts.orientation === "landscape");
     $("page-size").textContent = `@page { size: A4 ${opts.orientation}; margin: 10mm; }`;
@@ -177,6 +179,8 @@
     sector.addresses.forEach((a) => houseMarker(a, "#3b4656").addTo(groups.houses));
     fitTarget = outline.getBounds();
 
+    ctx.hasEquipe = window.Common.hasTeam(sector.equipe);
+    if (ctx.hasEquipe) window.Common.renderEquipe($("plan-equipe"), sector.equipe);
     renderLimite($("plan-limite"), sector.limite);
     renderResume($("plan-resume"), sector.resume);
     renderAddresses($("plan-adresses"), sector.addresses);
@@ -192,7 +196,7 @@
     const bounds = L.latLngBounds([]);
     const rows = [];
     for (const d of datas) {
-      if (datas.length > 1) rows.push(`<tr><th colspan="4">${escapeHtml(d.commune.nom)}</th></tr>`);
+      if (datas.length > 1) rows.push(`<tr><th colspan="5">${escapeHtml(d.commune.nom)}</th></tr>`);
       for (const s of d.sectors) {
         const poly = L.polygon(toPolys(s.polygon), {
           color: s.couleur, weight: 3, fillColor: s.couleur, fillOpacity: 0.25, interactive: false, pane: "mainPane",
@@ -204,14 +208,42 @@
           <td><b class="sector-code" style="background:${s.couleur}">${escapeHtml(s.code)}</b></td>
           <td><strong>${escapeHtml(s.nom)}</strong></td>
           <td>${s.addresses.length} adresses</td>
-          <td class="hint">${escapeHtml(hameauxPreview(s.resume, 4))}</td>
+          <td class="hint col-hameaux">${escapeHtml(hameauxPreview(s.resume, 4))}</td>
+          <td class="col-equipe">${teamCell(s.equipe)}</td>
         </tr>`);
+        if (window.Common.hasTeam(s.equipe)) ctx.hasEquipe = true;
       }
     }
     $("plan-legend-body").innerHTML = rows.join("");
     // sans secteur encore défini : on cadre sur les communes
     ctx.communeRings.forEach((p) => p[0] && bounds.extend(p[0]));
     fitTarget = bounds;
+  }
+
+  /** Case « Équipe » du tableau d'ensemble : date, responsable(s), équipiers. */
+  function teamCell(e) {
+    if (!window.Common.hasTeam(e)) return "";
+    const { formatDay, statutPill } = window.Common;
+    const lead = e.responsables.map((p) => `<strong>★ ${escapeHtml(p.nom)}</strong>${p.telephone ? ` <span class="team-cell-tel">${escapeHtml(p.telephone)}</span>` : ""}`).join("<br>");
+    const others = e.equipiers.map((p) => escapeHtml(p.nom)).join(", ");
+    const when = e.date ? `${escapeHtml(formatDay(e.date))}${e.creneau ? ` · ${escapeHtml(e.creneau.toLowerCase())}` : ""}` : "";
+    return `<div class="team-cell">${when ? `<span class="team-cell-date">${when}</span>` : ""}${e.statut !== "a_faire" ? statutPill(e.statut) : ""}${lead ? `<div>${lead}</div>` : ""}${others ? `<div class="hint">${others}</div>` : ""}</div>`;
+  }
+
+  /** Admin connecté : équipes complètes (avec téléphones, même si masquées au public). */
+  async function adminTeams() {
+    try {
+      const resp = await fetch("/api/admin/equipes", { credentials: "same-origin" });
+      if (!resp.ok) return null;
+      return await resp.json();
+    } catch {
+      return null;
+    }
+  }
+
+  function teamFromAdmin(t, people) {
+    const pick = (role) => t.membres.filter((m) => m.role === role).map((m) => people.get(m.personne_id)).filter(Boolean);
+    return { date: t.date, creneau: t.creneau, statut: t.statut, note: t.note, responsables: pick("responsable"), equipiers: pick("equipier") };
   }
 
   /** Liste compacte : une ligne par voie avec ses numéros. */
@@ -271,6 +303,12 @@
     if (slug && !communes.some((c) => c.slug === slug)) throw new Error("Commune inconnue");
     const all = await Promise.all(communes.map((c) => fetchJSON(`/api/communes/${encodeURIComponent(c.slug)}`)));
     all.forEach((d) => d.sectors.forEach((s, i) => { s.code = sectorCode(d.commune.nom, i); }));
+    const admin = await adminTeams();
+    if (admin) {
+      const people = new Map(admin.personnes.map((p) => [p.id, p]));
+      const empty = { date: "", creneau: "", statut: "a_faire", note: "", membres: [] };
+      all.forEach((d) => d.sectors.forEach((s) => { s.equipe = teamFromAdmin(admin.equipes[s.id] || empty, people); }));
+    }
     const datas = slug ? all.filter((d) => d.commune.slug === slug) : all;
     const sector = sectorId !== null ? datas[0].sectors.find((s) => s.id === sectorId) : null;
     if (sectorId !== null && !sector) throw new Error("Secteur introuvable (a-t-il été supprimé ?)");
@@ -320,6 +358,8 @@
     return true;
   }
 
+  // le plan se construit au chargement : un autre plan demandé dans la même page = rechargement
+  window.addEventListener("hashchange", () => location.reload());
   printBtn.addEventListener("click", () => window.print());
   pdfBtn.addEventListener("click", () => {
     showToast("Dans la fenêtre qui s'ouvre, choisissez « Enregistrer au format PDF » comme imprimante.");

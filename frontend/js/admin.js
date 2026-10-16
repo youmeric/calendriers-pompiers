@@ -88,18 +88,37 @@
   function showLogin() {
     els.loginView.hidden = false;
     els.editorView.hidden = true;
+    $("teams-view").hidden = true;
+    $("admin-tabs").hidden = true;
     els.select.hidden = true;
     els.logout.hidden = true;
     els.password.focus();
   }
 
-  function showEditor() {
-    els.loginView.hidden = true;
-    els.editorView.hidden = false;
-    els.select.hidden = false;
-    els.logout.hidden = false;
-    if (state.map) setTimeout(() => state.map.invalidateSize(), 50);
+  /** Onglet affiché : « secteurs » (carte d'édition) ou « equipes ». */
+  function currentTab() {
+    return location.hash === "#equipes" ? "equipes" : "secteurs";
   }
+
+  function showEditor() {
+    const tab = currentTab();
+    els.loginView.hidden = true;
+    $("admin-tabs").hidden = false;
+    document.querySelectorAll(".admin-tab").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
+    els.editorView.hidden = tab !== "secteurs";
+    $("teams-view").hidden = tab !== "equipes";
+    els.select.hidden = tab !== "secteurs";
+    els.logout.hidden = false;
+    if (tab === "secteurs" && state.map) setTimeout(() => (state.fitPending ? fitCommune() : state.map.invalidateSize()), 50);
+    if (tab === "equipes") {
+      if (isDirty()) showToast("Des secteurs ne sont pas enregistrés : l'onglet Équipes montre la dernière version enregistrée.");
+      window.Equipes.open({
+        onUnauthorized: () => { showToast("Session expirée : reconnectez-vous.", true); showLogin(); },
+      }).catch((err) => { if (err.status !== 401) showToast(`Erreur de chargement : ${err.message}`, true); });
+    }
+  }
+
+  window.addEventListener("hashchange", () => { if (!els.loginView.hidden) return; showEditor(); });
 
   els.loginForm.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1163,6 +1182,16 @@
     renderExcluded();
     els.versionsList.innerHTML = "";
     els.printAll.href = "plan.html#/";
+    fitCommune();
+  }
+
+  /** Cadre la carte sur la commune (plus tard si la carte est cachée par l'onglet Équipes). */
+  function fitCommune() {
+    const data = state.data;
+    if (!data) return;
+    if (els.editorView.hidden) { state.fitPending = true; return; }
+    state.fitPending = false;
+    state.map.invalidateSize();
     const pts = data.addresses.map((a) => [a.lat, a.lon]);
     if (pts.length) state.map.fitBounds(pts, { padding: [20, 20] });
     else if (data.commune.mairie) state.map.setView([data.commune.mairie.lat, data.commune.mairie.lon], 14);

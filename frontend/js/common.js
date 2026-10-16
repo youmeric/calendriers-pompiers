@@ -235,6 +235,71 @@ window.Common = (() => {
       </div>`).join("");
   }
 
+  // ---- Équipes ---------------------------------------------------------------------
+
+  const STATUT_LABEL = { a_faire: "À faire", en_cours: "En cours", termine: "Terminé" };
+
+  function initials(nom) {
+    const parts = String(nom).split(/[\s-]+/).filter(Boolean);
+    return ((parts[0] || "?")[0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
+  }
+
+  /** Pastille ronde aux initiales, de couleur stable pour une même personne. */
+  function personAvatar(p, size = "") {
+    const hues = [4, 24, 145, 200, 220, 262, 290, 330, 170, 40];
+    const hue = hues[Math.abs(Number(p.id) || 0) % hues.length];
+    return `<span class="avatar ${size}" style="background:hsl(${hue} 62% 46%)" aria-hidden="true">${escapeHtml(initials(p.nom))}</span>`;
+  }
+
+  function formatDay(iso, long = false) {
+    if (!iso) return "";
+    const d = new Date(`${iso}T12:00:00`);
+    return d.toLocaleDateString("fr-FR", long ? { weekday: "long", day: "numeric", month: "long" } : { weekday: "short", day: "numeric", month: "short" });
+  }
+
+  function telHref(tel) {
+    return `tel:${String(tel).replace(/[^0-9+]/g, "")}`;
+  }
+
+  function hasTeam(e) {
+    return !!e && (e.responsables.length || e.equipiers.length || e.date || e.note || e.statut !== "a_faire");
+  }
+
+  function statutPill(statut) {
+    return `<span class="statut-pill statut-${escapeHtml(statut)}">${STATUT_LABEL[statut] || ""}</span>`;
+  }
+
+  /** Une ligne courte pour la liste des secteurs : avancement, responsable, date. */
+  function teamLine(e) {
+    if (!hasTeam(e)) return "";
+    const bits = [statutPill(e.statut)];
+    if (e.responsables.length) {
+      const others = e.responsables.length - 1 + e.equipiers.length;
+      bits.push(`<span>★ ${escapeHtml(e.responsables[0].nom)}${others > 0 ? ` +${others}` : ""}</span>`);
+    } else if (e.equipiers.length) {
+      bits.push(`<span>${e.equipiers.length} équipier${e.equipiers.length > 1 ? "s" : ""}</span>`);
+    }
+    if (e.date) bits.push(`<span>${escapeHtml(formatDay(e.date))}${e.creneau ? ` · ${escapeHtml(e.creneau.toLowerCase())}` : ""}</span>`);
+    return `<span class="team-line">${bits.join("")}</span>`;
+  }
+
+  /** Fiche « Équipe » d'un secteur (site public et plan imprimé). */
+  function renderEquipe(container, e) {
+    const member = (p, role) => `<li class="equipe-member${role === "responsable" ? " lead" : ""}">
+        ${personAvatar(p, "sm")}
+        <span class="equipe-who"><span class="equipe-name">${escapeHtml(p.nom)}</span>${role === "responsable" ? `<span class="equipe-role">Responsable</span>` : ""}</span>
+        ${p.telephone ? `<a class="equipe-tel" href="${telHref(p.telephone)}">${escapeHtml(p.telephone)}</a>` : ""}
+      </li>`;
+    const when = e.date
+      ? `<span class="equipe-date">${escapeHtml(formatDay(e.date, true))}${e.creneau ? ` · ${escapeHtml(e.creneau.toLowerCase())}` : ""}</span>`
+      : `<span class="equipe-date muted">Date à définir</span>`;
+    const people = [...e.responsables.map((p) => member(p, "responsable")), ...e.equipiers.map((p) => member(p, "equipier"))];
+    container.innerHTML = `
+      <div class="equipe-head">${when}${statutPill(e.statut)}</div>
+      ${people.length ? `<ul class="equipe-list">${people.join("")}</ul>` : `<p class="hint">Équipe pas encore constituée.</p>`}
+      ${e.note ? `<p class="equipe-note">${escapeHtml(e.note)}</p>` : ""}`;
+  }
+
   function tourneeTitle(annee) {
     return annee ? `Tournée des calendriers ${annee}` : "Tournée des calendriers";
   }
@@ -249,6 +314,6 @@ window.Common = (() => {
     formatDistance, formatDuration, renderLimite, renderResume, hameauxPreview,
     toPolys, pointInPolys, outerRings, holeRings, OFF_ROAD,
     addBaseLayers, sectorCode, labelHtml, compactLabelsBelow, distanceToEdge, normalizeText,
-    tourneeTitle,
+    tourneeTitle, STATUT_LABEL, personAvatar, formatDay, telHref, hasTeam, statutPill, teamLine, renderEquipe,
   };
 })();

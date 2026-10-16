@@ -64,6 +64,28 @@ def init_db() -> None:
                 excluded_at TEXT NOT NULL,
                 PRIMARY KEY (commune_slug, address_id)
             );
+            -- membres de la caserne qui participent à la tournée
+            CREATE TABLE IF NOT EXISTS personnes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nom TEXT NOT NULL,
+                telephone TEXT NOT NULL DEFAULT ''
+            );
+            -- qui fait quel secteur : responsable(s) puis équipiers, dans l'ordre
+            CREATE TABLE IF NOT EXISTS sector_team (
+                sector_id INTEGER NOT NULL,
+                personne_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                position INTEGER NOT NULL,
+                PRIMARY KEY (sector_id, personne_id)
+            );
+            -- organisation du secteur : date, créneau, avancement, consignes
+            CREATE TABLE IF NOT EXISTS sector_plan (
+                sector_id INTEGER PRIMARY KEY,
+                date TEXT NOT NULL DEFAULT '',
+                creneau TEXT NOT NULL DEFAULT '',
+                statut TEXT NOT NULL DEFAULT 'a_faire',
+                note TEXT NOT NULL DEFAULT ''
+            );
             """
         )
         columns = {row[1] for row in conn.execute("PRAGMA table_info(sectors)")}
@@ -158,6 +180,8 @@ def replace_sectors(commune_slug: str, sectors: list[dict]) -> list[dict]:
                 )
         for sector_id in existing - kept:
             conn.execute("DELETE FROM sectors WHERE id = ?", (sector_id,))
+            conn.execute("DELETE FROM sector_team WHERE sector_id = ?", (sector_id,))
+            conn.execute("DELETE FROM sector_plan WHERE sector_id = ?", (sector_id,))
         conn.commit()
     saved = list_sectors(commune_slug)
     _add_version(commune_slug, saved, now)
@@ -259,4 +283,87 @@ def set_status(commune_slug: str, address_id: str, status: str | None, note: str
 def reset_statuses(commune_slug: str) -> None:
     with get_conn() as conn:
         conn.execute("DELETE FROM address_status WHERE commune_slug = ?", (commune_slug,))
+        conn.commit()
+
+
+# ---- Équipes : personnes et organisation de chaque secteur ----------------------
+
+ROLES = ("responsable", "equipier")
+STATUTS = ("a_faire", "en_cours", "termine")
+
+
+def list_personnes() -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT id, nom, telephone FROM personnes ORDER BY nom COLLATE NOCASE, id").fetchall()
+    return [{"id": r[0], "nom": r[1], "telephone": r[2]} for r in rows]
+
+
+def add_personnes(items: list[dict]) -> list[dict]:
+    with get_conn() as conn:
+        ids = [
+            conn.execute("INSERT INTO personnes (nom, telephone) VALUES (?, ?)",
+                         (p["nom"], p.get("telephone") or "")).lastrowid
+            for p in items
+        ]
+        conn.commit()
+    by_id = {p["id"]: p for p in list_personnes()}
+    return [by_id[i] for i in ids]
+
+
+def update_personne(personne_id: int, nom: str, telephone: str) -> dict | None:
+    with get_conn() as conn:
+        cur = conn.execute("UPDATE personnes SET nom = ?, telephone = ? WHERE id = ?", (nom, telephone, personne_id))
+        conn.commit()
+    if not cur.rowcount:
+        return None
+    return {"id": personne_id, "nom": nom, "telephone": telephone}
+
+
+def delete_personne(personne_id: int) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM personnes WHERE id = ?", (personne_id,))
+        conn.execute("DELETE FROM sector_team WHERE personne_id = ?", (personne_id,))
+        conn.commit()
+    return bool(cur.rowcount)
+
+
+def existing_sector_ids() -> set[int]:
+    with get_conn() as conn:
+        return {r[0] for r in conn.execute("SELECT id FROM sectors").fetchall()}
+
+
+def get_teams() -> dict[int, dict]:
+    """Organisation de chaque secteur : {sector_id: {date, creneau, statut, note, membres}}."""
+    with get_conn() as conn:
+        plans = conn.execute("SELECT sector_id, date, creneau, statut, note FROM sector_plan").fetchall()
+        members = conn.execute(
+            "SELECT t.sector_id, t.personne_id, t.role FROM sector_team t "
+            "JOIN personnes p ON p.id = t.personne_id "
+            "ORDER BY t.sector_id, CASE t.role WHEN 'responsable' THEN 0 ELSE 1 END, t.position"
+        ).fetchall()
+    teams: dict[int, dict] = {}
+
+    def team(sector_id: int) -> dict:
+        return teams.setdefault(sector_id, {"date": "", "creneau": "", "statut": "a_faire", "note": "", "membres": []})
+
+    for sector_id, date, creneau, statut, note in plans:
+        team(sector_id).update({"date": date, "creneau": creneau, "statut": statut, "note": note})
+    for sector_id, personne_id, role in members:
+        team(sector_id)["membres"].append({"personne_id": personne_id, "role": role})
+    return teams
+
+
+def set_team(sector_id: int, plan: dict, membres: list[dict]) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO sector_plan (sector_id, date, creneau, statut, note) VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(sector_id) DO UPDATE SET date = excluded.date, creneau = excluded.creneau, "
+            "statut = excluded.statut, note = excluded.note",
+            (sector_id, plan["date"], plan["creneau"], plan["statut"], plan["note"]),
+        )
+        conn.execute("DELETE FROM sector_team WHERE sector_id = ?", (sector_id,))
+        conn.executemany(
+            "INSERT INTO sector_team (sector_id, personne_id, role, position) VALUES (?, ?, ?, ?)",
+            [(sector_id, m["personne_id"], m["role"], i) for i, m in enumerate(membres)],
+        )
         conn.commit()

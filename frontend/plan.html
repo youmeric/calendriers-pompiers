@@ -53,10 +53,12 @@
       </fieldset>
       <fieldset>
         <legend>Sur la feuille</legend>
+        <label class="only-sector"><input type="checkbox" id="opt-equipe" /> Équipe (responsable, équipiers, date)</label>
         <label class="only-sector"><input type="checkbox" id="opt-limite" /> Description de la limite</label>
         <label class="only-sector"><input type="checkbox" id="opt-resume" /> Hameaux et rues du secteur</label>
         <label class="only-sector"><input type="checkbox" id="opt-adresses" /> Liste de toutes les adresses</label>
         <label class="only-overview"><input type="checkbox" id="opt-legend" /> Tableau des secteurs</label>
+        <label class="only-overview"><input type="checkbox" id="opt-equipes" /> Équipes dans le tableau</label>
         <label><input type="checkbox" id="opt-qr" /> QR code</label>
         <label>Orientation
           <select id="opt-orientation">
@@ -89,6 +91,11 @@
     <section id="plan-legend" class="sheet-section" hidden>
       <h2>Secteurs</h2>
       <table class="legend-table"><tbody id="plan-legend-body"></tbody></table>
+    </section>
+
+    <section id="plan-equipe-block" class="sheet-section" hidden>
+      <h2>Équipe</h2>
+      <div id="plan-equipe"></div>
     </section>
 
     <section id="plan-limite-block" class="sheet-section" hidden>
