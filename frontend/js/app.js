@@ -54,6 +54,9 @@
     whereControl: null,
     searchIndex: [],
     pendingFocus: null, // élément à montrer après ouverture d'un secteur (recherche)
+    me: null, // personne connectée avec son code : {admin, personne, roles: Map(secteur -> rôle), dons, sumup}
+    tracking: null, // suivi du secteur ouvert : {sectorId, role, full, dons: Map(adresse -> [don]), totaux}
+    annee: null,
   };
 
   const storage = {
@@ -82,8 +85,8 @@
       try {
         await sendStatus(item.slug, item.addressId, item.status);
       } catch (err) {
-        // 403 : suivi désactivé par l'admin, 404 : adresse disparue -> on abandonne
-        if (err.status !== 403 && err.status !== 404) remaining.push(item);
+        // 401/403 : plus d'accès (code changé, suivi coupé), 404 : adresse disparue -> on abandonne
+        if (![401, 403, 404].includes(err.status)) remaining.push(item);
       }
     }
     writeQueue(remaining);
@@ -114,7 +117,7 @@
       const m = nearestAddressMarker(e.latlng, 24);
       if (!m) return;
       m.openPopup();
-      if (state.suivi) highlightRow(m.addressId);
+      if (state.tracking) highlightRow(m.addressId);
     });
   }
 
@@ -292,16 +295,10 @@
     btn.className = "sector-button";
     btn.style.setProperty("--c", s.couleur);
     let meta = `${s.addresses.length} adresses`;
-    let progress = "";
-    if (state.suivi && s.counts) {
-      const total = s.addresses.length || 1;
-      const done = s.counts.fait + s.counts.absent + s.counts.refus;
-      meta += ` · ${Math.round((done / total) * 100)} % traité`;
-      progress = `<span class="mini-progress"><span style="width:${(done / total) * 100}%;background:${s.couleur}"></span></span>`;
-    } else {
-      const preview = hameauxPreview(s.resume);
-      if (preview) meta += ` · ${escapeHtml(preview)}`;
-    }
+    const preview = hameauxPreview(s.resume);
+    if (preview) meta += ` · ${escapeHtml(preview)}`;
+    const role = state.me && state.me.roles.get(s.id);
+    const progress = role ? `<span class="mine-tag">${role === "responsable" ? "★ Mon secteur (responsable)" : "Mon secteur"}</span>` : "";
     btn.innerHTML = `
       <b class="sector-code" style="background:${s.couleur}">${escapeHtml(s.code)}</b>
       <span class="sector-button-text">
@@ -348,7 +345,8 @@
     const outline = L.polygon(polys, { color: sector.couleur, weight: 5, fill: false, interactive: false })
       .addTo(state.layer);
 
-    const suivi = state.suivi;
+    const suivi = canTrack(sector);
+    state.tracking = null;
     for (const a of sector.addresses) {
       const m = L.circleMarker([a.lat, a.lon], {
         radius: suivi ? 6 : 4, color: "#fff", weight: 1.5, fillColor: suivi ? statusColor(a.status) : TODO_COLOR, fillOpacity: 1,
@@ -372,11 +370,9 @@
     const equipeCard = document.getElementById("equipe-card");
     equipeCard.hidden = !hasTeam(sector.equipe);
     if (!equipeCard.hidden) renderEquipe(document.getElementById("sector-equipe"), sector.equipe);
-    els.suiviBlock.hidden = !suivi;
-    if (suivi) {
-      renderProgress(sector);
-      renderAddressList(slug, sector);
-    }
+    els.suiviBlock.hidden = true;
+    renderLocked(sector);
+    if (suivi) loadTracking(slug, sector).catch(onTrackingError);
     window.scrollTo({ top: 0 });
     els.drawerBody.scrollTop = 0;
 
@@ -567,8 +563,14 @@
     setTimeout(() => { state.map.invalidateSize(); then(); }, 60);
   }
 
+  function countsOf(sector) {
+    const c = { fait: 0, absent: 0, refus: 0, a_faire: 0 };
+    for (const a of sector.addresses) c[a.status || "a_faire"]++;
+    return c;
+  }
+
   function renderProgress(sector) {
-    const c = sector.counts;
+    const c = countsOf(sector);
     const total = sector.addresses.length || 1;
     els.progress.innerHTML = ["fait", "absent", "refus"]
       .map((k) => `<span class="${k}" style="width:${(c[k] / total) * 100}%"></span>`).join("");
@@ -632,7 +634,30 @@
       b.addEventListener("click", () => toggleStatus(slug, sector, a, key, row));
       buttons.appendChild(b);
     }
-    row.append(label, buttons);
+    const t = state.tracking;
+    if (t && t.donsActive) {
+      const don = document.createElement("button");
+      don.type = "button";
+      don.className = "status-btn don-btn";
+      don.title = "Enregistrer un don";
+      don.setAttribute("aria-label", `Don : ${a.label}`);
+      don.textContent = "€";
+      don.addEventListener("click", () => openDon(slug, sector, a));
+      buttons.appendChild(don);
+    }
+    const main = document.createElement("div");
+    main.className = "address-main";
+    main.appendChild(label);
+    const badges = donBadges(a.id);
+    if (badges) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "don-badges";
+      b.innerHTML = badges;
+      b.addEventListener("click", () => openDon(slug, sector, a));
+      main.appendChild(b);
+    }
+    row.append(main, buttons);
     return row;
   }
 
@@ -644,15 +669,14 @@
 
   async function toggleStatus(slug, sector, a, key, row) {
     const newStatus = a.status === key ? null : key;
-    sector.counts[a.status || "a_faire"]--;
-    sector.counts[newStatus || "a_faire"]++;
     a.status = newStatus;
     applyRowStatus(row, newStatus);
     state.markers.get(a.id)?.setStyle({ fillColor: statusColor(newStatus) });
     renderProgress(sector);
     try {
       await sendStatus(slug, a.id, newStatus);
-    } catch {
+    } catch (err) {
+      if ([401, 403, 404].includes(err.status)) { showToast(err.message, true); return; }
       const q = readQueue();
       q.push({ slug, addressId: a.id, status: newStatus });
       writeQueue(q);
@@ -703,11 +727,13 @@
     if (!loaded && !Object.keys(state.all).length) throw new Error("données indisponibles");
     const any = Object.values(state.all)[0];
     state.suivi = Boolean(any && any.suivi);
+    state.dons = Boolean(any && any.dons);
     for (const c of state.communes) {
       const d = state.all[c.slug];
       if (d) d.sectors.forEach((s, i) => { s.code = sectorCode(d.commune.nom, i); });
     }
     buildSearchIndex();
+    renderTeamAccess();
   }
 
   // ---- Recherche d'adresse / rue / hameau -------------------------------------------
@@ -789,7 +815,22 @@
     if (sector) showSector(slug, sector); else showHome();
   }
 
-  window.addEventListener("hashchange", () => route().catch(onError));
+  /** Lien personnel « …/#acces=CODE » : connexion puis le code disparaît de l'adresse. */
+  async function useAccessLink() {
+    const acces = /[#&]acces=([A-Za-z0-9-]+)/.exec(location.hash);
+    if (!acces) return false;
+    history.replaceState(null, "", `${location.pathname}#/`);
+    await fetchJSON("/api/equipe/login", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: acces[1] }),
+    }).then((r) => showToast(`Bonjour ${r.nom} 👋 Votre accès est enregistré sur ce téléphone.`))
+      .catch((err) => showToast(`Lien d'accès refusé : ${err.message}`, true));
+    return true;
+  }
+
+  window.addEventListener("hashchange", async () => {
+    if (await useAccessLink()) await loadMe();
+    route().catch(onError);
+  });
   window.addEventListener("beforeprint", () => state.map && state.map.invalidateSize());
 
   function onError(err) {
@@ -799,8 +840,11 @@
 
   async function init() {
     initMap();
+    await useAccessLink();
+    await loadMe();
     const index = await fetchJSON("/api/communes");
     const { communes } = index;
+    state.annee = index.annee;
     state.communes = communes;
     document.getElementById("communes-names").textContent = communes.map((c) => c.nom).join(" · ");
     if (index.annee) {
@@ -815,6 +859,318 @@
     await route();
     flushQueue();
   }
+
+  // ---- Espace équipe : code personnel, suivi réservé à l'équipe du secteur, dons -------
+
+  const MODE_LABEL = { especes: "espèces", cheque: "chèque", cb: "carte" };
+  const euros = (v) => `${Number(v).toLocaleString("fr-FR", { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 })} €`;
+  const codeDialog = document.getElementById("code-dialog");
+  const donDialog = document.getElementById("don-dialog");
+
+  function canTrack(sector) {
+    const me = state.me;
+    return !!(state.suivi && me && me.suivi && (me.admin || me.roles.has(sector.id)));
+  }
+
+  async function loadMe() {
+    try {
+      const me = await fetchJSON("/api/equipe/moi");
+      state.me = { ...me, roles: new Map(me.secteurs.map((x) => [x.sector_id, x.role])) };
+    } catch {
+      state.me = null;
+    }
+    renderTeamAccess();
+  }
+
+  function myCodes() {
+    if (!state.me) return [];
+    return allSectors().filter(({ sector }) => state.me.roles.has(sector.id));
+  }
+
+  function renderTeamAccess() {
+    const box = document.getElementById("team-access");
+    if (!state.suivi && !state.me) { box.hidden = true; return; }
+    box.hidden = false;
+    if (!state.me) {
+      box.innerHTML = `<div class="team-access-text"><strong>🔒 Espace équipe</strong>
+          <span>Suivi des maisons${state.dons ? " et des dons" : ""} avec votre code personnel.</span></div>
+        <button type="button" class="btn small primary" data-action="login">Entrer mon code</button>`;
+      return;
+    }
+    const who = state.me.admin && !state.me.personne ? "Administrateur" : escapeHtml(state.me.personne.nom);
+    const mine = myCodes().map(({ slug, sector }) => `<button type="button" class="sector-code mine-code" style="background:${sector.couleur}" data-open="${escapeHtml(slug)}/${sector.id}" title="${escapeHtml(sector.nom)}">${state.me.roles.get(sector.id) === "responsable" ? "★ " : ""}${escapeHtml(sector.code)}</button>`).join("");
+    box.innerHTML = `<div class="team-access-text"><strong>${who}</strong>
+        <span>${state.me.admin ? "Accès à tous les secteurs" : mine ? `Mes secteurs : <span class="mine-codes">${mine}</span>` : "Pas encore placé(e) dans une équipe"}</span></div>
+      <button type="button" class="btn small" data-action="logout">Déconnexion</button>`;
+  }
+
+  document.getElementById("team-access").addEventListener("click", async (e) => {
+    const open = e.target.closest("[data-open]");
+    if (open) { const [slug, id] = open.dataset.open.split("/"); openSector(slug, Number(id)); return; }
+    const action = e.target.closest("[data-action]")?.dataset.action;
+    if (action === "login") openCodeDialog();
+    if (action === "logout") {
+      await fetchJSON("/api/equipe/logout", { method: "POST" }).catch(() => {});
+      state.me = null;
+      await route();
+      showToast("Déconnecté.");
+    }
+  });
+
+  function openCodeDialog() {
+    document.getElementById("code-error").hidden = true;
+    document.getElementById("code-input").value = "";
+    codeDialog.showModal();
+    document.getElementById("code-input").focus();
+  }
+
+  async function login(code) {
+    const res = await fetchJSON("/api/equipe/login", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }),
+    });
+    await loadMe();
+    await route();
+    showToast(`Bonjour ${res.nom} 👋`);
+  }
+
+  document.getElementById("code-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const err = document.getElementById("code-error");
+    try {
+      await login(document.getElementById("code-input").value);
+      codeDialog.close();
+    } catch (ex) {
+      err.textContent = ex.message;
+      err.hidden = false;
+    }
+  });
+  document.querySelectorAll("dialog [data-close]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close()));
+
+  /** Suivi activé mais secteur d'une autre équipe (ou pas connecté). */
+  function renderLocked(sector) {
+    const box = document.getElementById("suivi-locked");
+    box.hidden = !state.suivi || canTrack(sector);
+    if (box.hidden) return;
+    box.innerHTML = state.me
+      ? `<p class="hint">Le suivi de ce secteur est réservé à son équipe.</p>`
+      : `<p class="hint">🔒 Le suivi des maisons${state.dons ? " et des dons" : ""} est réservé à l'équipe du secteur.</p>
+         <button type="button" class="btn small primary">Entrer mon code</button>`;
+    box.querySelector("button")?.addEventListener("click", openCodeDialog);
+  }
+
+  async function loadTracking(slug, sector) {
+    const t = await fetchJSON(`/api/equipe/secteurs/${sector.id}/suivi`);
+    if (!state.current || state.current.sector !== sector) return; // secteur quitté entre-temps
+    for (const a of sector.addresses) a.status = (t.statuses[a.id] || {}).status || null;
+    const dons = new Map();
+    for (const d of t.dons || []) {
+      if (!dons.has(d.address_id)) dons.set(d.address_id, []);
+      dons.get(d.address_id).push(d);
+    }
+    state.tracking = {
+      sectorId: sector.id, slug, role: t.role, full: t.role !== "equipier", donsActive: t.dons !== null, dons, totaux: t.totaux,
+    };
+    for (const a of sector.addresses) state.markers.get(a.id)?.setStyle({ fillColor: statusColor(a.status) });
+    els.suiviBlock.hidden = false;
+    renderProgress(sector);
+    renderTotaux();
+    renderAddressList(slug, sector);
+  }
+
+  function onTrackingError(err) {
+    if (err.status === 401) { state.me = null; renderTeamAccess(); }
+    showToast(`Suivi indisponible : ${err.message}`, true);
+  }
+
+  function renderTotaux() {
+    const box = document.getElementById("dons-totaux");
+    const t = state.tracking;
+    box.hidden = !(t && t.donsActive && t.totaux);
+    if (box.hidden) return;
+    const x = t.totaux;
+    box.innerHTML = `<div class="total-main"><span>Total du secteur</span><strong>${euros(x.total)}</strong><small>${x.nb} don${x.nb > 1 ? "s" : ""}</small></div>
+      <div class="total-modes"><span>Espèces <b>${euros(x.especes)}</b></span><span>Chèques <b>${euros(x.cheque)}</b></span><span>Carte <b>${euros(x.cb)}</b></span></div>
+      ${x.attente ? `<p class="total-wait">⏳ ${x.attente} paiement${x.attente > 1 ? "s" : ""} carte en attente de confirmation</p>` : ""}`;
+  }
+
+  function donBadges(addressId) {
+    const list = state.tracking && state.tracking.dons.get(addressId);
+    if (!list || !list.length) return "";
+    return list.map((d) => {
+      const amount = d.montant !== undefined ? euros(d.montant) : "Don";
+      const cls = d.statut === "ok" ? "ok" : d.statut === "attente" ? "wait" : "fail";
+      const tail = d.statut === "attente" ? " · en attente" : d.statut === "echec" ? " · échoué" : "";
+      return `<span class="don-badge ${cls}">${amount} ${MODE_LABEL[d.mode]}${tail}</span>`;
+    }).join("");
+  }
+
+  // ---- Fenêtre « don » ----
+
+  let donCtx = null;
+
+  function sumupReady() {
+    return !!(state.me && state.me.sumup && state.me.sumup.affiliate_key);
+  }
+
+  function selectedMode() {
+    return donDialog.querySelector('input[name="mode"]:checked').value;
+  }
+
+  function refreshDonDialog() {
+    const cb = selectedMode() === "cb";
+    const sumup = cb && sumupReady();
+    const manual = donCtx.manual || (cb && !sumupReady());
+    document.getElementById("don-sumup").hidden = !sumup || donCtx.manual;
+    document.getElementById("don-save").hidden = sumup && !donCtx.manual;
+    document.getElementById("don-manual-toggle").hidden = !sumup || donCtx.manual;
+    document.getElementById("don-cb-manual").hidden = !(cb && manual);
+    const standalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+    document.getElementById("don-ios-hint").hidden = !(sumup && !donCtx.manual && IS_IOS && standalone);
+  }
+
+  function renderExistingDons() {
+    const box = document.getElementById("don-existing");
+    const list = (state.tracking.dons.get(donCtx.a.id) || []);
+    const t = state.tracking;
+    box.innerHTML = list.map((d) => {
+      const canEdit = t.full || d.mine;
+      const amount = d.montant !== undefined ? euros(d.montant) : "Don";
+      const st = d.statut === "ok" ? "✓" : d.statut === "attente" ? "⏳ en attente" : "✕ échoué";
+      return `<div class="don-line" data-id="${d.id}">
+        <span><b>${amount}</b> ${MODE_LABEL[d.mode]} ${st}<small>${escapeHtml(d.personne_nom)}${d.tx_code ? ` · ${escapeHtml(d.tx_code)}` : ""}</small></span>
+        ${canEdit ? `<span class="don-line-actions">
+          ${d.statut === "attente" ? `<button type="button" class="btn small" data-act="ok">Payé</button><button type="button" class="btn small" data-act="echec">Non payé</button>` : ""}
+          <button type="button" class="icon-btn danger" data-act="delete" title="Supprimer" aria-label="Supprimer ce don">✕</button></span>` : ""}
+      </div>`;
+    }).join("");
+  }
+
+  function openDon(slug, sector, a) {
+    donCtx = { slug, sector, a, manual: false };
+    document.getElementById("don-title").textContent = "Don";
+    document.getElementById("don-address").textContent = a.label;
+    document.getElementById("don-montant").value = "";
+    document.getElementById("don-tx").value = "";
+    document.getElementById("don-error").hidden = true;
+    donDialog.querySelector('input[name="mode"][value="especes"]').checked = true;
+    renderExistingDons();
+    refreshDonDialog();
+    donDialog.showModal();
+  }
+
+  donDialog.querySelectorAll('input[name="mode"]').forEach((r) => r.addEventListener("change", refreshDonDialog));
+  donDialog.querySelector(".amount-chips").addEventListener("click", (e) => {
+    const v = e.target.dataset.amount;
+    if (v) document.getElementById("don-montant").value = v;
+  });
+  document.getElementById("don-manual-toggle").addEventListener("click", () => { donCtx.manual = true; refreshDonDialog(); });
+
+  function readAmount() {
+    const v = Number(document.getElementById("don-montant").value.replace(",", ".").replace(/[^0-9.]/g, ""));
+    if (!(v > 0 && v <= 1000)) throw new Error("Indiquez un montant (entre 0 et 1000 €).");
+    return Math.round(v * 100) / 100;
+  }
+
+  async function postDon(sumup) {
+    const montant = readAmount();
+    return fetchJSON("/api/equipe/dons", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        slug: donCtx.slug, address_id: donCtx.a.id, montant, mode: selectedMode(), sumup,
+        tx_code: document.getElementById("don-tx").value,
+      }),
+    });
+  }
+
+  function donError(err) {
+    const box = document.getElementById("don-error");
+    box.textContent = err.message;
+    box.hidden = false;
+  }
+
+  document.getElementById("don-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await postDon(false);
+      donDialog.close();
+      showToast("Don enregistré ✓");
+      await loadTracking(donCtx.slug, donCtx.sector);
+    } catch (err) {
+      donError(err);
+    }
+  });
+
+  /** Ouvre une autre appli (SumUp) ; remplaçable dans les tests. */
+  function openExternal(url) {
+    if (typeof window.__openExternal === "function") window.__openExternal(url);
+    else location.href = url;
+  }
+
+  /** Ouvre l'appli SumUp avec le montant ; elle revient sur /sumup-retour/<id> une fois payé. */
+  function sumupUrl(cfg, don) {
+    const amount = don.montant.toFixed(2);
+    const back = `${location.origin}/sumup-retour/${don.foreign_id}`;
+    const params = {
+      "affiliate-key": cfg.affiliate_key,
+      total: amount,
+      amount, // anciennes versions de l'appli
+      currency: "EUR",
+      title: `Calendrier ${state.annee || ""}`.trim(),
+      "foreign-tx-id": don.foreign_id,
+      callback: back, // Android
+      callbacksuccess: back, // iPhone
+      callbackfail: back,
+    };
+    if (cfg.app_id) params["app-id"] = cfg.app_id;
+    return `sumupmerchant://pay/1.0?${Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&")}`;
+  }
+
+  document.getElementById("don-sumup").addEventListener("click", async () => {
+    try {
+      const don = await postDon(true);
+      storage.set("sumup-en-cours", JSON.stringify({ id: don.id, slug: donCtx.slug, sector: donCtx.sector.id }));
+      donDialog.close();
+      showToast("Ouverture de SumUp…");
+      openExternal(sumupUrl(state.me.sumup, don));
+      // si l'appli SumUp n'est pas installée, rien ne se passe : le don reste « en attente »
+      setTimeout(() => loadTracking(donCtx.slug, donCtx.sector).catch(() => {}), 2500);
+    } catch (err) {
+      donError(err);
+    }
+  });
+
+  document.getElementById("don-existing").addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-act]");
+    if (!btn) return;
+    const id = btn.closest(".don-line").dataset.id;
+    try {
+      if (btn.dataset.act === "delete") {
+        if (!confirm("Supprimer ce don ?")) return;
+        await fetchJSON(`/api/equipe/dons/${id}`, { method: "DELETE" });
+      } else {
+        const tx = btn.dataset.act === "ok" ? (prompt("N° de transaction SumUp (facultatif) :") || "") : "";
+        await fetchJSON(`/api/equipe/dons/${id}/statut`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ statut: btn.dataset.act, tx_code: tx }),
+        });
+      }
+      await loadTracking(donCtx.slug, donCtx.sector);
+      renderExistingDons();
+    } catch (err) {
+      donError(err);
+    }
+  });
+
+  // retour sur l'appli après un paiement SumUp, et toutes les minutes : suivi à jour
+  // (les autres membres de l'équipe marquent des maisons en même temps)
+  function refreshTracking() {
+    if (document.visibilityState !== "visible" || !state.current || !state.tracking) return;
+    if (donDialog.open) return; // pas pendant une saisie
+    loadTracking(state.current.slug, state.current.sector).catch(() => {});
+  }
+  document.addEventListener("visibilitychange", refreshTracking);
+  setInterval(refreshTracking, 60000);
 
   // ---- Installer l'application (écran d'accueil) ------------------------------------
 

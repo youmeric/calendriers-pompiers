@@ -74,6 +74,20 @@ class SettingsIn(BaseModel):
     annee: int | None = Field(default=None, ge=2000, le=2100)
     equipes_public: bool | None = None
     telephones_public: bool | None = None
+    dons_actifs: bool | None = None
+    sumup_actif: bool | None = None
+    sumup_affiliate_key: str | None = Field(default=None, max_length=200)
+    sumup_app_id: str | None = Field(default=None, max_length=200)
+
+    @field_validator("sumup_affiliate_key", "sumup_app_id")
+    @classmethod
+    def clean_key(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if v and not re.fullmatch(r"[A-Za-z0-9._\-]+", v):
+            raise ValueError("caractères non autorisés")
+        return v
 
 
 # ---- Équipes -----------------------------------------------------------------
@@ -142,3 +156,35 @@ class EquipeIn(BaseModel):
 
 class SectorsIn(BaseModel):
     sectors: list[SectorIn] = Field(max_length=50)
+
+
+# ---- Accès des équipes et dons ----------------------------------------------------
+
+class CodeIn(BaseModel):
+    code: str = Field(min_length=1, max_length=40)
+
+
+class DonIn(BaseModel):
+    slug: str = Field(max_length=80)
+    address_id: str = Field(max_length=120)
+    montant: float = Field(gt=0, le=1000)
+    mode: Literal["especes", "cheque", "cb"]
+    note: str = Field(default="", max_length=200)
+    tx_code: str = Field(default="", max_length=64)
+    sumup: bool = False  # paiement CB lancé dans l'appli SumUp (en attente de son retour)
+
+    @field_validator("note", "tx_code")
+    @classmethod
+    def strip_text(cls, v: str) -> str:
+        return v.strip()
+
+
+class DonStatutIn(BaseModel):
+    statut: Literal["ok", "echec"]
+    tx_code: str = Field(default="", max_length=64)
+
+
+class SumupRetourIn(BaseModel):
+    foreign_id: str = Field(min_length=8, max_length=128)
+    status: str = Field(default="", max_length=30)
+    tx_code: str = Field(default="", max_length=64)

@@ -89,6 +89,7 @@
     els.loginView.hidden = false;
     els.editorView.hidden = true;
     $("teams-view").hidden = true;
+    $("bilan-view").hidden = true;
     $("admin-tabs").hidden = true;
     els.select.hidden = true;
     els.logout.hidden = true;
@@ -97,7 +98,7 @@
 
   /** Onglet affiché : « secteurs » (carte d'édition) ou « equipes ». */
   function currentTab() {
-    return location.hash === "#equipes" ? "equipes" : "secteurs";
+    return { "#equipes": "equipes", "#bilan": "bilan" }[location.hash] || "secteurs";
   }
 
   function showEditor() {
@@ -107,9 +108,15 @@
     document.querySelectorAll(".admin-tab").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
     els.editorView.hidden = tab !== "secteurs";
     $("teams-view").hidden = tab !== "equipes";
+    $("bilan-view").hidden = tab !== "bilan";
     els.select.hidden = tab !== "secteurs";
     els.logout.hidden = false;
     if (tab === "secteurs" && state.map) setTimeout(() => (state.fitPending ? fitCommune() : state.map.invalidateSize()), 50);
+    if (tab === "bilan") {
+      window.Bilan.open({
+        onUnauthorized: () => { showToast("Session expirée : reconnectez-vous.", true); showLogin(); },
+      }).catch((err) => { if (err.status !== 401) showToast(`Erreur de chargement : ${err.message}`, true); });
+    }
     if (tab === "equipes") {
       if (isDirty()) showToast("Des secteurs ne sont pas enregistrés : l'onglet Équipes montre la dernière version enregistrée.");
       window.Equipes.open({
@@ -1099,7 +1106,8 @@
         body: JSON.stringify({ suivi_adresses: value }),
       });
       els.resetBlock.hidden = !value;
-      showToast(value ? "Suivi des adresses affiché sur la page publique." : "Suivi des adresses masqué : la page publique sert de plan uniquement.");
+      showToast(value ? "Suivi activé : les équipes le voient en se connectant avec leur code." : "Suivi désactivé : le site sert uniquement de plan.");
+      window.dispatchEvent(new Event("suivi-change"));
     } catch (err) {
       els.suivi.checked = !value;
       showToast(err.message, true);

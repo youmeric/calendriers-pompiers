@@ -78,6 +78,25 @@ def init_db() -> None:
                 position INTEGER NOT NULL,
                 PRIMARY KEY (sector_id, personne_id)
             );
+            -- dons reçus pendant la tournée (montant en centimes)
+            CREATE TABLE IF NOT EXISTS dons (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                annee INTEGER NOT NULL,
+                commune_slug TEXT NOT NULL,
+                address_id TEXT NOT NULL,
+                sector_id INTEGER NOT NULL,
+                montant_cents INTEGER NOT NULL,
+                mode TEXT NOT NULL,
+                statut TEXT NOT NULL,
+                foreign_id TEXT UNIQUE,
+                tx_code TEXT NOT NULL DEFAULT '',
+                note TEXT NOT NULL DEFAULT '',
+                personne_id INTEGER,
+                personne_nom TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS dons_sector ON dons (annee, sector_id);
             -- organisation du secteur : date, créneau, avancement, consignes
             CREATE TABLE IF NOT EXISTS sector_plan (
                 sector_id INTEGER PRIMARY KEY,
@@ -93,7 +112,29 @@ def init_db() -> None:
             conn.execute("ALTER TABLE sectors ADD COLUMN limite TEXT")
         if "limite_src" not in columns:
             conn.execute("ALTER TABLE sectors ADD COLUMN limite_src TEXT")
+        # code d'accès personnel des équipes (ajouté après coup : on complète les anciennes fiches)
+        pcols = {row[1] for row in conn.execute("PRAGMA table_info(personnes)")}
+        if "code" not in pcols:
+            conn.execute("ALTER TABLE personnes ADD COLUMN code TEXT")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS personnes_code ON personnes (code)")
+        for (pid,) in conn.execute("SELECT id FROM personnes WHERE code IS NULL OR code = ''").fetchall():
+            conn.execute("UPDATE personnes SET code = ? WHERE id = ?", (_new_code(conn), pid))
         conn.commit()
+
+
+CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # sans 0/O ni 1/I : se dicte sans erreur
+CODE_LENGTH = 8
+
+
+def _new_code(conn) -> str:
+    while True:
+        code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LENGTH))
+        if not conn.execute("SELECT 1 FROM personnes WHERE code = ?", (code,)).fetchone():
+            return code
+
+
+def normalize_code(raw: str) -> str:
+    return "".join(ch for ch in raw.upper() if ch in CODE_ALPHABET)
 
 
 def _now() -> str:
@@ -294,15 +335,45 @@ STATUTS = ("a_faire", "en_cours", "termine")
 
 def list_personnes() -> list[dict]:
     with get_conn() as conn:
-        rows = conn.execute("SELECT id, nom, telephone FROM personnes ORDER BY nom COLLATE NOCASE, id").fetchall()
-    return [{"id": r[0], "nom": r[1], "telephone": r[2]} for r in rows]
+        rows = conn.execute("SELECT id, nom, telephone, code FROM personnes ORDER BY nom COLLATE NOCASE, id").fetchall()
+    return [{"id": r[0], "nom": r[1], "telephone": r[2], "code": r[3]} for r in rows]
+
+
+def get_personne(personne_id: int) -> dict | None:
+    with get_conn() as conn:
+        r = conn.execute("SELECT id, nom, telephone, code FROM personnes WHERE id = ?", (personne_id,)).fetchone()
+    return {"id": r[0], "nom": r[1], "telephone": r[2], "code": r[3]} if r else None
+
+
+def get_personne_by_code(code: str) -> dict | None:
+    code = normalize_code(code)
+    if len(code) != CODE_LENGTH:
+        return None
+    with get_conn() as conn:
+        r = conn.execute("SELECT id FROM personnes WHERE code = ?", (code,)).fetchone()
+    return get_personne(r[0]) if r else None
+
+
+def regenerate_code(personne_id: int) -> dict | None:
+    with get_conn() as conn:
+        cur = conn.execute("UPDATE personnes SET code = ? WHERE id = ?", (_new_code(conn), personne_id))
+        conn.commit()
+    return get_personne(personne_id) if cur.rowcount else None
+
+
+def memberships(personne_id: int) -> dict[int, str]:
+    """Secteurs d'une personne : {sector_id: rôle}."""
+    with get_conn() as conn:
+        rows = conn.execute("SELECT t.sector_id, t.role FROM sector_team t JOIN sectors s ON s.id = t.sector_id "
+                            "WHERE t.personne_id = ?", (personne_id,)).fetchall()
+    return {r[0]: r[1] for r in rows}
 
 
 def add_personnes(items: list[dict]) -> list[dict]:
     with get_conn() as conn:
         ids = [
-            conn.execute("INSERT INTO personnes (nom, telephone) VALUES (?, ?)",
-                         (p["nom"], p.get("telephone") or "")).lastrowid
+            conn.execute("INSERT INTO personnes (nom, telephone, code) VALUES (?, ?, ?)",
+                         (p["nom"], p.get("telephone") or "", _new_code(conn))).lastrowid
             for p in items
         ]
         conn.commit()
@@ -314,9 +385,7 @@ def update_personne(personne_id: int, nom: str, telephone: str) -> dict | None:
     with get_conn() as conn:
         cur = conn.execute("UPDATE personnes SET nom = ?, telephone = ? WHERE id = ?", (nom, telephone, personne_id))
         conn.commit()
-    if not cur.rowcount:
-        return None
-    return {"id": personne_id, "nom": nom, "telephone": telephone}
+    return get_personne(personne_id) if cur.rowcount else None
 
 
 def delete_personne(personne_id: int) -> bool:
@@ -325,6 +394,15 @@ def delete_personne(personne_id: int) -> bool:
         conn.execute("DELETE FROM sector_team WHERE personne_id = ?", (personne_id,))
         conn.commit()
     return bool(cur.rowcount)
+
+
+def sector_communes() -> dict[str, set[int]]:
+    """Secteurs par commune : {slug: {sector_id, ...}}."""
+    out: dict[str, set[int]] = {}
+    with get_conn() as conn:
+        for slug, sid in conn.execute("SELECT commune_slug, id FROM sectors").fetchall():
+            out.setdefault(slug, set()).add(sid)
+    return out
 
 
 def existing_sector_ids() -> set[int]:
@@ -366,4 +444,70 @@ def set_team(sector_id: int, plan: dict, membres: list[dict]) -> None:
             "INSERT INTO sector_team (sector_id, personne_id, role, position) VALUES (?, ?, ?, ?)",
             [(sector_id, m["personne_id"], m["role"], i) for i, m in enumerate(membres)],
         )
+        conn.commit()
+
+
+# ---- Dons -------------------------------------------------------------------------
+
+MODES = ("especes", "cheque", "cb")
+DON_STATUTS = ("ok", "attente", "echec")
+_DON_COLS = ("id", "annee", "commune_slug", "address_id", "sector_id", "montant_cents", "mode", "statut",
+             "foreign_id", "tx_code", "note", "personne_id", "personne_nom", "created_at", "updated_at")
+
+
+def _don(row) -> dict:
+    return dict(zip(_DON_COLS, row))
+
+
+def add_don(d: dict) -> dict:
+    now = _now()
+    with get_conn() as conn:
+        did = conn.execute(
+            "INSERT INTO dons (annee, commune_slug, address_id, sector_id, montant_cents, mode, statut, foreign_id, "
+            "tx_code, note, personne_id, personne_nom, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (d["annee"], d["commune_slug"], d["address_id"], d["sector_id"], d["montant_cents"], d["mode"],
+             d["statut"], d.get("foreign_id"), d.get("tx_code", ""), d.get("note", ""), d.get("personne_id"),
+             d.get("personne_nom", ""), now, now),
+        ).lastrowid
+        conn.commit()
+    return get_don(did)
+
+
+def get_don(don_id: int) -> dict | None:
+    with get_conn() as conn:
+        r = conn.execute(f"SELECT {', '.join(_DON_COLS)} FROM dons WHERE id = ?", (don_id,)).fetchone()
+    return _don(r) if r else None
+
+
+def get_don_by_foreign(foreign_id: str) -> dict | None:
+    with get_conn() as conn:
+        r = conn.execute(f"SELECT {', '.join(_DON_COLS)} FROM dons WHERE foreign_id = ?", (foreign_id,)).fetchone()
+    return _don(r) if r else None
+
+
+def list_dons(annee: int, sector_id: int | None = None) -> list[dict]:
+    sql = f"SELECT {', '.join(_DON_COLS)} FROM dons WHERE annee = ?"
+    args: list = [annee]
+    if sector_id is not None:
+        sql += " AND sector_id = ?"
+        args.append(sector_id)
+    with get_conn() as conn:
+        rows = conn.execute(sql + " ORDER BY id", args).fetchall()
+    return [_don(r) for r in rows]
+
+
+def set_don_statut(don_id: int, statut: str, tx_code: str | None = None) -> dict | None:
+    with get_conn() as conn:
+        if tx_code is None:
+            conn.execute("UPDATE dons SET statut = ?, updated_at = ? WHERE id = ?", (statut, _now(), don_id))
+        else:
+            conn.execute("UPDATE dons SET statut = ?, tx_code = ?, updated_at = ? WHERE id = ?",
+                         (statut, tx_code, _now(), don_id))
+        conn.commit()
+    return get_don(don_id)
+
+
+def delete_don(don_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM dons WHERE id = ?", (don_id,))
         conn.commit()

@@ -1,6 +1,6 @@
 /* Service worker : réseau d'abord (jamais de version périmée), cache seulement
-   en secours hors connexion. L'admin n'est jamais mis en cache. */
-const CACHE = "secteurs-v2";
+   en secours hors connexion. L'admin et les données d'équipe ne sont jamais mis en cache. */
+const CACHE = "secteurs-v3";
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => {
@@ -15,6 +15,8 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (req.method !== "GET" || url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/admin") || url.pathname.startsWith("/api/admin") || url.pathname.endsWith("admin.html")) return;
+  // données des équipes (statuts, dons) et retours SumUp : jamais gardés en cache sur le téléphone
+  if (url.pathname.startsWith("/api/equipe") || url.pathname.startsWith("/api/sumup") || url.pathname.startsWith("/sumup-retour")) return;
 
   event.respondWith((async () => {
     try {

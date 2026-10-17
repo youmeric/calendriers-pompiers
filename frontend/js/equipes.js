@@ -110,6 +110,7 @@
       nbAdresses: s.addresses.length,
       hameaux: hameauxPreview(s.resume, 3),
     })));
+    state.annee = index.annee;
     els.title.textContent = `Équipes de la ${window.Common.tourneeTitle(index.annee).replace(/^Tournée/, "tournée")}`;
     els.pubTeams.checked = settings.equipes_public;
     els.pubTels.checked = settings.telephones_public;
@@ -260,6 +261,7 @@
           <span class="person-sub">${p.telephone ? `<a href="${telHref(p.telephone)}">${escapeHtml(p.telephone)}</a>` : `<span class="hint-inline">pas de téléphone</span>`}${tags ? ` <span class="assign-tags">${tags}</span>` : ` <span class="free-tag">libre</span>`}</span>
         </span>
         <span class="person-actions">
+          <button class="icon-btn key-btn" type="button" data-action="access" title="Code d'accès personnel" aria-label="Code d'accès de ${escapeHtml(p.nom)}"><svg class="ico" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4" /><path d="M11 12l9-9M17 6l3 3M15 8l2 2" /></svg></button>
           <button class="icon-btn" type="button" data-action="edit" title="Modifier" aria-label="Modifier ${escapeHtml(p.nom)}"><svg class="ico" viewBox="0 0 24 24"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg></button>
           <button class="icon-btn danger" type="button" data-action="delete" title="Supprimer" aria-label="Supprimer ${escapeHtml(p.nom)}"><svg class="ico" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg></button>
         </span>
@@ -418,6 +420,7 @@
     const p = person(id);
     if (btn.dataset.action === "edit") { state.editing = id; renderPeople(); els.list.querySelector(".editing input")?.focus(); }
     if (btn.dataset.action === "cancel") { state.editing = null; renderPeople(); }
+    if (btn.dataset.action === "access") openAccess(p);
     if (btn.dataset.action === "delete") {
       const where = assignmentsOf(id).map((a) => a.sector.code);
       if (!confirm(`Supprimer ${p.nom} de la liste${where.length ? ` et de ${where.join(", ")}` : ""} ?`)) return;
@@ -551,7 +554,8 @@
   // ---- Export tableur (CSV lisible par Excel / LibreOffice) -----------------------------------
 
   els.exportBtn.addEventListener("click", () => {
-    const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    // guillemets doublés, et pas de formule Excel cachée dans un nom ou une note (=, +, -, @)
+      const cell = (v) => `"${String(v ?? "").replace(/^([=+\-@])/, "'$1").replace(/"/g, '""')}"`;
     const names = (t, role) => t.membres.filter((m) => m.role === role).map((m) => person(m.personne_id)?.nom).filter(Boolean).join(", ");
     const tels = (t) => t.membres.map((m) => person(m.personne_id)).filter((p) => p && p.telephone).map((p) => `${p.nom} : ${p.telephone}`).join(" / ");
     const rows = [["Commune", "Code", "Secteur", "Adresses", "Date", "Créneau", "Avancement", "Responsable(s)", "Équipiers", "Téléphones", "Consignes"]];
@@ -567,6 +571,71 @@
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  });
+
+  // ---- Accès personnel (code / lien à envoyer à chacun) --------------------------------------
+
+  const accessDialog = $("access-dialog");
+  let accessFor = null;
+
+  const formatCode = (c) => `${c.slice(0, 4)}-${c.slice(4)}`;
+  const accessLink = (p) => `${location.origin}/#acces=${p.code}`;
+
+  /** Numéro au format international pour WhatsApp (06… -> 336…). */
+  function intlPhone(tel) {
+    let d = String(tel || "").replace(/[^0-9+]/g, "");
+    if (d.startsWith("+")) return d.slice(1);
+    if (d.startsWith("00")) return d.slice(2);
+    if (d.startsWith("0") && d.length === 10) return `33${d.slice(1)}`;
+    return d;
+  }
+
+  function accessMessage(p) {
+    const first = p.nom.split(" ")[0];
+    const where = assignmentsOf(p.id).map((a) => `${a.sector.code} ${a.sector.nom}${a.role === "responsable" ? " (responsable)" : ""}`).join(", ");
+    return `Bonjour ${first}, voici ton accès personnel pour la ${window.Common.tourneeTitle(state.annee).toLowerCase()} des pompiers de Courzieu${where ? `, secteur ${where}` : ""} :\n${accessLink(p)}\n\nOu bien saisis le code ${formatCode(p.code)} dans « Espace équipe ». Il est personnel : ne le transfère pas.`;
+  }
+
+  function fillAccess() {
+    const p = person(accessFor);
+    if (!p) { accessDialog.close(); return; }
+    const msg = encodeURIComponent(accessMessage(p));
+    $("access-title").textContent = `Accès de ${p.nom}`;
+    $("access-code").textContent = formatCode(p.code);
+    $("access-link").value = accessLink(p);
+    $("access-whatsapp").href = `https://wa.me/${intlPhone(p.telephone)}?text=${msg}`;
+    $("access-sms").href = `sms:${(p.telephone || "").replace(/[^0-9+]/g, "")}?&body=${msg}`;
+  }
+
+  function openAccess(p) {
+    accessFor = p.id;
+    fillAccess();
+    accessDialog.showModal();
+  }
+
+  $("access-copy").addEventListener("click", async () => {
+    const p = person(accessFor);
+    try {
+      await navigator.clipboard.writeText(accessMessage(p));
+      showToast("Message avec le lien copié ✓");
+    } catch {
+      $("access-link").select();
+      showToast("Sélectionnez puis copiez le lien.");
+    }
+  });
+
+  $("access-regen").addEventListener("click", async () => {
+    const p = person(accessFor);
+    if (!confirm(`Changer le code de ${p.nom} ? L'ancien code et le lien déjà envoyé ne marcheront plus (il faudra lui renvoyer le nouveau).`)) return;
+    try {
+      const updated = await api(`/api/admin/personnes/${p.id}/code`, { method: "POST" });
+      Object.assign(p, updated);
+      fillAccess();
+      flashSaved();
+      showToast("Nouveau code créé : pensez à l'envoyer.");
+    } catch (err) {
+      showToast(err.message, true);
+    }
   });
 
   // ---- Interface avec admin.js ------------------------------------------------------------

@@ -32,9 +32,8 @@ sur Courzieu et Brussieu (69690).
     temps estimé et écart à la moyenne (minutes par porte réglables).
   - **↶ / ↷** (Ctrl+Z / Ctrl+Y) pour annuler ou rétablir, et **versions** :
     chaque enregistrement garde une copie (30 dernières) qu'on peut recharger.
-  - **Option « suivi des adresses »** : désactivée par défaut, la page
-    publique sert uniquement de plan. Activée, elle ajoute les boutons
-    ✓ fait / ⏳ absent / ✕ refus par adresse.
+  - **Suivi des maisons et dons** : désactivés par défaut (le site sert
+    uniquement de plan) ; voir « Suivi & dons » plus bas.
   - **Année de la tournée** : affichée dans le titre du site et sur les plans
     (« Tournée des calendriers 2027 »). Par défaut, l'année qui suit à partir
     de juillet ; à changer dans « Page publique » si besoin.
@@ -42,6 +41,35 @@ sur Courzieu et Brussieu (69690).
   apparaît dans l'en-tête, sur la connexion admin, sur les plans imprimés et
   comme icône de l'application. Pour le remplacer, changer
   `frontend/img/logo-courzieu.png` (et les icônes de `frontend/icons/`).
+- **Suivi & dons (admin, onglet « Suivi & dons »)** — tout est optionnel :
+  - **Accès protégé** : chaque personne de l'onglet Équipes a un **code
+    personnel** (bouton 🔑 : code, lien à envoyer par WhatsApp ou SMS, « changer
+    le code » pour couper un accès). Sur son téléphone, elle ouvre le lien (ou
+    saisit le code dans « Espace équipe ») et voit le suivi de **ses secteurs
+    seulement**. Sans code, personne ne voit les statuts ni les montants.
+    10 codes faux d'affilée bloquent les essais pendant 10 minutes.
+  - **Suivi des maisons** : ✓ fait / ⏳ absent / ✕ refus, partagé en direct
+    entre les membres de l'équipe (actualisé chaque minute), fonctionne sans
+    réseau (envoi au retour du réseau).
+  - **Dons** : bouton € sur chaque maison, montant (raccourcis 5/10/15/20/30 €),
+    espèces, chèque ou carte ; la maison passe « faite ». Chaque don garde qui
+    l'a saisi. Les équipiers ne voient que leurs propres montants ; le
+    **responsable du secteur** et l'admin voient tout et les totaux.
+  - **Carte avec SumUp** (« Payment Switch » de SumUp) : « Payer par carte avec
+    SumUp » ouvre l'appli SumUp avec le montant ; après le paiement, SumUp revient
+    sur `/sumup-retour/…` qui valide le don (accepté / refusé). Il faut l'appli
+    SumUp installée et connectée sur le téléphone, et une **clé d'affiliation**
+    (me.sumup.com → Développeurs) à coller dans les réglages avec l'identifiant
+    d'application associé. SumUp présente cette méthode comme ancienne (plus
+    développée) mais toujours disponible ; sur iPhone, elle marche depuis Safari
+    (pas toujours depuis l'appli installée sur l'écran d'accueil). Solution de
+    secours toujours possible : encaisser dans l'appli SumUp puis « saisir à la
+    main » (montant + n° de transaction). Les paiements restés sans réponse
+    apparaissent « en attente » : le responsable ou l'admin les valide ou les
+    annule.
+  - **Bilan** : maisons faites, dons et totaux (espèces / chèques / carte) par
+    secteur et au total, export de tous les dons (Excel). Les dons sont classés
+    par année de tournée.
 - **Équipes (admin, onglet « Équipes »)** : qui fait quel secteur.
   - **Personnes** : la liste des membres de la caserne (nom, téléphone
     facultatif), à saisir un par un ou en collant toute une liste

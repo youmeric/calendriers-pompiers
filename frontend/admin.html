@@ -46,6 +46,9 @@
     <a href="#equipes" class="admin-tab" data-tab="equipes">
       <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5" /><circle cx="17" cy="9" r="2.6" /><path d="M16.5 14.6c2.6.2 4.4 1.8 5 4.4" /></svg>Équipes
     </a>
+    <a href="#bilan" class="admin-tab" data-tab="bilan">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>Suivi &amp; dons
+    </a>
   </nav>
 
   <main id="editor-view" class="editor" hidden>
@@ -119,11 +122,7 @@
           <input type="number" id="annee-input" min="2000" max="2100" step="1" inputmode="numeric" />
         </label>
         <p class="hint">Affichée dans le titre du site et sur les plans (« Tournée des calendriers 2027 »).</p>
-        <label class="setting-row">
-          <input type="checkbox" id="suivi-toggle" />
-          <span>Afficher le suivi des adresses (boutons fait / absent / refus et compteurs)</span>
-        </label>
-        <p class="hint">Désactivé : la page publique sert uniquement de plan des secteurs.</p>
+        <p class="hint">Le suivi des maisons et les dons se règlent dans l'onglet <a href="#bilan">Suivi &amp; dons</a>.</p>
       </section>
 
       <details class="tools" id="excluded-block">
@@ -208,6 +207,79 @@
     </div>
   </main>
 
+  <!-- Suivi de la tournée et dons -->
+  <main id="bilan-view" class="teams bilan" hidden>
+    <header class="teams-head">
+      <div>
+        <h2 id="bilan-title">Suivi &amp; dons</h2>
+        <p class="hint">Les équipes se connectent sur leur téléphone avec leur code personnel (onglet Équipes, bouton 🔑). Elles ne voient que leurs secteurs.</p>
+      </div>
+      <div class="teams-actions">
+        <span id="bilan-saved" class="saved-badge" hidden>Enregistré ✓</span>
+        <button id="bilan-refresh" class="btn" type="button">Actualiser</button>
+        <button id="bilan-export" class="btn" type="button">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5" /><path d="M5 21h14" /></svg>Exporter les dons (Excel)
+        </button>
+      </div>
+    </header>
+
+    <div class="bilan-grid">
+      <section class="settings-card bilan-settings">
+        <h3 class="panel-title">Réglages</h3>
+        <label class="setting-row">
+          <input type="checkbox" id="suivi-toggle" />
+          <span><b>Suivi des maisons</b> (fait / absent / refus) pour les équipes connectées</span>
+        </label>
+        <label class="setting-row">
+          <input type="checkbox" id="dons-toggle" />
+          <span><b>Enregistrer les dons</b> : montant et moyen de paiement (espèces, chèque, carte)</span>
+        </label>
+        <p class="hint">Les équipiers enregistrent les dons ; seuls les <b>responsables du secteur</b> et l'admin voient les montants des autres et les totaux.</p>
+        <label class="setting-row">
+          <input type="checkbox" id="sumup-toggle" />
+          <span><b>Paiement par carte avec SumUp</b> : le bouton ouvre l'appli SumUp avec le montant, puis revient ici</span>
+        </label>
+        <div id="sumup-fields" class="sumup-fields">
+          <label>Clé d'affiliation SumUp (affiliate key)
+            <input id="sumup-key" type="text" maxlength="200" autocomplete="off" spellcheck="false" placeholder="sup_afk_…" />
+          </label>
+          <label>Identifiant d'application (facultatif, demandé par SumUp sur Android)
+            <input id="sumup-appid" type="text" maxlength="200" autocomplete="off" spellcheck="false" placeholder="ex. fr.pompiers.courzieu.calendriers" />
+          </label>
+          <p class="hint">À créer dans votre compte SumUp : <b>me.sumup.com → Développeurs</b> (« affiliate key »), avec le même identifiant d'application. Sur chaque téléphone : l'appli SumUp installée et connectée au compte de l'amicale. Si SumUp ne s'ouvre pas, les équipes peuvent encaisser dans l'appli SumUp puis saisir le don à la main.</p>
+        </div>
+      </section>
+
+      <section class="bilan-main">
+        <div id="bilan-cards" class="bilan-cards"></div>
+        <div id="bilan-attente"></div>
+        <div class="bilan-table-wrap">
+          <table class="bilan-table">
+            <thead><tr><th>Secteur</th><th>Maisons</th><th>Dons</th><th>Espèces</th><th>Chèques</th><th>Carte</th><th>Total</th></tr></thead>
+            <tbody id="bilan-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Accès personnel d'une personne -->
+  <dialog id="access-dialog" class="app-dialog" aria-labelledby="access-title">
+    <form method="dialog" class="access-form">
+      <h3 id="access-title">Accès</h3>
+      <p class="hint">Avec ce code (ou ce lien), la personne voit le suivi de <b>ses</b> secteurs sur son téléphone. Ne l'envoyez qu'à elle.</p>
+      <div class="access-code" id="access-code"></div>
+      <input id="access-link" type="text" readonly aria-label="Lien d'accès personnel" />
+      <div class="access-actions">
+        <button type="button" class="btn" id="access-copy">Copier le lien</button>
+        <a class="btn" id="access-whatsapp" target="_blank" rel="noopener">WhatsApp</a>
+        <a class="btn" id="access-sms">SMS</a>
+      </div>
+      <button type="button" class="link-btn danger-link" id="access-regen">Changer le code (l'ancien ne marchera plus)</button>
+      <div class="dialog-actions"><button type="submit" class="btn primary">Fermer</button></div>
+    </form>
+  </dialog>
+
   <div id="toast" class="toast" hidden></div>
 
   <script src="vendor/leaflet/leaflet.js"></script>
@@ -216,6 +288,7 @@
   <script src="js/common.js?v=__V__"></script>
   <script src="js/geometry.js?v=__V__"></script>
   <script src="js/equipes.js?v=__V__"></script>
+  <script src="js/bilan.js?v=__V__"></script>
   <script src="js/admin.js?v=__V__"></script>
 </body>
 </html>
