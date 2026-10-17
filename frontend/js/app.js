@@ -644,7 +644,7 @@
     await loadMe();
     // l'appli installée s'ouvre sur « / » : une personne de l'équipe arrive directement dans son espace
     // (dans le navigateur, le plan public reste accessible, avec le bouton « Mon espace équipe »)
-    if (isInstalled() && state.me && state.me.personne && state.me.secteurs.length && !location.hash) {
+    if (isInstalled() && !location.hash && ((state.me && state.me.personne && state.me.secteurs.length) || state.teamCopy)) {
       location.replace("/equipe#accueil");
       return;
     }
@@ -674,8 +674,10 @@
     try {
       const me = await fetchJSON("/api/equipe/moi");
       state.me = { ...me, roles: new Map(me.secteurs.map((x) => [x.sector_id, x.role])) };
-    } catch {
+    } catch (err) {
       state.me = null;
+      // sans réseau, l'espace équipe peut quand même s'ouvrir sur sa copie enregistrée
+      state.teamCopy = !err.status && storage.get("terrain-copie", null) !== null;
     }
     renderTeamAccess();
   }

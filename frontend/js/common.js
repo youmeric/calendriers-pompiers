@@ -11,7 +11,12 @@ window.Common = (() => {
   }
 
   async function fetchJSON(url, options) {
-    const resp = await fetch(url, { credentials: "same-origin", ...options });
+    let resp;
+    try {
+      resp = await fetch(url, { credentials: "same-origin", ...options });
+    } catch {
+      throw new Error("Pas de réseau"); // sans « status » : reconnu comme une coupure, pas comme un refus
+    }
     if (!resp.ok) {
       let detail = `HTTP ${resp.status}`;
       try { detail = (await resp.json()).detail || detail; } catch { /* corps non JSON */ }
@@ -74,10 +79,13 @@ window.Common = (() => {
   }
 
   // Fonds IGN de la Géoplateforme : libres, sans clé d'accès.
+  const ignUrl = (layer, format) => "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0"
+    + `&LAYER=${layer}&STYLE=normal&FORMAT=${format}&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`;
+  const IGN_PLAN_URL = ignUrl("GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2", "image/png");
+
   function ignLayer(layer, format, maxNativeZoom) {
     return L.tileLayer(
-      "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0"
-      + `&LAYER=${layer}&STYLE=normal&FORMAT=${format}&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`,
+      ignUrl(layer, format),
       { maxZoom: 19, maxNativeZoom, attribution: '&copy; <a href="https://www.ign.fr/">IGN</a> – Géoplateforme' },
     );
   }
@@ -96,6 +104,7 @@ window.Common = (() => {
     const current = layers[saved] || layers["Plan OpenStreetMap"];
     current.addTo(map);
     L.control.layers(layers, null, { position: "topright" }).addTo(map);
+    map.baseLayers = layers; // pour changer de fond depuis le code (carte préparée hors réseau)
     map.on("baselayerchange", (e) => { try { localStorage.setItem(BASE_KEY, e.name); } catch { /* indisponible */ } });
     return current;
   }
@@ -340,5 +349,6 @@ window.Common = (() => {
     toPolys, pointInPolys, outerRings, holeRings, OFF_ROAD,
     addBaseLayers, sectorCode, labelHtml, compactLabelsBelow, distanceToEdge, normalizeText,
     tourneeTitle, IS_IOS, IS_ANDROID, navLinks, euros, parseEuros, STATUT_LABEL, personAvatar, formatDay, telHref, hasTeam, statutPill, teamLine, renderEquipe,
+    IGN_PLAN_URL,
   };
 })();

@@ -172,6 +172,8 @@ class DonIn(BaseModel):
     note: str = Field(default="", max_length=200)
     tx_code: str = Field(default="", max_length=64)
     sumup: bool = False  # paiement CB lancé dans l'appli SumUp (en attente de son retour)
+    # identifiant donné par le téléphone : un don saisi hors réseau et renvoyé deux fois n'est compté qu'une fois
+    client_id: str | None = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
     @field_validator("note", "tx_code")
     @classmethod
@@ -229,3 +231,52 @@ class RenfortIn(BaseModel):
         if (self.personne_id is None) == (self.personne is None):
             raise ValueError("choisir une personne ou en saisir une nouvelle")
         return self
+
+
+class NoteIn(BaseModel):
+    slug: str = Field(max_length=80)
+    address_id: str = Field(max_length=120)
+    note: str = Field(default="", max_length=300)
+
+    @field_validator("note")
+    @classmethod
+    def strip_note(cls, v: str) -> str:
+        return " ".join(v.split())
+
+
+class SignalementIn(BaseModel):
+    """Problème d'adresse vu sur le terrain : maison manquante (position), maison vide, erreur…"""
+    slug: str = Field(max_length=80)
+    type: Literal["manquante", "vide", "erreur", "autre"]
+    address_id: str | None = Field(default=None, max_length=120)
+    sector_id: int | None = None
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lon: float | None = Field(default=None, ge=-180, le=180)
+    numero: str = Field(default="", max_length=12)
+    nom_voie: str = Field(default="", max_length=120)
+    note: str = Field(default="", max_length=300)
+
+    @field_validator("numero", "nom_voie", "note")
+    @classmethod
+    def strip_text(cls, v: str) -> str:
+        return " ".join(v.split())
+
+    @model_validator(mode="after")
+    def check_target(self):
+        if self.type == "manquante":
+            if self.lat is None or self.lon is None or self.sector_id is None:
+                raise ValueError("placer la maison manquante sur la carte")
+        elif not self.address_id:
+            raise ValueError("choisir la maison concernée")
+        return self
+
+
+class SignalementActionIn(BaseModel):
+    action: Literal["ajouter", "exclure", "traite", "ignore", "rouvrir"]
+    numero: str = Field(default="", max_length=12)
+    nom_voie: str = Field(default="", max_length=120)
+
+    @field_validator("numero", "nom_voie")
+    @classmethod
+    def strip_text(cls, v: str) -> str:
+        return " ".join(v.split())

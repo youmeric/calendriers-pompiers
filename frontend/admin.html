@@ -217,6 +217,7 @@
       <div class="teams-actions">
         <span id="bilan-saved" class="saved-badge" hidden>Enregistré ✓</span>
         <button id="bilan-refresh" class="btn" type="button">Actualiser</button>
+        <a id="bilan-print" class="btn" href="/bilan.html" target="_blank" rel="noopener">🖨 Bilan de l'année</a>
         <button id="bilan-export" class="btn" type="button">
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5" /><path d="M5 21h14" /></svg>Exporter les dons (Excel)
         </button>
@@ -267,6 +268,11 @@
         </div>
         <div id="bilan-cards" class="bilan-cards"></div>
         <div id="bilan-attente"></div>
+        <section id="sig-section" class="sig-section">
+          <h3 class="panel-title">Signalements du terrain <span id="sig-count" class="count-badge" hidden></span></h3>
+          <p class="hint">Maisons manquantes, vides ou démolies, adresses fausses vues par les équipes. Une maison ajoutée ou exclue ici corrige aussitôt les secteurs et les comptes. 📍 la montre sur la carte ci-dessus.</p>
+          <div id="sig-list"></div>
+        </section>
         <div class="bilan-table-wrap">
           <table class="bilan-table">
             <thead><tr><th>Secteur</th><th>Maisons</th><th>Dons</th><th>Espèces</th><th>Chèques</th><th>Carte</th><th>Total</th><th>À remettre</th></tr></thead>

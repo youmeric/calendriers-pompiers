@@ -18,6 +18,10 @@
   const MODE_LABEL = { especes: "espèces", cheque: "chèque", cb: "carte" };
   const QUEUE_KEY = "pompiers-pending-updates";
   const SECTOR_KEY = "terrain-secteur";
+  const SNAP_KEY = "terrain-copie"; // copie du secteur sur le téléphone, pour travailler sans réseau
+  const MAP_KEY = "terrain-carte-prete";
+  const NOTE_CHIPS = ["🐕 Chien", "🔕 Ne pas sonner", "🌙 Repasser le soir", "👵 Personne âgée", "🚒 Donne à la caserne"];
+  const SIG_LABEL = { manquante: "Maison manquante", vide: "Maison vide / pas une habitation", erreur: "Adresse fausse", autre: "Autre problème" };
   const WORLD = [[85, -180], [85, 180], [-85, 180], [-85, -180]];
   const TABS = ["accueil", "carte", "maisons", "caisse", "equipe"];
 
@@ -43,7 +47,18 @@
     myPos: null,
     watch: null,
     tour: { active: false, current: null, skipped: new Set(), last: null },
+    offline: false, // pas de réseau : on travaille sur la copie enregistrée
+    snap: null,
+    raw: { suivi: {}, caisse: {}, equipe: {} }, // dernières réponses du serveur, pour la copie
+    placing: false, // carte : placement d'une maison manquante
   };
+
+  /** Erreur réseau (pas de réponse du serveur), à distinguer d'un refus. */
+  const isNetErr = (err) => !err.status;
+
+  function uid() {
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
 
   // ---------------------------------------------------------------------------------------
   // Connexion
@@ -99,13 +114,16 @@
   async function start() {
     try {
       T.me = await fetchJSON("/api/equipe/moi");
+      await loadSectors();
+      T.offline = false;
     } catch (err) {
-      if (err.status === 401) { showLogin(); return; }
-      throw err;
+      if (err.status === 401) { clearSnapshot(); showLogin(); return; }
+      const snap = readSnapshot();
+      if (!isNetErr(err) || !snap) throw err;
+      useSnapshot(snap);
     }
     $("t-login").hidden = true;
     $("t-app").hidden = false;
-    await loadSectors();
     if (!T.sectors.length) {
       document.body.classList.add("t-no-sector");
       $("v-accueil").innerHTML = `<div class="r-empty">
@@ -121,8 +139,12 @@
     const pick = T.sectors.find((x) => x.sector.id === saved)
       || T.sectors.find((x) => x.role === "responsable") || T.sectors[0];
     await selectSector(pick);
-    flushQueue();
     showTab(currentTab());
+    if (!T.offline) {
+      flushQueue();
+      prefetchOthers();
+      precacheShell();
+    }
   }
 
   async function selectSector(item) {
@@ -137,40 +159,184 @@
 
   async function loadTracking() {
     const s = T.cur.sector;
+    if (!T.offline) {
+      try {
+        await fetchTracking(s);
+      } catch (err) {
+        if (!isNetErr(err) || !readSnapshot()) throw err;
+        goOffline();
+      }
+    }
+    if (T.cur.sector !== s) return; // secteur changé entre-temps
+    applyTracking(s);
+  }
+
+  /** Demande au serveur le suivi du secteur et garde les réponses (copie hors réseau). */
+  async function fetchTracking(s) {
     if (!T.me.suivi) {
-      const equipe = await fetchJSON(`/api/equipe/secteurs/${s.id}/equipe`).catch(() => s.equipe || null);
-      if (T.cur.sector !== s) return;
-      T.tr = { readOnly: true, role: T.cur.role, lead: T.cur.role !== "equipier", full: T.cur.role !== "equipier", donsActive: false, dons: new Map(), precedent: {}, equipe };
+      T.raw.equipe[s.id] = await fetchJSON(`/api/equipe/secteurs/${s.id}/equipe`).catch((err) => {
+        if (isNetErr(err)) throw err;
+        return s.equipe || null;
+      });
+      delete T.raw.suivi[s.id];
+    } else {
+      const t = await fetchJSON(`/api/equipe/secteurs/${s.id}/suivi`);
+      T.raw.suivi[s.id] = t;
+      const lead = t.role !== "equipier";
+      T.raw.caisse[s.id] = lead && t.dons !== null
+        ? await fetchJSON(`/api/equipe/secteurs/${s.id}/caisse`).catch((err) => { if (isNetErr(err)) throw err; return null; })
+        : null;
+    }
+    saveSnapshot();
+  }
+
+  /** Les autres secteurs de la personne, pour pouvoir en changer sans réseau. */
+  async function prefetchOthers() {
+    for (const x of T.sectors) {
+      if (x === T.cur || T.raw.suivi[x.sector.id] || T.raw.equipe[x.sector.id]) continue;
+      try { await fetchTracking(x.sector); } catch { return; }
+    }
+  }
+
+  function applyTracking(s) {
+    const t = T.me.suivi ? T.raw.suivi[s.id] : null;
+    if (!t) {
+      T.tr = { readOnly: true, role: T.cur.role, lead: T.cur.role !== "equipier", full: T.cur.role !== "equipier", donsActive: false, dons: new Map(), allDons: [], precedent: {}, notes: {}, signalements: [], equipe: T.raw.equipe[s.id] || s.equipe || null };
       return;
     }
-    const t = await fetchJSON(`/api/equipe/secteurs/${s.id}/suivi`);
-    const lead = t.role !== "equipier";
-    const caisse = lead && t.dons !== null ? await fetchJSON(`/api/equipe/secteurs/${s.id}/caisse`).catch(() => null) : null;
-    if (T.cur.sector !== s) return; // secteur changé entre-temps
+    const queue = readQueue().filter((q) => q.slug === T.cur.slug);
+    const ids = new Set(s.addresses.map((a) => a.id));
     // les modifications pas encore envoyées (hors réseau) restent prioritaires
-    const pending = new Map(readQueue().filter((q) => q.slug === T.cur.slug).map((q) => [q.addressId, q.status]));
+    const pending = new Map(queue.filter((q) => q.kind === "status").map((q) => [q.addressId, q.status]));
     for (const a of s.addresses) {
       a.status = pending.has(a.id) ? pending.get(a.id) : (t.statuses[a.id] || {}).status || null;
     }
+    const allDons = [...(t.dons || [])];
+    for (const q of queue) {
+      if (q.kind !== "don" || !ids.has(q.address_id)) continue;
+      allDons.push({ id: `q-${q.client_id}`, address_id: q.address_id, montant: q.montant, mode: q.mode, statut: "ok", mine: true, pending: true,
+        personne_nom: T.me.personne ? T.me.personne.nom : "Admin", tx_code: q.tx_code || "", created_at: q.at });
+      const a = T.addr.get(q.address_id);
+      if (a && !pending.has(a.id)) a.status = "fait";
+    }
     const dons = new Map();
-    for (const d of t.dons || []) {
+    for (const d of allDons) {
       if (!dons.has(d.address_id)) dons.set(d.address_id, []);
       dons.get(d.address_id).push(d);
     }
+    const notes = { ...(t.notes || {}) };
+    for (const q of queue) {
+      if (q.kind !== "note") continue;
+      if (q.note) notes[q.address_id] = { note: q.note, par: T.me.personne ? T.me.personne.nom : "Admin", pending: true };
+      else delete notes[q.address_id];
+    }
+    const signalements = [...(t.signalements || []), ...queue.filter((q) => q.kind === "sig").map((q) => ({ ...q.body, pending: true }))];
+    const lead = t.role !== "equipier";
     T.tr = {
-      readOnly: false, role: t.role, lead, full: lead, donsActive: t.dons !== null, dons, allDons: t.dons || [],
-      totaux: t.totaux, precedent: t.precedent || {}, equipe: t.equipe, caisse,
+      readOnly: false, role: t.role, lead, full: lead, donsActive: t.dons !== null, dons, allDons,
+      totaux: t.totaux, precedent: t.precedent || {}, equipe: t.equipe, caisse: T.raw.caisse[s.id] || null,
+      notes, signalements,
     };
   }
 
   async function reload() {
     if (!T.cur) return;
+    if (T.offline) {
+      // le réseau est-il revenu ? on retente depuis le début (connexion, secteurs, envoi de la file)
+      try { T.me = await fetchJSON("/api/equipe/moi"); } catch (err) {
+        if (err.status === 401) { clearSnapshot(); showLogin(); }
+        return;
+      }
+      T.offline = false;
+    }
+    if (readQueue().length) await flushQueue();
     try {
       await loadTracking();
       renderAll();
     } catch (err) {
-      if (err.status === 401) { showToast("Accès expiré : reconnectez-vous.", true); showLogin(); }
+      if (err.status === 401) { clearSnapshot(); showToast("Accès expiré : reconnectez-vous.", true); showLogin(); }
     }
+  }
+
+  // ---------------------------------------------------------------------------------------
+  // Copie sur le téléphone (hors réseau)
+  // ---------------------------------------------------------------------------------------
+
+  function slimSector(x) {
+    const { resume, limite, ...sector } = x.sector;
+    sector.addresses = x.sector.addresses.map(({ status, ...a }) => a);
+    return { slug: x.slug, communeNom: x.communeNom, role: x.role, sector };
+  }
+
+  function saveSnapshot() {
+    if (!T.me || T.offline) return;
+    const snap = {
+      v: 1, at: new Date().toISOString(), me: T.me, annee: T.annee,
+      sectors: T.sectors.map(slimSector), allSectors: [...T.allSectors], raw: T.raw,
+    };
+    try { localStorage.setItem(SNAP_KEY, JSON.stringify(snap)); } catch { /* plein ou indisponible */ }
+    T.snap = snap;
+  }
+
+  /** Reporte une modification acceptée par le serveur dans la copie du téléphone. */
+  let snapTimer = null;
+  function patchRaw(fn) {
+    const t = T.cur && T.raw.suivi[T.cur.sector.id];
+    if (!t) return;
+    fn(t);
+    clearTimeout(snapTimer);
+    snapTimer = setTimeout(saveSnapshot, 800);
+  }
+
+  function readSnapshot() {
+    try {
+      const snap = JSON.parse(localStorage.getItem(SNAP_KEY) || "null");
+      return snap && snap.v === 1 ? snap : null;
+    } catch { return null; }
+  }
+
+  function clearSnapshot() {
+    try { localStorage.removeItem(SNAP_KEY); } catch { /* indisponible */ }
+  }
+
+  function useSnapshot(snap) {
+    T.offline = true;
+    T.snap = snap;
+    T.me = snap.me;
+    T.annee = snap.annee;
+    T.sectors = snap.sectors.map((x) => ({ ...x, sector: { ...x.sector, addresses: x.sector.addresses.map((a) => ({ ...a })) } }));
+    T.allSectors = new Map(snap.allSectors);
+    T.raw = snap.raw;
+    $("t-login-title").textContent = tourneeTitle(snap.annee);
+  }
+
+  /** Le réseau vient de tomber : on continue sur la copie (les mêmes objets restent affichés). */
+  function goOffline() {
+    if (T.offline) return;
+    T.offline = true;
+    T.snap = readSnapshot() || T.snap;
+    if (T.snap) {
+      const r = T.snap.raw;
+      T.raw = { suivi: { ...r.suivi, ...T.raw.suivi }, caisse: { ...r.caisse, ...T.raw.caisse }, equipe: { ...r.equipe, ...T.raw.equipe } };
+    }
+    showToast("Pas de réseau : vous pouvez continuer, tout sera envoyé au retour du réseau.");
+    renderTop();
+  }
+
+  function snapTime() {
+    const at = T.snap && T.snap.at;
+    if (!at) return "";
+    const d = new Date(at);
+    const sameDay = d.toDateString() === new Date().toDateString();
+    return `${sameDay ? "aujourd'hui" : `le ${d.toLocaleDateString("fr-FR")}`} à ${d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
+  }
+
+  /** Garde la page et ses fichiers dans le téléphone pour pouvoir l'ouvrir sans réseau. */
+  function precacheShell() {
+    if (!("serviceWorker" in navigator)) return;
+    const urls = [location.pathname, ...performance.getEntriesByType("resource").map((e) => e.name)]
+      .filter((u) => { try { return new URL(u, location.href).origin === location.origin && !new URL(u, location.href).pathname.startsWith("/api/"); } catch { return false; } });
+    navigator.serviceWorker.ready.then((reg) => reg.active && reg.active.postMessage({ type: "precache", urls })).catch(() => {});
   }
 
   // ---------------------------------------------------------------------------------------
@@ -206,13 +372,30 @@
     return `<span class="prev-year prev-${cls}">${p.annee} : ${what}</span>`;
   }
 
+  function noteOf(a) {
+    const n = T.tr && T.tr.notes && T.tr.notes[a.id];
+    return n ? n.note : "";
+  }
+
+  function noteChip(a, full) {
+    const n = noteOf(a);
+    if (!n) return "";
+    const text = full || n.length <= 42 ? n : `${n.slice(0, 40)}…`;
+    return `<span class="note-chip">📝 ${escapeHtml(text)}</span>`;
+  }
+
+  function sigChip(a) {
+    const open = T.tr && (T.tr.signalements || []).some((x) => x.address_id === a.id);
+    return open ? `<span class="sig-chip">⚠ signalé</span>` : "";
+  }
+
   function donBadges(addressId) {
     const list = T.tr && T.tr.dons.get(addressId);
     if (!list || !list.length) return "";
     return list.map((d) => {
       const amount = d.montant !== undefined ? euros(d.montant) : "Don";
       const cls = d.statut === "ok" ? "ok" : d.statut === "attente" ? "wait" : "fail";
-      const tail = d.statut === "attente" ? " · en attente" : d.statut === "echec" ? " · échoué" : "";
+      const tail = d.pending ? " · à envoyer" : d.statut === "attente" ? " · en attente" : d.statut === "echec" ? " · échoué" : "";
       return `<span class="don-badge ${cls}">${amount} ${MODE_LABEL[d.mode]}${tail}</span>`;
     }).join("");
   }
@@ -282,8 +465,12 @@
       <span>${escapeHtml(s.nom)}</span>${T.sectors.length > 1 ? `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>` : ""}`;
     $("t-sector").disabled = T.sectors.length < 2;
     const q = readQueue().length;
-    $("t-sync").hidden = !q;
-    $("t-sync").textContent = `⟳ ${q}`;
+    $("t-sync").hidden = !q && !T.offline;
+    $("t-sync").textContent = T.offline ? `📴${q ? ` ${q}` : ""}` : `⟳ ${q}`;
+    $("t-sync").classList.toggle("off", T.offline);
+    $("t-sync").title = T.offline ? `Hors connexion${q ? ` · ${q} à envoyer` : ""}` : `${q} modification(s) en attente d'envoi`;
+    $("t-offline").hidden = !T.offline;
+    $("t-offline").innerHTML = `📴 <b>Hors connexion</b> · données ${escapeHtml(snapTime())}${q ? ` · <b>${q}</b> à envoyer` : ""}`;
   }
 
   function ring(pct) {
@@ -394,7 +581,7 @@
         </div>` : "";
       html += `<div class="t-row${a.status ? ` st-${a.status}` : ""}" data-id="${escapeHtml(a.id)}">
         <button type="button" class="t-row-main" data-open><span class="t-row-label">${escapeHtml(a.label)}</span>
-          <span class="t-row-chips">${prevChip(a)}${donBadges(a.id)}</span></button>
+          <span class="t-row-chips">${noteChip(a)}${sigChip(a)}${prevChip(a)}${donBadges(a.id)}</span></button>
         ${btns}
       </div>`;
     }
@@ -407,7 +594,7 @@
     if (!tr || !tr.donsActive) { box.innerHTML = ""; return; }
     const label = (id) => escapeHtml((T.addr.get(id) || {}).label || id);
     const donLine = (d, editable) => `<div class="don-line" data-id="${d.id}">
-        <span><b>${d.montant !== undefined ? euros(d.montant) : "Don"}</b> ${MODE_LABEL[d.mode]} ${d.statut === "ok" ? "✓" : d.statut === "attente" ? "⏳ en attente" : "✕ échoué"}
+        <span><b>${d.montant !== undefined ? euros(d.montant) : "Don"}</b> ${MODE_LABEL[d.mode]} ${d.pending ? "📴 à envoyer" : d.statut === "ok" ? "✓" : d.statut === "attente" ? "⏳ en attente" : "✕ échoué"}
           <small>${label(d.address_id)} · ${escapeHtml(d.personne_nom)}${d.tx_code ? ` · ${escapeHtml(d.tx_code)}` : ""}</small></span>
         ${editable ? `<span class="don-line-actions">
           ${d.statut === "attente" ? `<button type="button" class="btn small" data-act="ok">Payé</button><button type="button" class="btn small" data-act="echec">Non payé</button>` : ""}
@@ -468,6 +655,7 @@
       html += `<div class="r-card"><span class="r-label">L'équipe</span>${people.join("") || `<p class="hint">Équipe pas encore constituée.</p>`}
         ${canChange ? `<button type="button" class="btn eq-add" data-action="add-member">+ Ajouter un équipier</button>` : ""}</div>`;
     }
+    html += offlineCard();
     html += `<div class="eq-links">
         <a class="btn" href="/plan.html#/${encodeURIComponent(T.cur.slug)}/${s.id}" target="_blank" rel="noopener">🖨 Plan du secteur à imprimer</a>
         <a class="btn" href="/#/${encodeURIComponent(T.cur.slug)}/${s.id}">🗺 Plan public (description des limites)</a>
@@ -476,6 +664,80 @@
       </div>
       <p class="hint eq-me">Connecté(e) : ${escapeHtml(T.me.personne ? T.me.personne.nom : "administrateur")} · ${escapeHtml(tourneeTitle(T.annee))}</p>`;
     $("v-equipe").innerHTML = html;
+  }
+
+  function mapPrepared() {
+    try { return JSON.parse(storage.get(MAP_KEY, "{}"))[T.cur.sector.id] || null; } catch { return null; }
+  }
+
+  function offlineCard() {
+    const prep = mapPrepared();
+    const when = (iso) => new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+    return `<div class="r-card off-card"><span class="r-label">Sans réseau</span>
+      <p>📥 Secteur, maisons${T.tr && T.tr.donsActive ? ", dons" : ""} et équipe gardés sur ce téléphone : ${T.snap ? `à jour ${escapeHtml(snapTime())}` : "pas encore"}.
+        Sans réseau, tout reste utilisable et part au retour du réseau.</p>
+      <p>🗺 Fond de carte hors réseau : ${prep ? `<b>prêt</b> (plan IGN, ${when(prep.at)})` : "pas encore préparé"}.</p>
+      <button type="button" class="btn" data-action="prepare-map">${prep ? "Mettre à jour la carte" : "Préparer la carte"} <small>(Wi-Fi conseillé)</small></button>
+    </div>`;
+  }
+
+  /** Numéros des tuiles (z, x, y) qui couvrent le secteur, du zoom 13 au 17. */
+  function sectorTiles() {
+    const pts = outerRings(toPolys(T.cur.sector.polygon)).flat();
+    const pad = 0.004;
+    const lat = pts.map((p) => p[0]);
+    const lon = pts.map((p) => p[1]);
+    const [s, n, w, e] = [Math.min(...lat) - pad, Math.max(...lat) + pad, Math.min(...lon) - pad, Math.max(...lon) + pad];
+    const tx = (lo, z) => Math.floor(((lo + 180) / 360) * 2 ** z);
+    const ty = (la, z) => {
+      const r = (la * Math.PI) / 180;
+      return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** z);
+    };
+    const out = [];
+    for (let z = 13; z <= 17; z++) {
+      for (let x = tx(w, z); x <= tx(e, z); x++) {
+        for (let y = ty(n, z); y <= ty(s, z); y++) out.push({ z, x, y });
+      }
+    }
+    return out;
+  }
+
+  /** Télécharge le plan IGN du secteur dans le téléphone (le service worker le ressert sans réseau). */
+  async function prepareMap(btn) {
+    if (T.offline) { showToast("Pas de réseau : préparez la carte avant de partir (Wi-Fi conseillé).", true); return; }
+    if (!("caches" in window)) { showToast("Ce navigateur ne peut pas garder la carte.", true); return; }
+    const tiles = sectorTiles().slice(0, 2500);
+    const cache = await caches.open("tuiles");
+    let done = 0;
+    let ok = 0;
+    btn.disabled = true;
+    const next = async () => {
+      while (tiles.length) {
+        const t = tiles.shift();
+        const url = L.Util.template(C.IGN_PLAN_URL, t);
+        try {
+          const resp = await fetch(url, { mode: "cors" });
+          if (resp.ok) { await cache.put(url, resp); ok++; }
+        } catch { /* tuile manquante : tant pis */ }
+        done++;
+        btn.textContent = `Téléchargement… ${done}`;
+      }
+    };
+    await Promise.all(Array.from({ length: 6 }, next));
+    btn.disabled = false;
+    if (!ok) { showToast("La carte n'a pas pu être téléchargée.", true); renderEquipe(); return; }
+    let all = {};
+    try { all = JSON.parse(storage.get(MAP_KEY, "{}")); } catch { /* vide */ }
+    all[T.cur.sector.id] = { n: ok, at: new Date().toISOString() };
+    storage.set(MAP_KEY, JSON.stringify(all));
+    // le fond préparé devient le fond de la carte
+    storage.set("fond-de-carte", "Plan IGN");
+    if (T.map && T.map.baseLayers) {
+      for (const l of Object.values(T.map.baseLayers)) if (T.map.hasLayer(l)) T.map.removeLayer(l);
+      T.map.baseLayers["Plan IGN"].addTo(T.map);
+    }
+    showToast(`Carte prête hors réseau ✓ (${ok} morceaux)`);
+    renderEquipe();
   }
 
   // ---------------------------------------------------------------------------------------
@@ -503,9 +765,24 @@
       });
       T.map.addControl(new Locate());
       T.map.on("click", (e) => {
+        if (T.placing) { placeMissing(e.latlng); return; }
         const m = nearestMarker(e.latlng, 26);
         if (m) openFiche(T.addr.get(m.addressId));
       });
+      const Missing = L.Control.extend({
+        options: { position: "topleft" },
+        onAdd() {
+          const b = L.DomUtil.create("button", "missing-btn leaflet-bar");
+          b.type = "button";
+          b.title = "Placer une maison manquante";
+          b.setAttribute("aria-label", "Placer une maison manquante");
+          b.textContent = "+🏠";
+          L.DomEvent.disableClickPropagation(b);
+          L.DomEvent.on(b, "click", startPlacing);
+          return b;
+        },
+      });
+      T.map.addControl(new Missing());
       drawMap();
     }
     setTimeout(() => {
@@ -526,9 +803,18 @@
     for (const a of T.cur.sector.addresses) {
       const m = L.circleMarker([a.lat, a.lon], { radius: 7, color: "#fff", weight: 2, fillColor: statusColor(a.status), fillOpacity: 1 });
       m.addressId = a.id;
-      m.on("click", (e) => { L.DomEvent.stop(e); openFiche(a); });
+      m.on("click", (e) => {
+        L.DomEvent.stop(e);
+        if (T.placing) placeMissing(e.latlng); else openFiche(a);
+      });
       m.addTo(T.layer);
       T.markers.set(a.id, m);
+    }
+    // maisons signalées manquantes (en attente de l'administrateur)
+    for (const x of (T.tr && T.tr.signalements) || []) {
+      if (x.type !== "manquante" || x.lat == null) continue;
+      L.circleMarker([x.lat, x.lon], { radius: 7, color: "#7c3aed", weight: 2, dashArray: "3 3", fillColor: "#ede9fe", fillOpacity: 1, interactive: false })
+        .bindTooltip("Maison signalée (en attente)").addTo(T.layer);
     }
     if (T.myPos) drawMe();
     if (!T.fitted && !$("v-carte").hidden) { T.map.fitBounds(T.outline.getBounds(), { padding: [16, 16] }); T.fitted = true; }
@@ -569,8 +855,19 @@
   // Statuts : envoi, file hors réseau, annulation
   // ---------------------------------------------------------------------------------------
 
-  function readQueue() { try { return JSON.parse(storage.get(QUEUE_KEY, "[]")); } catch { return []; } }
+  // file des envois en attente (hors réseau) : statuts, dons, notes, signalements, dans l'ordre
+  function readQueue() {
+    try {
+      return JSON.parse(storage.get(QUEUE_KEY, "[]")).map((q) => (q.kind ? q : { ...q, kind: "status" }));
+    } catch { return []; }
+  }
   function writeQueue(q) { storage.set(QUEUE_KEY, JSON.stringify(q)); }
+  function enqueue(item, replace) {
+    const q = readQueue().filter((x) => !(replace && replace(x)));
+    q.push(item);
+    writeQueue(q);
+    renderTop();
+  }
 
   function sendStatus(slug, addressId, status) {
     return fetchJSON(`/api/communes/${slug}/addresses/${encodeURIComponent(addressId)}/status`, {
@@ -578,20 +875,51 @@
     });
   }
 
-  async function flushQueue() {
-    const q = readQueue();
-    if (!q.length) return;
-    const remaining = [];
-    for (const item of q) {
-      try { await sendStatus(item.slug, item.addressId, item.status); } catch (err) {
-        if (![401, 403, 404].includes(err.status)) remaining.push(item);
-      }
-    }
-    writeQueue(remaining);
-    if (T.cur) renderTop();
-    if (!remaining.length) showToast("Modifications hors réseau envoyées ✓");
+  const postJSON = (url, body) => fetchJSON(url, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+
+  function sendQueued(item) {
+    if (item.kind === "status") return sendStatus(item.slug, item.addressId, item.status);
+    if (item.kind === "note") return postJSON("/api/equipe/notes", { slug: item.slug, address_id: item.address_id, note: item.note });
+    if (item.kind === "sig") return postJSON("/api/equipe/signalements", item.body);
+    return postJSON("/api/equipe/dons", {
+      slug: item.slug, address_id: item.address_id, montant: item.montant, mode: item.mode, tx_code: item.tx_code || "", client_id: item.client_id,
+    });
   }
-  window.addEventListener("online", flushQueue);
+
+  function queuedLabel(item) {
+    const a = T.addr.get(item.addressId || item.address_id || (item.body && item.body.address_id));
+    const where = a ? a.label : "une maison";
+    return item.kind === "don" ? `don de ${euros(item.montant)} (${where})` : item.kind === "note" ? `note (${where})`
+      : item.kind === "sig" ? "signalement" : `statut (${where})`;
+  }
+
+  let flushing = null;
+  function flushQueue() {
+    flushing = flushing || (async () => {
+      const q = readQueue();
+      let sent = 0;
+      let i = 0;
+      for (; i < q.length; i++) {
+        try {
+          await sendQueued(q[i]);
+          sent++;
+        } catch (err) {
+          if (isNetErr(err) || err.status === 401 || err.status >= 500) break; // on réessaiera plus tard
+          showToast(`Non enregistré : ${queuedLabel(q[i])} — ${err.message}`, true);
+        }
+      }
+      // les éléments ajoutés pendant l'envoi restent dans la file
+      const added = readQueue().slice(q.length);
+      writeQueue([...q.slice(i), ...added]);
+      if (T.cur) renderTop();
+      if (sent && i === q.length && !added.length) showToast("Modifications hors réseau envoyées ✓");
+      return sent;
+    })().finally(() => { flushing = null; });
+    return flushing;
+  }
+  window.addEventListener("online", () => { if (T.cur) reload(); });
 
   async function setStatus(a, status, { undo = true } = {}) {
     const prev = a.status || null;
@@ -604,15 +932,16 @@
         if (T.tour.active) { T.tour.current = a; renderTour(); }
       });
     }
+    const slug = T.cur.slug;
+    const keep = () => enqueue({ kind: "status", slug, addressId: a.id, status }, (x) => x.kind === "status" && x.slug === slug && x.addressId === a.id);
+    if (T.offline) { keep(); return; }
     try {
-      await sendStatus(T.cur.slug, a.id, status);
+      await sendStatus(slug, a.id, status);
+      patchRaw((t) => { if (status) t.statuses[a.id] = { status }; else delete t.statuses[a.id]; });
     } catch (err) {
-      if ([401, 403, 404].includes(err.status)) { showToast(err.message, true); return; }
-      const q = readQueue().filter((x) => !(x.slug === T.cur.slug && x.addressId === a.id));
-      q.push({ slug: T.cur.slug, addressId: a.id, status });
-      writeQueue(q);
-      renderTop();
-      showToast("Pas de réseau : gardé sur le téléphone, envoyé au retour du réseau.");
+      if (!isNetErr(err) && err.status < 500) { showToast(err.message, true); return; }
+      keep();
+      goOffline();
     }
   }
 
@@ -649,7 +978,12 @@
   function fillFiche(a) {
     $("tf-title").textContent = a.label;
     $("tf-sub").textContent = `${a.groupe} · ${T.cur.communeNom}`;
-    $("tf-info").innerHTML = `${prevChip(a)}${donBadges(a.id)}`;
+    $("tf-info").innerHTML = `${sigChip(a)}${prevChip(a)}${donBadges(a.id)}`;
+    $("tf-note-box").hidden = !canEdit();
+    $("tf-note").value = noteOf(a);
+    $("tf-note-save").hidden = true;
+    const by = T.tr && T.tr.notes && T.tr.notes[a.id];
+    $("tf-note").title = by && by.par ? `Note de ${by.par}` : "";
     document.querySelectorAll("#t-fiche .tf-status .tt-btn").forEach((b) => {
       b.classList.toggle("active", a.status === b.dataset.status);
       b.disabled = !canEdit();
@@ -674,6 +1008,135 @@
     $("t-fiche").close();
   }));
   $("tf-close").addEventListener("click", () => $("t-fiche").close());
+
+  // note de la maison : raccourcis, enregistrement (ou mise en file sans réseau)
+  $("tf-note-chips").innerHTML = NOTE_CHIPS.map((c) => `<button type="button" class="note-quick">${c}</button>`).join("");
+  $("tf-note-chips").addEventListener("click", (e) => {
+    const b = e.target.closest(".note-quick");
+    if (!b) return;
+    const v = $("tf-note").value.trim();
+    const add = b.textContent.replace(/^\S+\s/, "");
+    if (!v.toLowerCase().includes(add.toLowerCase())) $("tf-note").value = v ? `${v}, ${add}` : add;
+    noteChanged();
+  });
+  const noteChanged = () => { $("tf-note-save").hidden = $("tf-note").value.trim() === noteOf(ficheAddr); };
+  $("tf-note").addEventListener("input", noteChanged);
+  $("tf-note-save").addEventListener("click", () => saveNote(ficheAddr, $("tf-note").value));
+
+  async function saveNote(a, raw) {
+    const note = raw.split(/\s+/).join(" ").trim().slice(0, 300);
+    const slug = T.cur.slug;
+    const local = () => {
+      if (note) T.tr.notes[a.id] = { note, par: T.me.personne ? T.me.personne.nom : "Admin", pending: true };
+      else delete T.tr.notes[a.id];
+    };
+    const keep = () => enqueue({ kind: "note", slug, address_id: a.id, note }, (x) => x.kind === "note" && x.slug === slug && x.address_id === a.id);
+    if (T.offline) {
+      keep();
+      local();
+    } else {
+      try {
+        const r = await postJSON("/api/equipe/notes", { slug, address_id: a.id, note });
+        if (r.note) T.tr.notes[a.id] = r.note; else delete T.tr.notes[a.id];
+        patchRaw((t) => { t.notes = t.notes || {}; if (r.note) t.notes[a.id] = r.note; else delete t.notes[a.id]; });
+      } catch (err) {
+        if (!isNetErr(err)) { showToast(err.message, true); return; }
+        keep();
+        local();
+        goOffline();
+      }
+    }
+    showToast(note ? "Note enregistrée ✓" : "Note effacée");
+    $("tf-note-save").hidden = true;
+    renderMaisons();
+    if (T.tour.active) renderTour();
+  }
+
+  // ---------------------------------------------------------------------------------------
+  // Signaler un problème d'adresse (maison manquante, vide, adresse fausse…)
+  // ---------------------------------------------------------------------------------------
+
+  const sigDialog = $("sig-dialog");
+  let sigCtx = null;
+
+  function openSig(ctx) {
+    sigCtx = ctx;
+    const missing = ctx.type === "manquante";
+    $("sig-title").textContent = missing ? "Maison manquante" : "Signaler un problème";
+    $("sig-address").textContent = missing ? "Elle sera ajoutée à la liste après vérification par l'administrateur." : ctx.a.label;
+    $("sig-types").hidden = missing;
+    $("sig-new").hidden = !missing;
+    sigDialog.querySelector('input[name="sig-type"][value="vide"]').checked = true;
+    $("sig-numero").value = "";
+    $("sig-voie").value = ctx.voie || "";
+    $("sig-note").value = "";
+    $("sig-error").hidden = true;
+    sigDialog.showModal();
+  }
+
+  $("tf-sig").addEventListener("click", () => { $("t-fiche").close(); openSig({ type: null, a: ficheAddr }); });
+
+  $("sig-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const missing = sigCtx.type === "manquante";
+    const body = {
+      slug: T.cur.slug,
+      type: missing ? "manquante" : sigDialog.querySelector('input[name="sig-type"]:checked').value,
+      note: $("sig-note").value.trim(),
+    };
+    if (missing) Object.assign(body, { sector_id: T.cur.sector.id, lat: sigCtx.lat, lon: sigCtx.lon, numero: $("sig-numero").value.trim(), nom_voie: $("sig-voie").value.trim() });
+    else body.address_id = sigCtx.a.id;
+    const keep = () => {
+      enqueue({ kind: "sig", slug: T.cur.slug, body });
+      T.tr.signalements = [...(T.tr.signalements || []), { ...body, pending: true }];
+    };
+    if (T.offline) keep();
+    else {
+      try {
+        const sig = await postJSON("/api/equipe/signalements", body);
+        T.tr.signalements = [...(T.tr.signalements || []), sig];
+        patchRaw((t) => { t.signalements = [...(t.signalements || []), sig]; });
+      } catch (err) {
+        if (!isNetErr(err)) { $("sig-error").textContent = err.message; $("sig-error").hidden = false; return; }
+        keep();
+        goOffline();
+      }
+    }
+    sigDialog.close();
+    stopPlacing();
+    showToast("Merci, c'est signalé ✓");
+    renderMaisons();
+    drawMap();
+  });
+  sigDialog.addEventListener("close", stopPlacing);
+
+  function startPlacing() {
+    if (!T.tr) return;
+    goTab("carte");
+    T.placing = true;
+    $("t-placing").hidden = false;
+    $("t-map").classList.add("placing");
+  }
+
+  function stopPlacing() {
+    T.placing = false;
+    $("t-placing").hidden = true;
+    $("t-map").classList.remove("placing");
+    if (T.placeMarker) { T.placeMarker.remove(); T.placeMarker = null; }
+  }
+  $("t-placing-cancel").addEventListener("click", stopPlacing);
+
+  function placeMissing(latlng) {
+    if (T.placeMarker) T.placeMarker.remove();
+    T.placeMarker = L.circleMarker(latlng, { radius: 9, color: "#7c3aed", weight: 3, dashArray: "3 3", fillColor: "#ede9fe", fillOpacity: 1 }).addTo(T.map);
+    let near = null;
+    let best = Infinity;
+    for (const a of T.cur.sector.addresses) {
+      const d = distanceM([latlng.lat, latlng.lng], [a.lat, a.lon]);
+      if (d < best) { best = d; near = a; }
+    }
+    openSig({ type: "manquante", lat: latlng.lat, lon: latlng.lng, voie: near ? near.nom_voie || near.groupe : "" });
+  }
   $("tf-don").addEventListener("click", () => { $("t-fiche").close(); openDon(ficheAddr); });
 
   // ---------------------------------------------------------------------------------------
@@ -740,7 +1203,8 @@
     $("tt-card").innerHTML = `<span class="tt-group">${escapeHtml(a.groupe)}</span>
       <h2 class="tt-label">${escapeHtml(a.label)}</h2>
       <span class="tt-dist"></span>
-      <div class="tt-chips">${prevChip(a)}${donBadges(a.id)}</div>`;
+      ${noteOf(a) ? `<p class="tt-note">📝 ${escapeHtml(noteOf(a))}</p>` : ""}
+      <div class="tt-chips">${sigChip(a)}${prevChip(a)}${donBadges(a.id)}</div>`;
     renderTourDistance();
     $("tt-don").hidden = !(T.tr && T.tr.donsActive);
     const nav = navLinks(a.lat, a.lon, a.label);
@@ -789,7 +1253,7 @@
   function renderExistingDons() {
     const list = T.tr.dons.get(donCtx.a.id) || [];
     $("don-existing").innerHTML = list.map((d) => `<div class="don-line" data-id="${d.id}">
-        <span><b>${d.montant !== undefined ? euros(d.montant) : "Don"}</b> ${MODE_LABEL[d.mode]} ${d.statut === "ok" ? "✓" : d.statut === "attente" ? "⏳ en attente" : "✕ échoué"}<small>${escapeHtml(d.personne_nom)}</small></span>
+        <span><b>${d.montant !== undefined ? euros(d.montant) : "Don"}</b> ${MODE_LABEL[d.mode]} ${d.pending ? "📴 à envoyer" : d.statut === "ok" ? "✓" : d.statut === "attente" ? "⏳ en attente" : "✕ échoué"}<small>${escapeHtml(d.personne_nom)}</small></span>
         ${T.tr.full || d.mine ? `<span class="don-line-actions">${d.statut === "attente" ? `<button type="button" class="btn small" data-act="ok">Payé</button><button type="button" class="btn small" data-act="echec">Non payé</button>` : ""}
           <button type="button" class="icon-btn danger" data-act="delete" aria-label="Supprimer ce don">✕</button></span>` : ""}
       </div>`).join("");
@@ -817,11 +1281,23 @@
     return Math.round(v * 100) / 100;
   }
 
-  function postDon(sumup) {
-    return fetchJSON("/api/equipe/dons", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ slug: T.cur.slug, address_id: donCtx.a.id, montant: readAmount(), mode: selectedMode(), sumup, tx_code: $("don-tx").value }),
+  function donBody(sumup) {
+    return { slug: T.cur.slug, address_id: donCtx.a.id, montant: readAmount(), mode: selectedMode(), sumup, tx_code: $("don-tx").value.trim(), client_id: uid() };
+  }
+
+  function postDon(body) {
+    return postJSON("/api/equipe/dons", body);
+  }
+
+  /** Don gardé sur le téléphone (pas de réseau) : compté tout de suite, envoyé plus tard. */
+  function keepDon(body) {
+    enqueue({ kind: "don", ...body, at: new Date().toISOString() });
+    applyTracking(T.cur.sector);
+    renderAll();
+    snack(`Don de ${euros(body.montant)} gardé sur le téléphone`, () => {
+      writeQueue(readQueue().filter((x) => x.client_id !== body.client_id));
+      applyTracking(T.cur.sector);
+      renderAll();
     });
   }
 
@@ -831,15 +1307,23 @@
   }
 
   async function afterDon(a) {
-    await reload();
+    if (!T.offline) await reload();
     if (T.tour.active && T.tour.current === a) { T.tour.last = [a.lat, a.lon]; nextHouse(); }
   }
 
   $("don-form").addEventListener("submit", async (e) => {
     e.preventDefault();
+    let body;
+    try { body = donBody(false); } catch (err) { donError(err); return; }
+    const a = donCtx.a;
+    if (T.offline) {
+      donDialog.close();
+      keepDon(body);
+      await afterDon(a);
+      return;
+    }
     try {
-      const don = await postDon(false);
-      const a = donCtx.a;
+      const don = await postDon(body);
       donDialog.close();
       snack(`Don de ${euros(don.montant)} enregistré`, async () => {
         await fetchJSON(`/api/equipe/dons/${don.id}`, { method: "DELETE" }).catch((err) => showToast(err.message, true));
@@ -847,7 +1331,11 @@
       });
       await afterDon(a);
     } catch (err) {
-      donError(err);
+      if (!isNetErr(err) && err.status < 500) { donError(err); return; }
+      donDialog.close();
+      goOffline();
+      keepDon(body);
+      await afterDon(a);
     }
   });
 
@@ -870,18 +1358,27 @@
   }
 
   $("don-sumup").addEventListener("click", async () => {
+    if (T.offline) { donError(new Error("SumUp a besoin du réseau. Encaissez autrement, ou saisissez le paiement à la main plus tard.")); return; }
     try {
-      const don = await postDon(true);
+      const don = await postDon(donBody(true));
       donDialog.close();
       showToast("Ouverture de SumUp…");
       openExternal(sumupUrl(T.me.sumup, don));
       setTimeout(() => reload(), 2500);
     } catch (err) {
-      donError(err);
+      donError(isNetErr(err) ? new Error("Pas de réseau : SumUp ne peut pas être lancé maintenant.") : err);
     }
   });
 
   async function donAction(id, act) {
+    if (String(id).startsWith("q-")) { // don pas encore envoyé : on le retire de la file
+      if (act !== "delete" || !confirm("Supprimer ce don pas encore envoyé ?")) return;
+      writeQueue(readQueue().filter((x) => `q-${x.client_id}` !== id));
+      applyTracking(T.cur.sector);
+      renderAll();
+      return;
+    }
+    if (T.offline) throw new Error("Pas de réseau : réessayez quand le réseau sera revenu.");
     if (act === "delete") {
       if (!confirm("Supprimer ce don ?")) return;
       await fetchJSON(`/api/equipe/dons/${id}`, { method: "DELETE" });
@@ -938,6 +1435,11 @@
   $("caisse-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const recu = $("caisse-recu").value.trim();
+    if (T.offline) {
+      $("caisse-error").textContent = "Pas de réseau : la remise s'enregistre quand le réseau est revenu.";
+      $("caisse-error").hidden = false;
+      return;
+    }
     try {
       await fetchJSON(`/api/equipe/secteurs/${T.cur.sector.id}/remises`, {
         method: "POST",
@@ -1066,6 +1568,9 @@
   });
 
   async function logout() {
+    if (readQueue().length && !confirm("Des modifications ne sont pas encore envoyées (pas de réseau). Se déconnecter quand même ? Elles seront perdues.")) return;
+    clearSnapshot();
+    writeQueue([]);
     await fetchJSON("/api/equipe/logout", { method: "POST" }).catch(() => {});
     location.href = "/";
   }
@@ -1083,6 +1588,8 @@
     if (action === "sectors") openSectors();
     if (action === "logout") logout();
     if (action === "add-member") openAddMember();
+    if (action === "missing") startPlacing();
+    if (action === "prepare-map") prepareMap(e.target.closest("[data-action]"));
     const rm = e.target.closest("[data-remove]");
     if (rm) { removeMember(Number(rm.dataset.remove)); return; }
     const gotoTab = e.target.closest("[data-goto]");
@@ -1130,7 +1637,6 @@
   // actualisation : retour sur l'appli (après SumUp) et chaque minute
   function autoRefresh() {
     if (document.visibilityState !== "visible" || !T.cur || document.querySelector("dialog[open]")) return;
-    if (readQueue().length) { flushQueue(); return; }
     reload();
   }
   document.addEventListener("visibilitychange", autoRefresh);

@@ -121,6 +121,42 @@ def init_db() -> None:
                 statut TEXT NOT NULL DEFAULT 'a_faire',
                 note TEXT NOT NULL DEFAULT ''
             );
+            -- note de l'équipe sur une maison (« chien », « repasser le soir »…), gardée d'une année sur l'autre
+            CREATE TABLE IF NOT EXISTS address_notes (
+                commune_slug TEXT NOT NULL,
+                address_id TEXT NOT NULL,
+                note TEXT NOT NULL,
+                personne_nom TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (commune_slug, address_id)
+            );
+            -- maisons absentes de la Base Adresse, ajoutées par l'admin (souvent après un signalement)
+            CREATE TABLE IF NOT EXISTS adresses_ajoutees (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                commune_slug TEXT NOT NULL,
+                numero TEXT NOT NULL DEFAULT '',
+                nom_voie TEXT NOT NULL DEFAULT '',
+                lat REAL NOT NULL,
+                lon REAL NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            -- problèmes d'adresse signalés par les équipes, traités par l'admin
+            CREATE TABLE IF NOT EXISTS signalements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                commune_slug TEXT NOT NULL,
+                sector_id INTEGER,
+                type TEXT NOT NULL,
+                address_id TEXT,
+                lat REAL,
+                lon REAL,
+                numero TEXT NOT NULL DEFAULT '',
+                nom_voie TEXT NOT NULL DEFAULT '',
+                note TEXT NOT NULL DEFAULT '',
+                personne_nom TEXT NOT NULL DEFAULT '',
+                statut TEXT NOT NULL DEFAULT 'nouveau',
+                created_at TEXT NOT NULL,
+                traite_le TEXT
+            );
             """
         )
         columns = {row[1] for row in conn.execute("PRAGMA table_info(sectors)")}
@@ -147,6 +183,11 @@ def init_db() -> None:
                 DROP TABLE address_status;
                 ALTER TABLE address_status_new RENAME TO address_status;
             """)
+        # dons saisis hors réseau : identifiant du téléphone pour ne jamais les compter deux fois
+        dcols = {row[1] for row in conn.execute("PRAGMA table_info(dons)")}
+        if "client_id" not in dcols:
+            conn.execute("ALTER TABLE dons ADD COLUMN client_id TEXT")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS dons_client_id ON dons (client_id) WHERE client_id IS NOT NULL")
         # code d'accès personnel des équipes (ajouté après coup : on complète les anciennes fiches)
         pcols = {row[1] for row in conn.execute("PRAGMA table_info(personnes)")}
         if "code" not in pcols:
@@ -555,6 +596,102 @@ def remove_member(sector_id: int, personne_id: int, role: str) -> bool:
     return bool(cur.rowcount)
 
 
+# ---- Notes des équipes sur les maisons ----------------------------------------------
+
+def get_notes(commune_slug: str) -> dict[str, dict]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT address_id, note, personne_nom, updated_at FROM address_notes WHERE commune_slug = ?",
+                            (commune_slug,)).fetchall()
+    return {r[0]: {"note": r[1], "par": r[2], "le": r[3]} for r in rows}
+
+
+def set_note(commune_slug: str, address_id: str, note: str, personne_nom: str) -> dict | None:
+    with get_conn() as conn:
+        if note:
+            conn.execute(
+                "INSERT INTO address_notes (commune_slug, address_id, note, personne_nom, updated_at) VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(commune_slug, address_id) DO UPDATE SET note = excluded.note, "
+                "personne_nom = excluded.personne_nom, updated_at = excluded.updated_at",
+                (commune_slug, address_id, note, personne_nom, _now()),
+            )
+        else:
+            conn.execute("DELETE FROM address_notes WHERE commune_slug = ? AND address_id = ?", (commune_slug, address_id))
+        conn.commit()
+    return get_notes(commune_slug).get(address_id)
+
+
+# ---- Adresses ajoutées et signalements --------------------------------------------
+
+ADDED_PREFIX = "ajout-"
+
+
+def list_added_addresses(commune_slug: str) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT id, numero, nom_voie, lat, lon FROM adresses_ajoutees WHERE commune_slug = ? ORDER BY id",
+                            (commune_slug,)).fetchall()
+    return [{"id": f"{ADDED_PREFIX}{r[0]}", "numero": r[1], "nom_voie": r[2], "lat": r[3], "lon": r[4]} for r in rows]
+
+
+def add_address(commune_slug: str, numero: str, nom_voie: str, lat: float, lon: float) -> str:
+    with get_conn() as conn:
+        aid = conn.execute("INSERT INTO adresses_ajoutees (commune_slug, numero, nom_voie, lat, lon, created_at) "
+                           "VALUES (?, ?, ?, ?, ?, ?)", (commune_slug, numero, nom_voie, lat, lon, _now())).lastrowid
+        conn.commit()
+    return f"{ADDED_PREFIX}{aid}"
+
+
+SIGNAL_TYPES = ("manquante", "vide", "erreur", "autre")
+SIGNAL_STATUTS = ("nouveau", "traite", "ignore")
+_SIG_COLS = ("id", "commune_slug", "sector_id", "type", "address_id", "lat", "lon", "numero", "nom_voie", "note",
+             "personne_nom", "statut", "created_at", "traite_le")
+
+
+def add_signalement(s: dict) -> dict:
+    with get_conn() as conn:
+        sid = conn.execute(
+            "INSERT INTO signalements (commune_slug, sector_id, type, address_id, lat, lon, numero, nom_voie, note, "
+            "personne_nom, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (s["commune_slug"], s.get("sector_id"), s["type"], s.get("address_id"), s.get("lat"), s.get("lon"),
+             s.get("numero", ""), s.get("nom_voie", ""), s.get("note", ""), s.get("personne_nom", ""), _now()),
+        ).lastrowid
+        conn.commit()
+    return get_signalement(sid)
+
+
+def get_signalement(sig_id: int) -> dict | None:
+    with get_conn() as conn:
+        r = conn.execute(f"SELECT {', '.join(_SIG_COLS)} FROM signalements WHERE id = ?", (sig_id,)).fetchone()
+    return dict(zip(_SIG_COLS, r)) if r else None
+
+
+def list_signalements(sector_id: int | None = None, open_only: bool = False) -> list[dict]:
+    sql = f"SELECT {', '.join(_SIG_COLS)} FROM signalements WHERE 1 = 1"
+    args: list = []
+    if sector_id is not None:
+        sql += " AND sector_id = ?"
+        args.append(sector_id)
+    if open_only:
+        sql += " AND statut = 'nouveau'"
+    with get_conn() as conn:
+        rows = conn.execute(sql + " ORDER BY CASE statut WHEN 'nouveau' THEN 0 ELSE 1 END, id DESC", args).fetchall()
+    return [dict(zip(_SIG_COLS, r)) for r in rows]
+
+
+def set_signalement_statut(sig_id: int, statut: str) -> dict | None:
+    with get_conn() as conn:
+        conn.execute("UPDATE signalements SET statut = ?, traite_le = ? WHERE id = ?",
+                     (statut, None if statut == "nouveau" else _now(), sig_id))
+        conn.commit()
+    return get_signalement(sig_id)
+
+
+def list_annees() -> list[int]:
+    """Années pour lesquelles une tournée a laissé des traces (statuts ou dons)."""
+    with get_conn() as conn:
+        rows = conn.execute("SELECT annee FROM address_status UNION SELECT annee FROM dons").fetchall()
+    return sorted({r[0] for r in rows})
+
+
 # ---- Dons -------------------------------------------------------------------------
 
 MODES = ("especes", "cheque", "cb")
@@ -567,18 +704,24 @@ def _don(row) -> dict:
     return dict(zip(_DON_COLS, row))
 
 
-def add_don(d: dict) -> dict:
+def add_don(d: dict) -> tuple[dict, bool]:
+    """Enregistre un don ; (don, False) s'il était déjà là (même identifiant du téléphone)."""
     now = _now()
     with get_conn() as conn:
+        if d.get("client_id"):
+            r = conn.execute("SELECT id FROM dons WHERE client_id = ?", (d["client_id"],)).fetchone()
+            if r:
+                return get_don(r[0]), False
         did = conn.execute(
             "INSERT INTO dons (annee, commune_slug, address_id, sector_id, montant_cents, mode, statut, foreign_id, "
-            "tx_code, note, personne_id, personne_nom, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "tx_code, note, personne_id, personne_nom, created_at, updated_at, client_id) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (d["annee"], d["commune_slug"], d["address_id"], d["sector_id"], d["montant_cents"], d["mode"],
              d["statut"], d.get("foreign_id"), d.get("tx_code", ""), d.get("note", ""), d.get("personne_id"),
-             d.get("personne_nom", ""), now, now),
+             d.get("personne_nom", ""), now, now, d.get("client_id")),
         ).lastrowid
         conn.commit()
-    return get_don(did)
+    return get_don(did), True
 
 
 def get_don(don_id: int) -> dict | None:

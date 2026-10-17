@@ -103,6 +103,83 @@
     $("live-updated").textContent = `mis à jour à ${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
   }
 
+  // ---- signalements du terrain ----
+  const SIG = {
+    manquante: ["🏠", "Maison manquante"], vide: ["🚫", "Maison vide / pas une habitation"],
+    erreur: ["✏️", "Adresse fausse"], autre: ["⚠", "Autre problème"],
+  };
+  let sigLayer = null;
+  let sigs = [];
+
+  function renderSignalements(list) {
+    sigs = list;
+    const open = list.filter((x) => x.statut === "nouveau");
+    const done = list.filter((x) => x.statut !== "nouveau");
+    $("sig-count").hidden = !open.length;
+    $("sig-count").textContent = open.length;
+    const when = (iso) => new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+    const item = (x) => {
+      const [icon, label] = SIG[x.type] || SIG.autre;
+      const where = x.type === "manquante" ? [x.numero, x.nom_voie].filter(Boolean).join(" ") || "position sur la carte" : x.adresse || x.address_id;
+      let actions = "";
+      if (x.statut !== "nouveau") {
+        actions = `<span class="hint">${x.statut === "traite" ? "✓ traité" : "ignoré"}${x.traite_le ? ` le ${when(x.traite_le)}` : ""}</span>
+          <button type="button" class="btn small" data-act="rouvrir">Rouvrir</button>`;
+      } else if (x.type === "manquante") {
+        actions = `<input class="sig-num" data-f="numero" value="${escapeHtml(x.numero)}" placeholder="N°" aria-label="Numéro" />
+          <input class="sig-voie" data-f="nom_voie" value="${escapeHtml(x.nom_voie)}" placeholder="Rue ou lieu-dit" aria-label="Rue" />
+          <button type="button" class="btn small primary" data-act="ajouter">Ajouter la maison</button>
+          <button type="button" class="btn small" data-act="ignore">Ignorer</button>`;
+      } else if (x.type === "vide") {
+        actions = x.exclue ? `<span class="hint">adresse déjà exclue</span> <button type="button" class="btn small" data-act="traite">Marquer traité</button>`
+          : `<button type="button" class="btn small primary" data-act="exclure">Exclure l'adresse</button> <button type="button" class="btn small" data-act="ignore">Ignorer</button>`;
+      } else {
+        actions = `<button type="button" class="btn small primary" data-act="traite">Marquer traité</button> <button type="button" class="btn small" data-act="ignore">Ignorer</button>`;
+      }
+      return `<div class="sig-item${x.statut !== "nouveau" ? " done" : ""}" data-id="${x.id}">
+        <div class="sig-what"><span class="sig-icon" aria-hidden="true">${icon}</span>
+          <div><b>${escapeHtml(label)}</b> · ${tag(x.sector_id)} ${escapeHtml(where)}
+            ${x.note ? `<p class="sig-note">« ${escapeHtml(x.note)} »</p>` : ""}
+            <small class="hint">par ${escapeHtml(x.personne_nom)}, le ${when(x.created_at)}</small></div>
+          ${x.lat != null ? `<button type="button" class="icon-btn" data-act="voir" title="Voir sur la carte" aria-label="Voir sur la carte">📍</button>` : ""}</div>
+        <div class="sig-actions">${actions}</div></div>`;
+    };
+    $("sig-list").innerHTML = (open.map(item).join("") || `<p class="hint">Aucun signalement en attente.</p>`)
+      + (done.length ? `<details class="sig-done"><summary>Déjà traités (${done.length})</summary>${done.map(item).join("")}</details>` : "");
+    // sur la carte en direct
+    if (!liveMap) return;
+    if (!sigLayer) sigLayer = L.layerGroup().addTo(liveMap);
+    sigLayer.clearLayers();
+    for (const x of open) {
+      if (x.lat == null) continue;
+      L.circleMarker([x.lat, x.lon], { radius: 7, color: "#7c3aed", weight: 3, fillColor: "#ede9fe", fillOpacity: 1, dashArray: x.type === "manquante" ? "3 3" : null })
+        .bindTooltip(`${(SIG[x.type] || SIG.autre)[1]}${x.adresse ? ` · ${escapeHtml(x.adresse)}` : ""}`).addTo(sigLayer);
+    }
+  }
+
+  $("sig-list").addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-act]");
+    if (!btn) return;
+    const row = btn.closest(".sig-item");
+    const x = sigs.find((s) => String(s.id) === row.dataset.id);
+    if (btn.dataset.act === "voir") {
+      liveMap.setView([x.lat, x.lon], 18);
+      $("live-map").scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    const body = { action: btn.dataset.act };
+    row.querySelectorAll("[data-f]").forEach((i) => { body[i.dataset.f] = i.value; });
+    if (body.action === "exclure" && !confirm(`Exclure « ${x.adresse} » ? Elle sortira de la liste des maisons (réversible dans l'onglet Secteurs).`)) return;
+    try {
+      await api(`/api/admin/signalements/${x.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      flashSaved();
+      if (body.action === "ajouter") showToast("Maison ajoutée à la liste ✓");
+      await render();
+    } catch (err) {
+      showToast(err.message, true);
+    }
+  });
+
   // ---- caisse ----
   function renderRemises(rows) {
     const items = rows.flatMap((s) => s.caisse.remises.map((r) => ({ ...r, sector_id: s.sector_id })))
@@ -162,10 +239,12 @@
   });
 
   async function render() {
-    const [settings, bilan, backups] = await Promise.all([api("/api/admin/settings"), api("/api/admin/bilan"), api("/api/admin/sauvegardes")]);
+    const [settings, bilan, backups, sig] = await Promise.all([api("/api/admin/settings"), api("/api/admin/bilan"),
+      api("/api/admin/sauvegardes"), api("/api/admin/signalements")]);
     applySettings(settings);
     renderBackups(backups);
     renderLiveMap(bilan.secteurs);
+    renderSignalements(sig.signalements);
     renderRemises(bilan.secteurs);
     const t = bilan.totaux;
     const maisons = bilan.secteurs.reduce((n, s) => n + s.adresses, 0);

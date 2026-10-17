@@ -20,7 +20,8 @@ from . import auth, db
 from .geo import point_in_polys
 from .limits import RoadIndex, describe_limit_polys
 from .models import (AvancementIn, CodeIn, ConfirmIn, DonIn, DonStatutIn, EquipeIn, ExclusionIn, LoginIn, PersonneIn,
-                     PersonnesIn, RemiseIn, RenfortIn, SectorsIn, SettingsIn, StatusUpdate, SumupRetourIn)
+                     PersonnesIn, RemiseIn, RenfortIn, SectorsIn, SettingsIn, StatusUpdate, SumupRetourIn,
+                     NoteIn, SignalementIn, SignalementActionIn)
 from .resume import build_resume, commune_voie_counts
 
 DATA_DIR = Path(os.environ.get("SECTORS_DATA_DIR") or (Path(__file__).resolve().parent / "data"))
@@ -117,12 +118,35 @@ def _load_commune(slug: str) -> dict:
     return data
 
 
+def _addresses(slug: str, data: dict) -> list[dict]:
+    """Adresses de la commune : Base Adresse + maisons ajoutées par l'admin. Une maison ajoutée
+    prend le hameau (groupe) de l'adresse connue la plus proche."""
+    added = db.list_added_addresses(slug)
+    if not added:
+        return data["addresses"]
+    base = data["addresses"]
+    out = list(base)
+    for a in added:
+        near = min(base, key=lambda b: (b["lat"] - a["lat"]) ** 2 + ((b["lon"] - a["lon"]) * 0.7) ** 2) if base else {}
+        label = " ".join(x for x in (a["numero"], a["nom_voie"]) if x) or "Maison ajoutée"
+        out.append({**a, "label": label, "rep": "", "lieu_dit": near.get("lieu_dit", ""),
+                    "groupe_id": near.get("groupe_id"), "groupe": near.get("groupe", a["nom_voie"]),
+                    "nom_voie": a["nom_voie"] or near.get("nom_voie", ""), "ajoutee": True})
+    return out
+
+
+def _address_ids(slug: str, data: dict) -> set[str]:
+    added = db.list_added_addresses(slug)
+    return data["_address_ids"] | {a["id"] for a in added} if added else data["_address_ids"]
+
+
 def _active_addresses(slug: str, data: dict) -> list[dict]:
     """Adresses de la commune moins celles exclues par l'admin (cimetière…)."""
     excluded = db.get_excluded(slug)
+    addresses = _addresses(slug, data)
     if not excluded:
-        return data["addresses"]
-    return [a for a in data["addresses"] if a["id"] not in excluded]
+        return addresses
+    return [a for a in addresses if a["id"] not in excluded]
 
 
 def _road_index(data: dict) -> RoadIndex:
@@ -256,7 +280,7 @@ def _sector_map(slug: str) -> tuple[dict, list[dict], dict[int, list[dict]]]:
 
 def _sector_of_address(slug: str, address_id: str) -> int:
     data, _, by_sector = _sector_map(slug)
-    if address_id not in data["_address_ids"]:
+    if address_id not in _address_ids(slug, data):
         raise HTTPException(status_code=404, detail="Adresse inconnue")
     for sector_id, addresses in by_sector.items():
         if any(a["id"] == address_id for a in addresses):
@@ -382,7 +406,9 @@ def team_sector_tracking(sector_id: int, request: Request):
     person = auth.team_member(request)
     me = person["id"] if person else None
     out = {"slug": slug, "role": role, "statuses": statuses, "dons": None, "totaux": None, "precedent": {},
-           "equipe": _team_view(sector_id)}
+           "equipe": _team_view(sector_id),
+           "notes": {aid: n for aid, n in db.get_notes(slug).items() if aid in ids},
+           "signalements": [_sig_view(x) for x in db.list_signalements(sector_id, open_only=True)]}
     for aid, prev in db.previous_year(slug, _annee()).items():
         if aid in ids:
             item = {"annee": prev["annee"], "status": prev["status"], "nb_dons": prev["nb_dons"]}
@@ -407,16 +433,17 @@ def team_add_don(payload: DonIn, request: Request):
     use_sumup = payload.mode == "cb" and payload.sumup
     if use_sumup and not _sumup_config():
         raise HTTPException(status_code=409, detail="Le paiement SumUp n'est pas configuré")
-    don = db.add_don({
+    don, created = db.add_don({
         "annee": _annee(), "commune_slug": payload.slug, "address_id": payload.address_id, "sector_id": sector_id,
         "montant_cents": round(payload.montant * 100), "mode": payload.mode,
         "statut": "attente" if use_sumup else "ok",
         "foreign_id": f"cal-{secrets.token_hex(12)}" if use_sumup else None,
         "tx_code": payload.tx_code, "note": payload.note,
         "personne_id": person["id"] if person else None, "personne_nom": person["nom"] if person else "Admin",
+        "client_id": payload.client_id,
     })
     # un don reçu veut dire que la maison est faite (paiement carte : une fois confirmé)
-    if don["statut"] == "ok":
+    if created and don["statut"] == "ok":
         db.set_status(payload.slug, payload.address_id, "fait", None)
     view = _don_view(don, True, None)
     view["foreign_id"] = don["foreign_id"]
@@ -448,6 +475,82 @@ def team_delete_don(don_id: int, request: Request):
     don = _don_for_edit(request, don_id)
     db.delete_don(don["id"])
     return {"ok": True}
+
+
+# ---- Notes et signalements des équipes ------------------------------------------------
+
+def _person_name(request: Request) -> str:
+    person = auth.team_member(request)
+    return person["nom"] if person else "Admin"
+
+
+@app.post("/api/equipe/notes")
+def team_set_note(payload: NoteIn, request: Request):
+    """Note de l'équipe sur une maison (vide = effacée), gardée d'une année sur l'autre."""
+    if not _suivi_enabled():
+        raise HTTPException(status_code=403, detail="Le suivi des adresses est désactivé")
+    _require_role(request, _sector_of_address(payload.slug, payload.address_id))
+    return {"note": db.set_note(payload.slug, payload.address_id, payload.note, _person_name(request))}
+
+
+def _sig_view(x: dict) -> dict:
+    return {k: x[k] for k in ("id", "type", "address_id", "lat", "lon", "numero", "nom_voie", "note",
+                              "personne_nom", "statut", "created_at")}
+
+
+@app.post("/api/equipe/signalements")
+def team_report(payload: SignalementIn, request: Request):
+    """Maison manquante, vide ou démolie, adresse fausse… vue sur le terrain ; l'admin tranche."""
+    if payload.type == "manquante":
+        sector_id = payload.sector_id
+        if sector_id not in db.sector_communes().get(payload.slug, set()):
+            raise HTTPException(status_code=404, detail="Secteur inconnu")
+    else:
+        sector_id = _sector_of_address(payload.slug, payload.address_id)
+    _require_role(request, sector_id)
+    sig = db.add_signalement({**payload.model_dump(exclude={"slug", "sector_id"}), "commune_slug": payload.slug,
+                              "sector_id": sector_id, "personne_nom": _person_name(request)})
+    return _sig_view(sig)
+
+
+@app.get("/api/admin/signalements", dependencies=[Depends(auth.require_admin)])
+def admin_reports():
+    labels: dict[str, dict] = {}
+    for slug in db.sector_communes():
+        for a in _addresses(slug, _load_commune(slug)):
+            labels[f"{slug}/{a['id']}"] = a
+    sectors = {s["id"]: s["nom"] for slug in db.sector_communes() for s in db.list_sectors(slug)}
+    excluded = {slug: db.get_excluded(slug) for slug in db.sector_communes()}
+    out = []
+    for x in db.list_signalements():
+        a = labels.get(f"{x['commune_slug']}/{x['address_id']}") if x["address_id"] else None
+        out.append({**_sig_view(x), "slug": x["commune_slug"], "sector_id": x["sector_id"],
+                    "secteur": sectors.get(x["sector_id"], ""), "adresse": a["label"] if a else "",
+                    "lat": x["lat"] if x["lat"] is not None else (a or {}).get("lat"),
+                    "lon": x["lon"] if x["lon"] is not None else (a or {}).get("lon"),
+                    "exclue": bool(a and a["id"] in excluded.get(x["commune_slug"], set())),
+                    "traite_le": x["traite_le"]})
+    return {"signalements": out}
+
+
+@app.post("/api/admin/signalements/{sig_id}", dependencies=[Depends(auth.require_admin)])
+def admin_handle_report(sig_id: int, payload: SignalementActionIn):
+    sig = db.get_signalement(sig_id)
+    if not sig:
+        raise HTTPException(status_code=404, detail="Signalement inconnu")
+    added = None
+    if payload.action == "ajouter":
+        if sig["type"] != "manquante":
+            raise HTTPException(status_code=409, detail="Seule une maison manquante peut être ajoutée")
+        _load_commune(sig["commune_slug"])
+        added = db.add_address(sig["commune_slug"], payload.numero or sig["numero"], payload.nom_voie or sig["nom_voie"],
+                               sig["lat"], sig["lon"])
+    elif payload.action == "exclure":
+        if not sig["address_id"]:
+            raise HTTPException(status_code=409, detail="Aucune adresse à exclure")
+        db.set_excluded(sig["commune_slug"], [sig["address_id"]], True)
+    statut = {"rouvrir": "nouveau", "ignore": "ignore"}.get(payload.action, "traite")
+    return {**_sig_view(db.set_signalement_statut(sig_id, statut)), "adresse_ajoutee": added}
 
 
 # ---- Caisse : remise des espèces et chèques au trésorier ------------------------------
@@ -747,11 +850,69 @@ def admin_bilan():
                         for d in dons if d["statut"] == "attente"]}
 
 
+@app.get("/api/admin/bilan-annee", dependencies=[Depends(auth.require_admin)])
+def admin_year_report(annee: int | None = None):
+    """Bilan d'une tournée comparé à la précédente, sur les secteurs actuels : les maisons et les dons
+    de l'an dernier sont rangés dans le secteur où se trouve aujourd'hui leur adresse."""
+    annees = db.list_annees()
+    annee = annee or _annee()
+    prev = max((a for a in annees if a < annee), default=None)
+    years = [y for y in (annee, prev) if y is not None]
+    people = {p["id"]: p["nom"] for p in db.list_personnes()}
+    teams = db.get_teams()
+
+    def blank() -> dict:
+        return {"adresses": 0, "fait": 0, "absent": 0, "refus": 0, "dons": []}
+
+    rows, totals = [], {y: blank() for y in years}
+    for slug in db.sector_communes():
+        data, sectors, by_sector = _sector_map(slug)
+        where = {a["id"]: sid for sid, addrs in by_sector.items() for a in addrs}
+        per = {s["id"]: {y: blank() for y in years} for s in sectors}
+        for y in years:
+            statuses = db.get_statuses(slug, y)
+            for aid, sid in where.items():
+                st = (statuses.get(aid) or {}).get("status")
+                per[sid][y]["adresses"] += 1
+                if st:
+                    per[sid][y][st] += 1
+            for d in db.list_dons(y):
+                if d["commune_slug"] != slug or d["statut"] != "ok":
+                    continue
+                sid = where.get(d["address_id"], d["sector_id"])
+                if sid in per:
+                    per[sid][y]["dons"].append(d)
+                else:
+                    totals[y]["dons"].append(d)  # secteur disparu : compté dans le total seulement
+        for s in sectors:
+            team = teams.get(s["id"]) or {"membres": []}
+            rows.append({"sector_id": s["id"], "commune": data["commune"]["nom"], "slug": slug, "nom": s["nom"],
+                         "couleur": s["couleur"],
+                         "responsables": [people[m["personne_id"]] for m in team["membres"]
+                                          if m["role"] == "responsable" and m["personne_id"] in people],
+                         "annees": {}})
+            for y in years:
+                v = per[s["id"]][y]
+                for k in ("adresses", "fait", "absent", "refus"):
+                    totals[y][k] += v[k]
+                totals[y]["dons"].extend(v["dons"])
+                rows[-1]["annees"][str(y)] = {**{k: v[k] for k in ("adresses", "fait", "absent", "refus")},
+                                             "dons": _totaux(v["dons"])}
+    remises = db.list_remises(annee)
+    return {
+        "annee": annee, "precedente": prev, "annees": annees, "secteurs": rows,
+        "totaux": {str(y): {**{k: t[k] for k in ("adresses", "fait", "absent", "refus")}, "dons": _totaux(t["dons"])}
+                   for y, t in totals.items()},
+        "remises": {"nb": len(remises), "total": sum(r["especes_cents"] + r["cheques_cents"] for r in remises) / 100,
+                    "confirmees": sum(1 for r in remises if r["confirme_le"])},
+    }
+
+
 @app.get("/api/admin/dons", dependencies=[Depends(auth.require_admin)])
 def admin_dons():
     labels = {}
     for slug in db.sector_communes():
-        labels.update({a["id"]: a["label"] for a in _load_commune(slug)["addresses"]})
+        labels.update({a["id"]: a["label"] for a in _addresses(slug, _load_commune(slug))})
     return {"annee": _annee(), "dons": [
         {**_don_view(d, True, None), "sector_id": d["sector_id"], "slug": d["commune_slug"],
          "adresse": labels.get(d["address_id"], d["address_id"])}
@@ -778,7 +939,7 @@ def admin_get_commune(slug: str):
     return {
         "commune": data["commune"],
         "sectors": _sectors_with_limits(slug, data),
-        "addresses": data["addresses"],
+        "addresses": _addresses(slug, data),
         "excluded": sorted(db.get_excluded(slug)),
         "roads": data.get("roads", []),
         "buildings": data.get("buildings", []),
@@ -799,7 +960,8 @@ def admin_save_sectors(slug: str, payload: SectorsIn):
 @app.put("/api/admin/communes/{slug}/excluded", dependencies=[Depends(auth.require_admin)])
 def admin_set_excluded(slug: str, payload: ExclusionIn):
     data = _load_commune(slug)
-    unknown = [a for a in payload.address_ids if a not in data["_address_ids"]]
+    known = _address_ids(slug, data)
+    unknown = [a for a in payload.address_ids if a not in known]
     if unknown:
         raise HTTPException(status_code=404, detail=f"Adresse(s) inconnue(s) : {', '.join(unknown[:5])}")
     db.set_excluded(slug, payload.address_ids, payload.excluded)
@@ -856,6 +1018,11 @@ def sumup_return_page(foreign_id: str):
 @app.get("/plan.html", include_in_schema=False)
 def plan_page():
     return _page("plan.html")
+
+
+@app.get("/bilan.html", include_in_schema=False)
+def year_report_page():
+    return _page("bilan.html")
 
 
 if FRONTEND_DIR.exists():

@@ -38,11 +38,16 @@
       <button id="t-sector" class="t-sector-btn" type="button" aria-label="Changer de secteur"></button>
       <span id="t-sync" class="t-sync" hidden title="Modifications en attente de réseau"></span>
     </header>
+    <div id="t-offline" class="t-offline" hidden></div>
 
     <main id="t-main" class="t-main">
       <section id="v-accueil" class="t-view" data-view="accueil"></section>
       <section id="v-carte" class="t-view t-view-map" data-view="carte" hidden>
         <div id="t-map" class="t-map"></div>
+        <div id="t-placing" class="t-placing" hidden>
+          <span>Touchez la carte à l'endroit de la maison manquante</span>
+          <button id="t-placing-cancel" type="button" class="btn small">Annuler</button>
+        </div>
         <div class="t-map-legend">
           <span><i class="dot todo"></i>À faire</span><span><i class="dot fait"></i>Fait</span>
           <span><i class="dot absent"></i>Absent</span><span><i class="dot refus"></i>Refus</span>
@@ -52,6 +57,7 @@
         <div class="t-filters" role="tablist" aria-label="Filtrer les maisons"></div>
         <input id="t-search" class="t-search" type="search" placeholder="Rechercher une adresse, une rue…" aria-label="Rechercher une maison" />
         <div id="t-list" class="t-list"></div>
+        <button type="button" class="link-btn t-missing" data-action="missing">Une maison manque dans la liste ? La placer sur la carte</button>
       </section>
       <section id="v-caisse" class="t-view" data-view="caisse" hidden></section>
       <section id="v-equipe" class="t-view" data-view="equipe" hidden></section>
@@ -96,12 +102,45 @@
         <button type="button" class="tt-btn absent" data-status="absent">⏳<span>Absent</span></button>
         <button type="button" class="tt-btn refus" data-status="refus">✕<span>Refus</span></button>
       </div>
+      <div id="tf-note-box" class="tf-note">
+        <label for="tf-note">📝 Note pour l'équipe <small>(gardée pour les prochaines années)</small></label>
+        <textarea id="tf-note" rows="2" maxlength="300" placeholder="Chien, ne pas sonner, repasser le soir…"></textarea>
+        <div id="tf-note-chips" class="note-chips"></div>
+        <button id="tf-note-save" type="button" class="btn small primary" hidden>Enregistrer la note</button>
+      </div>
       <div class="tf-more">
         <button type="button" class="btn" id="tf-don">€ Don</button>
         <a class="btn" id="tf-go" target="_blank" rel="noopener">🧭 Y aller</a>
         <button type="button" class="btn" id="tf-close">Fermer</button>
       </div>
+      <button type="button" class="link-btn tf-sig" id="tf-sig">⚠ Signaler un problème avec cette adresse</button>
     </div>
+  </dialog>
+
+  <!-- Signalement d'un problème d'adresse -->
+  <dialog id="sig-dialog" class="app-dialog sig-dialog" aria-labelledby="sig-title">
+    <form id="sig-form" method="dialog">
+      <h3 id="sig-title">Signaler un problème</h3>
+      <p id="sig-address" class="hint"></p>
+      <div id="sig-types" class="sig-types">
+        <label><input type="radio" name="sig-type" value="vide" checked /><span>Maison vide, démolie ou pas une habitation</span></label>
+        <label><input type="radio" name="sig-type" value="erreur" /><span>Numéro ou nom de rue faux</span></label>
+        <label><input type="radio" name="sig-type" value="autre" /><span>Autre problème</span></label>
+      </div>
+      <div id="sig-new" class="field-row" hidden>
+        <label class="field sig-num">N°<input id="sig-numero" type="text" maxlength="12" autocomplete="off" inputmode="numeric" /></label>
+        <label class="field">Rue ou lieu-dit<input id="sig-voie" type="text" maxlength="120" autocomplete="off" /></label>
+      </div>
+      <label class="field">Précisions (facultatif)
+        <textarea id="sig-note" rows="2" maxlength="300" placeholder="Ex. : c'est le 12 bis, la maison est derrière la ferme…"></textarea>
+      </label>
+      <p class="hint">L'administrateur vérifie et corrige la liste des maisons pour la suite.</p>
+      <p id="sig-error" class="error-text" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close>Annuler</button>
+        <button type="submit" class="btn primary">Envoyer</button>
+      </div>
+    </form>
   </dialog>
 
   <!-- Ajout d'un équipier par le responsable (remplaçant, renfort) -->

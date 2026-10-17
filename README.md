@@ -71,6 +71,14 @@ sur Courzieu et Brussieu (69690).
   - **Bilan** : maisons faites, dons et totaux (espèces / chèques / carte) par
     secteur et au total, export de tous les dons (Excel). Les dons sont classés
     par année de tournée.
+  - **🖨 Bilan de l'année** (`/bilan.html`, pour l'assemblée générale) : une page
+    A4 à imprimer ou enregistrer en PDF, avec les chiffres clés (total, maisons
+    faites, don moyen, moyenne par maison, absents et refus) **comparés à
+    l'année précédente**, la répartition espèces / chèques / carte, un
+    graphique des dons par secteur (cette année et l'an dernier), le détail
+    par secteur avec les responsables, et la caisse. On choisit l'année en
+    haut. Les données de l'an dernier sont rangées dans les secteurs actuels
+    pour comparer à surface égale.
   - **Avancement en direct** : carte des secteurs colorés selon le pourcentage
     de maisons faites (gris → orange → vert), avec le total des dons ;
     actualisée toutes les 30 secondes.
@@ -112,6 +120,25 @@ sur Courzieu et Brussieu (69690).
     « 🧭 Y aller » et « ⏭ Passer ». Chaque action passe à la maison suivante.
   - Après chaque marquage, un bandeau **« Annuler »** reste 5 secondes pour
     corriger une erreur de doigt.
+  - **Sans réseau** (hameaux mal couverts) : le secteur, ses maisons, les
+    notes, les dons et l'équipe sont gardés sur le téléphone. L'appli s'ouvre
+    et fonctionne même en zone blanche (bandeau « 📴 Hors connexion ») :
+    statuts, dons en espèces ou chèque, notes et signalements sont gardés et
+    **envoyés tout seuls au retour du réseau** (un don n'est jamais compté deux
+    fois). Seuls SumUp et la remise de caisse demandent le réseau. Onglet
+    Équipe → **« Préparer la carte »** (en Wi-Fi, avant de partir) télécharge
+    le plan IGN du secteur pour avoir aussi le fond de carte sans réseau.
+  - **Notes par maison** (fiche de la maison) : « chien », « ne pas sonner »,
+    « repasser le soir »… avec des raccourcis. Elles sont **gardées d'une
+    année sur l'autre**, visibles seulement par l'équipe du secteur (et
+    l'admin), affichées dans la liste et en grand en mode tournée.
+  - **Signaler un problème d'adresse** : depuis la fiche (« maison vide,
+    démolie ou pas une habitation », « numéro ou rue faux », autre), ou
+    **« + 🏠 » sur la carte** pour placer une maison qui manque dans la liste.
+    L'admin les retrouve dans « Suivi & dons » → *Signalements du terrain*
+    (et sur la carte en direct) : **« Ajouter la maison »** (elle entre dans
+    le secteur, avec son hameau) ou **« Exclure l'adresse »** corrigent
+    aussitôt les secteurs et les comptes.
   - L'appli installée sur l'écran d'accueil ouvre directement l'espace
     équipe pour une personne connectée ; dans le navigateur, le plan public
     garde un bouton « Mon espace équipe ».

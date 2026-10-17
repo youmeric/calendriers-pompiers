@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>Bilan de la tournée — Sapeurs-pompiers de Courzieu</title>
+<link rel="preload" href="/vendor/inter/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="icon" type="image/png" href="/icons/favicon-64.png" />
+<link rel="stylesheet" href="/css/style.css?v=__V__" />
+<style>@page { size: A4 portrait; margin: 12mm; }</style>
+</head>
+<body class="plan report">
+  <div class="plan-toolbar no-print">
+    <div class="plan-toolbar-main">
+      <label class="plan-choice">
+        <span>Tournée</span>
+        <select id="rp-annee" aria-label="Année de la tournée"></select>
+      </label>
+      <button id="rp-print" class="btn primary" type="button">🖨 Imprimer / PDF</button>
+      <a class="btn" href="/admin#bilan">← Retour à l'admin</a>
+    </div>
+  </div>
+
+  <p id="rp-login" class="report-msg no-print" hidden>Connectez-vous d'abord à l'<a href="/admin">administration</a>, puis rouvrez cette page.</p>
+
+  <article id="rp-sheet" class="report-sheet" hidden>
+    <header class="report-head">
+      <img src="/img/logo-courzieu.png" alt="" width="58" height="80" />
+      <div>
+        <p class="report-kicker">Sapeurs-pompiers de Courzieu · Courzieu &amp; Brussieu</p>
+        <h1 id="rp-title">Bilan de la tournée des calendriers</h1>
+        <p id="rp-sub" class="hint"></p>
+      </div>
+    </header>
+
+    <section id="rp-kpis" class="report-kpis" aria-label="Chiffres clés"></section>
+
+    <section class="report-block">
+      <h2>Comment les dons ont été versés</h2>
+      <div id="rp-modes"></div>
+    </section>
+
+    <section class="report-block">
+      <h2 id="rp-chart-title">Dons par secteur</h2>
+      <div id="rp-legend" class="report-legend"></div>
+      <div id="rp-chart" class="report-chart"></div>
+    </section>
+
+    <section class="report-block">
+      <h2>Détail par secteur</h2>
+      <div class="report-table-wrap"><table id="rp-table" class="report-table"></table></div>
+      <p id="rp-note" class="hint report-foot-note"></p>
+    </section>
+
+    <section class="report-block">
+      <h2>Caisse</h2>
+      <p id="rp-caisse"></p>
+    </section>
+
+    <footer id="rp-foot" class="report-foot"></footer>
+  </article>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/js/common.js?v=__V__"></script>
+  <script src="/js/bilan-annee.js?v=__V__"></script>
+</body>
+</html>
