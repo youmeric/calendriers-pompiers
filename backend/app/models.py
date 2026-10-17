@@ -4,7 +4,7 @@ import re
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .geo import normalize_polys
 
@@ -217,3 +217,15 @@ class ConfirmIn(BaseModel):
 
 class AvancementIn(BaseModel):
     statut: Literal["a_faire", "en_cours", "termine"]
+
+
+class RenfortIn(BaseModel):
+    """Équipier ajouté par le responsable : une personne de la liste, ou une nouvelle."""
+    personne_id: int | None = None
+    personne: PersonneIn | None = None
+
+    @model_validator(mode="after")
+    def one_of(self):
+        if (self.personne_id is None) == (self.personne is None):
+            raise ValueError("choisir une personne ou en saisir une nouvelle")
+        return self

@@ -20,7 +20,7 @@ from . import auth, db
 from .geo import point_in_polys
 from .limits import RoadIndex, describe_limit_polys
 from .models import (AvancementIn, CodeIn, ConfirmIn, DonIn, DonStatutIn, EquipeIn, ExclusionIn, LoginIn, PersonneIn,
-                     PersonnesIn, RemiseIn, SectorsIn, SettingsIn, StatusUpdate, SumupRetourIn)
+                     PersonnesIn, RemiseIn, RenfortIn, SectorsIn, SettingsIn, StatusUpdate, SumupRetourIn)
 from .resume import build_resume, commune_voie_counts
 
 DATA_DIR = Path(os.environ.get("SECTORS_DATA_DIR") or (Path(__file__).resolve().parent / "data"))
@@ -477,10 +477,10 @@ def _caisse(sector_id: int) -> dict:
     }
 
 
-def _require_lead(request: Request, sector_id: int) -> str:
+def _require_lead(request: Request, sector_id: int, detail: str = "La caisse est gérée par le responsable du secteur") -> str:
     role = _require_role(request, sector_id)
     if role == "equipier":
-        raise HTTPException(status_code=403, detail="La caisse est gérée par le responsable du secteur")
+        raise HTTPException(status_code=403, detail=detail)
     return role
 
 
@@ -489,6 +489,63 @@ def team_sector_progress(sector_id: int, payload: AvancementIn, request: Request
     """Le responsable indique où en est son secteur (à faire / en cours / terminé)."""
     _require_lead(request, sector_id)
     db.set_sector_statut(sector_id, payload.statut)
+    return _team_view(sector_id)
+
+
+@app.get("/api/equipe/secteurs/{sector_id}/equipe")
+def team_sector_team(sector_id: int, request: Request):
+    """L'équipe du secteur (avec téléphones), pour ses membres, même quand le suivi est coupé."""
+    _require_role(request, sector_id)
+    return _team_view(sector_id)
+
+
+TEAM_LEAD_ONLY = "Seul le responsable du secteur modifie l'équipe"
+
+
+@app.get("/api/equipe/secteurs/{sector_id}/personnes")
+def team_people(sector_id: int, request: Request):
+    """Personnes de la caserne qu'un responsable peut appeler en renfort (noms seulement),
+    avec les secteurs où elles sont déjà prévues (et si c'est le même jour)."""
+    _require_lead(request, sector_id, TEAM_LEAD_ONLY)
+    teams = db.get_teams()
+    team = teams.get(sector_id) or {"date": "", "membres": []}
+    inside = {m["personne_id"] for m in team["membres"]}
+    elsewhere: dict[int, list[dict]] = {}
+    for sid, t in teams.items():
+        if sid == sector_id:
+            continue
+        for m in t["membres"]:
+            elsewhere.setdefault(m["personne_id"], []).append(
+                {"sector_id": sid, "meme_jour": bool(team["date"]) and t["date"] == team["date"]})
+    return {"personnes": [{"id": p["id"], "nom": p["nom"], "ailleurs": elsewhere.get(p["id"], [])}
+                          for p in db.list_personnes() if p["id"] not in inside]}
+
+
+@app.post("/api/equipe/secteurs/{sector_id}/equipiers")
+def team_add_member(sector_id: int, payload: RenfortIn, request: Request):
+    """Le responsable ajoute un équipier (remplaçant d'un absent, renfort…)."""
+    _require_lead(request, sector_id, TEAM_LEAD_ONLY)
+    if sector_id not in db.existing_sector_ids():
+        raise HTTPException(status_code=404, detail="Secteur inconnu")
+    if payload.personne is not None:
+        if len(db.list_personnes()) >= 500:
+            raise HTTPException(status_code=422, detail="Trop de personnes (500 au maximum)")
+        pid = db.add_personnes([payload.personne.model_dump()])[0]["id"]
+    else:
+        if not db.get_personne(payload.personne_id):
+            raise HTTPException(status_code=404, detail="Personne inconnue")
+        pid = payload.personne_id
+    if not db.add_member(sector_id, pid, "equipier"):
+        raise HTTPException(status_code=409, detail="Cette personne fait déjà partie de l'équipe")
+    return _team_view(sector_id)
+
+
+@app.delete("/api/equipe/secteurs/{sector_id}/equipiers/{personne_id}")
+def team_remove_member(sector_id: int, personne_id: int, request: Request):
+    """Le responsable retire un équipier (absent) ; les responsables restent gérés par l'admin."""
+    _require_lead(request, sector_id, TEAM_LEAD_ONLY)
+    if not db.remove_member(sector_id, personne_id, "equipier"):
+        raise HTTPException(status_code=404, detail="Cet équipier n'est pas dans l'équipe")
     return _team_view(sector_id)
 
 

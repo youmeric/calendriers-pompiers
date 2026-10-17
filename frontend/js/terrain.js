@@ -30,6 +30,7 @@
     me: null,
     annee: null,
     sectors: [], // [{slug, communeNom, sector, role}]
+    allSectors: new Map(), // id -> {code, nom} de tous les secteurs (pour « déjà prévu sur C3 »)
     cur: null,
     tr: null, // suivi du secteur choisi
     addr: new Map(), // id -> adresse
@@ -87,6 +88,7 @@
     for (const d of datas) {
       d.sectors.forEach((s, i) => {
         s.code = sectorCode(d.commune.nom, i);
+        T.allSectors.set(s.id, { code: s.code, nom: s.nom });
         if (T.me.admin || roles.has(s.id)) {
           T.sectors.push({ slug: d.commune.slug, communeNom: d.commune.nom, sector: s, role: T.me.admin ? "admin" : roles.get(s.id) });
         }
@@ -136,7 +138,9 @@
   async function loadTracking() {
     const s = T.cur.sector;
     if (!T.me.suivi) {
-      T.tr = { readOnly: true, role: T.cur.role, lead: T.cur.role !== "equipier", full: T.cur.role !== "equipier", donsActive: false, dons: new Map(), precedent: {}, equipe: s.equipe || null };
+      const equipe = await fetchJSON(`/api/equipe/secteurs/${s.id}/equipe`).catch(() => s.equipe || null);
+      if (T.cur.sector !== s) return;
+      T.tr = { readOnly: true, role: T.cur.role, lead: T.cur.role !== "equipier", full: T.cur.role !== "equipier", donsActive: false, dons: new Map(), precedent: {}, equipe };
       return;
     }
     const t = await fetchJSON(`/api/equipe/secteurs/${s.id}/suivi`);
@@ -444,22 +448,25 @@
     const tr = T.tr;
     const s = T.cur.sector;
     const e = tr.equipe || s.equipe;
-    const member = (p, role) => `<div class="eq-member">
+    const member = (p, role, removable) => `<div class="eq-member">
         ${personAvatar(p, "")}
         <span class="eq-who"><b>${escapeHtml(p.nom)}</b><small>${role}</small></span>
+        ${removable ? `<button type="button" class="icon-btn eq-remove" data-remove="${p.id}" aria-label="Retirer ${escapeHtml(p.nom)} de l'équipe">✕</button>` : ""}
         ${p.telephone ? `<a class="icon-btn eq-call" href="${telHref(p.telephone)}" aria-label="Appeler ${escapeHtml(p.nom)}"><svg class="ico" viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2" /></svg></a>
           <a class="icon-btn eq-call" href="sms:${escapeHtml(p.telephone.replace(/[^0-9+]/g, ""))}" aria-label="SMS à ${escapeHtml(p.nom)}"><svg class="ico" viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z" /></svg></a>` : ""}
       </div>`;
     const when = whenText(e);
     let html = `<div class="r-card"><span class="r-label">Secteur ${escapeHtml(s.code)}</span><strong class="eq-sector">${escapeHtml(s.nom)}</strong>
         <p class="r-when-date">${escapeHtml(when)}</p>${e && e.note ? `<p class="r-note">${escapeHtml(e.note)}</p>` : ""}</div>`;
-    if (tr.lead && !tr.readOnly && tr.equipe) {
+    if (tr.lead && tr.equipe) {
       html += `<div class="r-card"><span class="r-label">Avancement du secteur</span>
         <div class="seg">${Object.entries(C.STATUT_LABEL).map(([k, v]) => `<button type="button" class="seg-btn${tr.equipe.statut === k ? " active" : ""}" data-avancement="${k}">${v}</button>`).join("")}</div></div>`;
     }
     if (e) {
-      const people = [...e.responsables.map((p) => member(p, "Responsable")), ...e.equipiers.map((p) => member(p, "Équipier"))];
-      html += `<div class="r-card"><span class="r-label">L'équipe</span>${people.join("") || `<p class="hint">Équipe pas encore constituée.</p>`}</div>`;
+      const canChange = tr.lead && tr.equipe === e;
+      const people = [...e.responsables.map((p) => member(p, "Responsable", false)), ...e.equipiers.map((p) => member(p, "Équipier", canChange))];
+      html += `<div class="r-card"><span class="r-label">L'équipe</span>${people.join("") || `<p class="hint">Équipe pas encore constituée.</p>`}
+        ${canChange ? `<button type="button" class="btn eq-add" data-action="add-member">+ Ajouter un équipier</button>` : ""}</div>`;
     }
     html += `<div class="eq-links">
         <a class="btn" href="/plan.html#/${encodeURIComponent(T.cur.slug)}/${s.id}" target="_blank" rel="noopener">🖨 Plan du secteur à imprimer</a>
@@ -951,6 +958,95 @@
   });
 
   // ---------------------------------------------------------------------------------------
+  // Équipe : le responsable ajoute un remplaçant ou retire un absent
+  // ---------------------------------------------------------------------------------------
+
+  const addDialog = $("t-add");
+  let addPeople = [];
+
+  function teamChanged(eq, message) {
+    T.tr.equipe = eq;
+    renderEquipe();
+    renderAccueil();
+    showToast(message);
+  }
+
+  function renderAddList() {
+    const q = normalizeText($("ta-search").value).split(" ").filter(Boolean);
+    const list = addPeople.filter((p) => q.every((t) => normalizeText(p.nom).includes(t)));
+    $("ta-list").innerHTML = list.map((p) => {
+      const where = p.ailleurs.map((x) => {
+        const sec = T.allSectors.get(x.sector_id);
+        return sec ? `${x.meme_jour ? "⚠ " : ""}${escapeHtml(sec.code)}${x.meme_jour ? " le même jour" : ""}` : "";
+      }).filter(Boolean);
+      const busy = p.ailleurs.some((x) => x.meme_jour);
+      return `<button type="button" class="ta-item${busy ? " busy" : ""}" data-id="${p.id}">
+          ${personAvatar(p, "")}<span class="ta-who"><b>${escapeHtml(p.nom)}</b>${where.length ? `<small>Déjà prévu : ${where.join(", ")}</small>` : `<small>Libre</small>`}</span>
+          <span class="ta-plus">+</span></button>`;
+    }).join("") || `<p class="hint">${addPeople.length ? "Personne à ce nom." : "Tout le monde est déjà dans l'équipe."}</p>`;
+  }
+
+  async function openAddMember() {
+    $("ta-error").hidden = true;
+    $("ta-search").value = "";
+    $("ta-nom").value = "";
+    $("ta-tel").value = "";
+    $("ta-new").open = false;
+    $("ta-list").innerHTML = `<p class="hint">Chargement…</p>`;
+    addDialog.showModal();
+    document.activeElement?.blur(); // pas de clavier qui cache la liste à l'ouverture
+    try {
+      addPeople = (await fetchJSON(`/api/equipe/secteurs/${T.cur.sector.id}/personnes`)).personnes;
+      renderAddList();
+    } catch (err) { addError(err); }
+  }
+
+  function addError(err) {
+    $("ta-error").textContent = err.message;
+    $("ta-error").hidden = false;
+  }
+
+  async function addMember(body, nom) {
+    try {
+      const eq = await fetchJSON(`/api/equipe/secteurs/${T.cur.sector.id}/equipiers`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      addDialog.close();
+      teamChanged(eq, `${nom} ajouté(e) à l'équipe ✓`);
+    } catch (err) { addError(err); }
+  }
+
+  $("ta-search").addEventListener("input", renderAddList);
+  // Entrée ne ferme pas la fenêtre (formulaire « dialog ») ; dans le nom, elle ajoute la personne
+  ["ta-search", "ta-nom", "ta-tel"].forEach((id) => $(id).addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (id !== "ta-search") $("ta-create").click();
+  }));
+  $("ta-list").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-id]");
+    if (!b) return;
+    const p = addPeople.find((x) => x.id === Number(b.dataset.id));
+    const same = p.ailleurs.filter((x) => x.meme_jour).map((x) => (T.allSectors.get(x.sector_id) || {}).code).filter(Boolean);
+    if (same.length && !confirm(`${p.nom} est déjà prévu(e) sur ${same.join(", ")} le même jour. L'ajouter quand même ?`)) return;
+    addMember({ personne_id: p.id }, p.nom);
+  });
+  $("ta-create").addEventListener("click", () => {
+    const nom = $("ta-nom").value.trim();
+    if (!nom) { addError(new Error("Indiquez le nom de la personne.")); $("ta-nom").focus(); return; }
+    addMember({ personne: { nom, telephone: $("ta-tel").value.trim() } }, nom);
+  });
+
+  async function removeMember(id) {
+    const p = T.tr.equipe.equipiers.find((x) => x.id === id);
+    if (!p || !confirm(`Retirer ${p.nom} de l'équipe ? ${p.nom.split(" ")[0]} n'aura plus accès à ce secteur.`)) return;
+    try {
+      const eq = await fetchJSON(`/api/equipe/secteurs/${T.cur.sector.id}/equipiers/${id}`, { method: "DELETE" });
+      teamChanged(eq, `${p.nom} retiré(e) de l'équipe`);
+    } catch (err) { showToast(err.message, true); }
+  }
+
+  // ---------------------------------------------------------------------------------------
   // Choix du secteur, déconnexion
   // ---------------------------------------------------------------------------------------
 
@@ -986,6 +1082,9 @@
     if (action === "caisse") openCaisse();
     if (action === "sectors") openSectors();
     if (action === "logout") logout();
+    if (action === "add-member") openAddMember();
+    const rm = e.target.closest("[data-remove]");
+    if (rm) { removeMember(Number(rm.dataset.remove)); return; }
     const gotoTab = e.target.closest("[data-goto]");
     if (gotoTab) goTab(gotoTab.dataset.goto);
     const av = e.target.closest("[data-avancement]");

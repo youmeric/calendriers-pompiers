@@ -99,6 +99,13 @@ sur Courzieu et Brussieu (69690).
   - **Équipe** : les membres avec boutons appeler / SMS, l'avancement du
     secteur (à faire / en cours / terminé, réglé par le responsable), le plan
     à imprimer, changer de secteur, se déconnecter.
+  - **Changement d'équipe le jour J** : le responsable peut **ajouter un
+    équipier** (une personne de la caserne, avec « déjà prévu sur C3 le même
+    jour » signalé, ou une nouvelle personne : nom et téléphone) et **retirer
+    un équipier absent** (✕). L'équipier ajouté se connecte avec son propre
+    code ; une nouvelle personne reçoit le sien de l'admin (onglet Équipes →
+    🔑). Les responsables, eux, restent gérés par l'admin. Tout est visible
+    aussitôt dans l'onglet Équipes de l'admin.
   - **▶ Commencer la tournée** (mode « maison suivante ») : une maison à la
     fois en grand, la plus proche de sa position GPS (sinon de la dernière
     maison passée), avec trois gros boutons Fait / Absent / Refus, « € Don »,

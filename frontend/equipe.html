@@ -104,6 +104,25 @@
     </div>
   </dialog>
 
+  <!-- Ajout d'un équipier par le responsable (remplaçant, renfort) -->
+  <dialog id="t-add" class="app-dialog t-add" aria-labelledby="ta-title">
+    <form id="ta-form" method="dialog">
+      <h3 id="ta-title">Ajouter un équipier</h3>
+      <p class="hint">Pour remplacer un absent ou renforcer l'équipe. La personne se connecte avec son propre code.</p>
+      <input id="ta-search" class="t-search" type="search" placeholder="Chercher un nom…" aria-label="Chercher une personne" autocomplete="off" />
+      <div id="ta-list" class="ta-list"></div>
+      <details id="ta-new" class="ta-new">
+        <summary>Pas dans la liste ? Nouvelle personne</summary>
+        <label class="field">Nom<input id="ta-nom" type="text" maxlength="80" autocomplete="off" /></label>
+        <label class="field">Téléphone (facultatif)<input id="ta-tel" type="tel" maxlength="30" autocomplete="off" /></label>
+        <button id="ta-create" type="button" class="btn primary">Ajouter à l'équipe</button>
+        <p class="hint">Demandez ensuite à l'administrateur de lui envoyer son code personnel.</p>
+      </details>
+      <p id="ta-error" class="error-text" hidden></p>
+      <div class="dialog-actions"><button class="btn" type="submit">Fermer</button></div>
+    </form>
+  </dialog>
+
   <!-- Choix du secteur -->
   <dialog id="t-sectors" class="app-dialog" aria-labelledby="ts-title">
     <form method="dialog">

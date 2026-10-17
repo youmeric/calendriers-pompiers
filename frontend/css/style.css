@@ -1628,6 +1628,19 @@ body.t-no-sector .t-tabs { display: none; }
 .eq-member:last-child { border-bottom: none; }
 .eq-who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .eq-who small { color: var(--muted); font-size: 12px; }
+.eq-remove { width: 40px; height: 40px; border: 1px solid var(--border); border-radius: 12px; color: var(--muted); }
+.eq-add { width: 100%; margin-top: 10px; min-height: 44px; }
+.t-add form { display: flex; flex-direction: column; gap: 10px; }
+.t-add h3, .t-add .hint { margin: 0; }
+.ta-list { display: flex; flex-direction: column; gap: 6px; max-height: 42vh; overflow-y: auto; }
+.ta-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 12px; background: #fff; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.ta-who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ta-item small { color: var(--muted); font-size: 12px; }
+.ta-item.busy small { color: #b45309; }
+.ta-plus { font-size: 22px; font-weight: 700; color: var(--accent); }
+.ta-new { border: 1px dashed var(--border); border-radius: 12px; padding: 8px 10px; }
+.ta-new summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.ta-new[open] { display: flex; flex-direction: column; gap: 8px; }
 .eq-call { width: 40px; height: 40px; border: 1px solid var(--border); border-radius: 12px; color: var(--fait); text-decoration: none; }
 .eq-links { display: flex; flex-direction: column; gap: 8px; }
 .eq-links .btn { width: 100%; }

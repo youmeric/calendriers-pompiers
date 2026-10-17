@@ -536,6 +536,25 @@ def set_team(sector_id: int, plan: dict, membres: list[dict]) -> None:
         conn.commit()
 
 
+def add_member(sector_id: int, personne_id: int, role: str) -> bool:
+    """Ajoute une personne en fin d'équipe ; False si elle en fait déjà partie."""
+    with get_conn() as conn:
+        pos = conn.execute("SELECT COALESCE(MAX(position), -1) + 1 FROM sector_team WHERE sector_id = ?",
+                           (sector_id,)).fetchone()[0]
+        cur = conn.execute("INSERT OR IGNORE INTO sector_team (sector_id, personne_id, role, position) VALUES (?, ?, ?, ?)",
+                           (sector_id, personne_id, role, pos))
+        conn.commit()
+    return bool(cur.rowcount)
+
+
+def remove_member(sector_id: int, personne_id: int, role: str) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM sector_team WHERE sector_id = ? AND personne_id = ? AND role = ?",
+                           (sector_id, personne_id, role))
+        conn.commit()
+    return bool(cur.rowcount)
+
+
 # ---- Dons -------------------------------------------------------------------------
 
 MODES = ("especes", "cheque", "cb")
