@@ -648,6 +648,15 @@
     const main = document.createElement("div");
     main.className = "address-main";
     main.appendChild(label);
+    const prev = t && t.precedent[a.id];
+    if (prev) {
+      const p = document.createElement("span");
+      const what = prev.status === "refus" ? "refus" : prev.status === "absent" ? "absent"
+        : prev.nb_dons ? (prev.montant !== undefined ? `don de ${euros(prev.montant)}` : "a donné") : "fait";
+      p.className = `prev-year prev-${prev.status === "refus" ? "refus" : prev.status === "absent" ? "absent" : "ok"}`;
+      p.textContent = `${prev.annee} : ${what}`;
+      main.appendChild(p);
+    }
     const badges = donBadges(a.id);
     if (badges) {
       const b = document.createElement("button");
@@ -960,6 +969,8 @@
 
   async function loadTracking(slug, sector) {
     const t = await fetchJSON(`/api/equipe/secteurs/${sector.id}/suivi`);
+    const lead = t.role !== "equipier" && t.dons !== null;
+    const caisse = lead ? await fetchJSON(`/api/equipe/secteurs/${sector.id}/caisse`).catch(() => null) : null;
     if (!state.current || state.current.sector !== sector) return; // secteur quitté entre-temps
     for (const a of sector.addresses) a.status = (t.statuses[a.id] || {}).status || null;
     const dons = new Map();
@@ -969,6 +980,7 @@
     }
     state.tracking = {
       sectorId: sector.id, slug, role: t.role, full: t.role !== "equipier", donsActive: t.dons !== null, dons, totaux: t.totaux,
+      precedent: t.precedent || {}, caisse,
     };
     for (const a of sector.addresses) state.markers.get(a.id)?.setStyle({ fillColor: statusColor(a.status) });
     els.suiviBlock.hidden = false;
@@ -990,8 +1002,83 @@
     const x = t.totaux;
     box.innerHTML = `<div class="total-main"><span>Total du secteur</span><strong>${euros(x.total)}</strong><small>${x.nb} don${x.nb > 1 ? "s" : ""}</small></div>
       <div class="total-modes"><span>Espèces <b>${euros(x.especes)}</b></span><span>Chèques <b>${euros(x.cheque)}</b></span><span>Carte <b>${euros(x.cb)}</b></span></div>
-      ${x.attente ? `<p class="total-wait">⏳ ${x.attente} paiement${x.attente > 1 ? "s" : ""} carte en attente de confirmation</p>` : ""}`;
+      ${x.attente ? `<p class="total-wait">⏳ ${x.attente} paiement${x.attente > 1 ? "s" : ""} carte en attente de confirmation</p>` : ""}
+      ${caisseBlock(t.caisse)}`;
+    box.querySelector("[data-caisse]")?.addEventListener("click", openCaisse);
   }
+
+  // ---- Caisse : remise des espèces et chèques au trésorier (responsable) ----
+
+  const caisseDialog = document.getElementById("caisse-dialog");
+
+  function caisseBlock(c) {
+    if (!c) return "";
+    const r = c.reste;
+    const remises = c.remises.length
+      ? `<small>${c.remises.length} remise${c.remises.length > 1 ? "s" : ""} · ${euros(c.remis.especes + c.remis.cheques)} remis${c.remises.some((x) => !x.confirme_le) ? " · réception à confirmer par le trésorier" : " · tout est confirmé ✓"}</small>` : "";
+    return `<div class="caisse-block">
+      <div><span>Caisse à remettre</span><strong>${euros(r.especes + r.cheques)}</strong>
+        <small>${euros(r.especes)} en espèces · ${euros(r.cheques)} en chèques (${r.nb_cheques})</small>${remises}</div>
+      <button type="button" class="btn small" data-caisse>Remettre la caisse</button>
+    </div>`;
+  }
+
+  const parseEuros = (v) => Number(String(v).replace(",", ".").replace(/[^0-9.]/g, "")) || 0;
+  const numFr = (v) => String(Math.round(v * 100) / 100).replace(".", ",");
+
+  function openCaisse() {
+    const c = state.tracking.caisse;
+    const r = c.reste;
+    document.getElementById("caisse-attendu").textContent =
+      `D'après les dons saisis, il reste à remettre ${euros(r.especes)} en espèces et ${euros(r.cheques)} en chèques (${r.nb_cheques}). Comptez et corrigez si besoin.`;
+    document.getElementById("caisse-especes").value = numFr(Math.max(0, r.especes));
+    document.getElementById("caisse-cheques").value = numFr(Math.max(0, r.cheques));
+    document.getElementById("caisse-nb").value = Math.max(0, r.nb_cheques);
+    document.getElementById("caisse-recu").value = storage.get("caisse-recu-par", "");
+    document.getElementById("caisse-note").value = "";
+    document.getElementById("caisse-error").hidden = true;
+    updateEcart();
+    caisseDialog.showModal();
+  }
+
+  function updateEcart() {
+    const r = state.tracking.caisse.reste;
+    const de = parseEuros(document.getElementById("caisse-especes").value) - r.especes;
+    const dc = parseEuros(document.getElementById("caisse-cheques").value) - r.cheques;
+    const box = document.getElementById("caisse-ecart");
+    const parts = [];
+    if (Math.abs(de) >= 0.005) parts.push(`espèces ${de > 0 ? "+" : ""}${euros(de)}`);
+    if (Math.abs(dc) >= 0.005) parts.push(`chèques ${dc > 0 ? "+" : ""}${euros(dc)}`);
+    box.hidden = !parts.length;
+    box.textContent = parts.length ? `Écart avec les dons saisis : ${parts.join(" · ")}. Ajoutez une remarque pour l'expliquer.` : "";
+  }
+  ["caisse-especes", "caisse-cheques"].forEach((id) => document.getElementById(id).addEventListener("input", updateEcart));
+
+  document.getElementById("caisse-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const recu = document.getElementById("caisse-recu").value.trim();
+    try {
+      await fetchJSON(`/api/equipe/secteurs/${state.tracking.sectorId}/remises`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          especes: parseEuros(document.getElementById("caisse-especes").value),
+          cheques: parseEuros(document.getElementById("caisse-cheques").value),
+          nb_cheques: Number(document.getElementById("caisse-nb").value) || 0,
+          recu_par: recu,
+          note: document.getElementById("caisse-note").value,
+        }),
+      });
+      storage.set("caisse-recu-par", recu);
+      caisseDialog.close();
+      showToast("Remise enregistrée ✓ Le trésorier la confirmera.");
+      await loadTracking(state.current.slug, state.current.sector);
+    } catch (err) {
+      const box = document.getElementById("caisse-error");
+      box.textContent = err.status === 422 ? "Vérifiez les montants et le nom de la personne." : err.message;
+      box.hidden = false;
+    }
+  });
 
   function donBadges(addressId) {
     const list = state.tracking && state.tracking.dons.get(addressId);

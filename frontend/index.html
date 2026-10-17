@@ -172,6 +172,37 @@
     </form>
   </dialog>
 
+  <!-- Remise de la caisse au trésorier (responsable du secteur) -->
+  <dialog id="caisse-dialog" class="app-dialog" aria-labelledby="caisse-title">
+    <form id="caisse-form" method="dialog">
+      <h3 id="caisse-title">Remettre la caisse</h3>
+      <p id="caisse-attendu" class="hint"></p>
+      <label class="field">Espèces comptées (€)
+        <input id="caisse-especes" type="text" inputmode="decimal" autocomplete="off" />
+      </label>
+      <div class="field-row">
+        <label class="field">Chèques (total €)
+          <input id="caisse-cheques" type="text" inputmode="decimal" autocomplete="off" />
+        </label>
+        <label class="field">Nombre
+          <input id="caisse-nb" type="number" inputmode="numeric" min="0" step="1" />
+        </label>
+      </div>
+      <label class="field">Remis à
+        <input id="caisse-recu" type="text" maxlength="80" autocomplete="off" placeholder="Nom du trésorier" required />
+      </label>
+      <label class="field">Remarque (facultatif)
+        <input id="caisse-note" type="text" maxlength="300" autocomplete="off" />
+      </label>
+      <p id="caisse-ecart" class="caisse-ecart" hidden></p>
+      <p id="caisse-error" class="error-text" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close>Annuler</button>
+        <button type="submit" class="btn primary">Enregistrer la remise</button>
+      </div>
+    </form>
+  </dialog>
+
   <div id="toast" class="toast" hidden></div>
 
   <script src="vendor/leaflet/leaflet.js"></script>

@@ -2,23 +2,25 @@ from __future__ import annotations
 
 import hashlib
 import json
+import asyncio
+import logging
 import mimetypes
+import re
 import secrets
 import os
 import time
 from contextlib import asynccontextmanager
-from datetime import date
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import auth, db
 from .geo import point_in_polys
 from .limits import RoadIndex, describe_limit_polys
-from .models import (CodeIn, DonIn, DonStatutIn, EquipeIn, ExclusionIn, LoginIn, PersonneIn, PersonnesIn,
-                     SectorsIn, SettingsIn, StatusUpdate, SumupRetourIn)
+from .models import (CodeIn, ConfirmIn, DonIn, DonStatutIn, EquipeIn, ExclusionIn, LoginIn, PersonneIn,
+                     PersonnesIn, RemiseIn, SectorsIn, SettingsIn, StatusUpdate, SumupRetourIn)
 from .resume import build_resume, commune_voie_counts
 
 DATA_DIR = Path(os.environ.get("SECTORS_DATA_DIR") or (Path(__file__).resolve().parent / "data"))
@@ -40,10 +42,29 @@ def _resolve_frontend_dir() -> Path:
 FRONTEND_DIR = _resolve_frontend_dir()
 
 
+log = logging.getLogger("calendriers")
+
+
+async def _daily_backups() -> None:
+    """Une sauvegarde de la base par jour (vérifié chaque heure), 30 gardées."""
+    await asyncio.sleep(60)  # laisse le serveur démarrer
+    while True:
+        try:
+            if not await asyncio.to_thread(db.backup_done_today):
+                name = await asyncio.to_thread(db.make_backup)
+                log.info("Sauvegarde créée : %s", name)
+        except Exception:  # une sauvegarde ratée ne doit jamais arrêter le site
+            log.exception("Sauvegarde automatique impossible")
+        await asyncio.sleep(3600)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     db.init_db()
+    task = asyncio.create_task(_daily_backups()) if os.environ.get("AUTO_BACKUP", "1") != "0" else None
     yield
+    if task:
+        task.cancel()
 
 
 app = FastAPI(title="Calendriers Pompiers - Courzieu & Brussieu", lifespan=lifespan)
@@ -171,13 +192,7 @@ def _public_teams() -> dict[int, dict]:
 
 
 def _annee() -> int:
-    """Année de la tournée : réglée dans l'admin, sinon l'année des calendriers
-    distribués à cette saison (à partir de juillet, ceux de l'année suivante)."""
-    value = db.get_setting("annee", "")
-    if value.isdigit():
-        return int(value)
-    today = date.today()
-    return today.year + 1 if today.month >= 7 else today.year
+    return db.current_annee()
 
 
 @app.get("/api/communes")
@@ -352,7 +367,13 @@ def team_sector_tracking(sector_id: int, request: Request):
     full = role in ("admin", "responsable")
     person = auth.team_member(request)
     me = person["id"] if person else None
-    out = {"slug": slug, "role": role, "statuses": statuses, "dons": None, "totaux": None}
+    out = {"slug": slug, "role": role, "statuses": statuses, "dons": None, "totaux": None, "precedent": {}}
+    for aid, prev in db.previous_year(slug, _annee()).items():
+        if aid in ids:
+            item = {"annee": prev["annee"], "status": prev["status"], "nb_dons": prev["nb_dons"]}
+            if full:
+                item["montant"] = prev["montant_cents"] / 100
+            out["precedent"][aid] = item
     if _flag("dons_actifs", False):
         dons = db.list_dons(_annee(), sector_id)
         out["dons"] = [_don_view(d, full, me) for d in dons]
@@ -412,6 +433,105 @@ def team_delete_don(don_id: int, request: Request):
     don = _don_for_edit(request, don_id)
     db.delete_don(don["id"])
     return {"ok": True}
+
+
+# ---- Caisse : remise des espèces et chèques au trésorier ------------------------------
+
+def _caisse(sector_id: int) -> dict:
+    annee = _annee()
+    dons = [d for d in db.list_dons(annee, sector_id) if d["statut"] == "ok"]
+    remises = db.list_remises(annee, sector_id)
+    attendu = {"especes": sum(d["montant_cents"] for d in dons if d["mode"] == "especes"),
+               "cheques": sum(d["montant_cents"] for d in dons if d["mode"] == "cheque"),
+               "nb_cheques": sum(1 for d in dons if d["mode"] == "cheque")}
+    remis = {"especes": sum(r["especes_cents"] for r in remises), "cheques": sum(r["cheques_cents"] for r in remises),
+             "nb_cheques": sum(r["nb_cheques"] for r in remises)}
+    euros = lambda c: c / 100  # noqa: E731
+    return {
+        "attendu": {"especes": euros(attendu["especes"]), "cheques": euros(attendu["cheques"]), "nb_cheques": attendu["nb_cheques"]},
+        "remis": {"especes": euros(remis["especes"]), "cheques": euros(remis["cheques"]), "nb_cheques": remis["nb_cheques"]},
+        "reste": {"especes": euros(attendu["especes"] - remis["especes"]), "cheques": euros(attendu["cheques"] - remis["cheques"]),
+                  "nb_cheques": attendu["nb_cheques"] - remis["nb_cheques"]},
+        "remises": [{
+            "id": r["id"], "especes": euros(r["especes_cents"]), "cheques": euros(r["cheques_cents"]),
+            "nb_cheques": r["nb_cheques"], "remis_par": r["remis_par"], "recu_par": r["recu_par"], "note": r["note"],
+            "created_at": r["created_at"], "confirme_le": r["confirme_le"],
+            "ecart_especes": euros(r["especes_cents"] - r["attendu_especes_cents"]),
+            "ecart_cheques": euros(r["cheques_cents"] - r["attendu_cheques_cents"]),
+        } for r in remises],
+    }
+
+
+def _require_lead(request: Request, sector_id: int) -> str:
+    role = _require_role(request, sector_id)
+    if role == "equipier":
+        raise HTTPException(status_code=403, detail="La caisse est gérée par le responsable du secteur")
+    return role
+
+
+@app.get("/api/equipe/secteurs/{sector_id}/caisse")
+def team_cash(sector_id: int, request: Request):
+    if not (_suivi_enabled() and _flag("dons_actifs", False)):
+        raise HTTPException(status_code=403, detail="L'enregistrement des dons est désactivé")
+    _require_lead(request, sector_id)
+    return _caisse(sector_id)
+
+
+@app.post("/api/equipe/secteurs/{sector_id}/remises")
+def team_cash_handover(sector_id: int, payload: RemiseIn, request: Request):
+    if not (_suivi_enabled() and _flag("dons_actifs", False)):
+        raise HTTPException(status_code=403, detail="L'enregistrement des dons est désactivé")
+    role = _require_lead(request, sector_id)
+    person = auth.team_member(request)
+    before = _caisse(sector_id)["reste"]  # ce qui restait à remettre avant cette remise
+    db.add_remise({
+        "annee": _annee(), "sector_id": sector_id,
+        "especes_cents": round(payload.especes * 100), "cheques_cents": round(payload.cheques * 100),
+        "nb_cheques": payload.nb_cheques,
+        "attendu_especes_cents": round(before["especes"] * 100), "attendu_cheques_cents": round(before["cheques"] * 100),
+        "remis_par": person["nom"] if person else ("Admin" if role == "admin" else "?"),
+        "recu_par": payload.recu_par, "note": payload.note,
+    })
+    return _caisse(sector_id)
+
+
+@app.post("/api/admin/remises/{remise_id}/confirmer", dependencies=[Depends(auth.require_admin)])
+def admin_confirm_handover(remise_id: int, payload: ConfirmIn):
+    if not db.get_remise(remise_id):
+        raise HTTPException(status_code=404, detail="Remise inconnue")
+    return db.confirm_remise(remise_id, payload.confirme)
+
+
+@app.delete("/api/admin/remises/{remise_id}", dependencies=[Depends(auth.require_admin)])
+def admin_delete_handover(remise_id: int):
+    if not db.get_remise(remise_id):
+        raise HTTPException(status_code=404, detail="Remise inconnue")
+    db.delete_remise(remise_id)
+    return {"ok": True}
+
+
+# ---- Sauvegardes --------------------------------------------------------------------
+
+BACKUP_NAME = re.compile(r"^calendriers-[0-9_-]+(-[a-z]+)?\.db$")
+
+
+@app.get("/api/admin/sauvegardes", dependencies=[Depends(auth.require_admin)])
+def admin_list_backups():
+    return {"sauvegardes": db.list_backups(), "dossier": db.backup_dir(), "garde": db.BACKUP_KEEP}
+
+
+@app.post("/api/admin/sauvegardes", dependencies=[Depends(auth.require_admin)])
+def admin_backup_now():
+    name = db.make_backup("manuelle")
+    return {"nom": name, "sauvegardes": db.list_backups()}
+
+
+@app.get("/api/admin/sauvegardes/{name}", dependencies=[Depends(auth.require_admin)])
+def admin_download_backup(name: str):
+    path = Path(db.backup_dir()) / name
+    if not BACKUP_NAME.match(name) or not path.is_file():
+        raise HTTPException(status_code=404, detail="Sauvegarde inconnue")
+    return FileResponse(path, media_type="application/octet-stream", filename=name)
 
 
 # ---- Retour de l'appli SumUp ----------------------------------------------------------
@@ -539,7 +659,9 @@ def admin_bilan():
                 counts[(statuses.get(aid) or {}).get("status") or "a_faire"] += 1
             rows.append({"sector_id": s["id"], "slug": slug, "commune": data["commune"]["nom"], "nom": s["nom"],
                          "couleur": s["couleur"], "adresses": len(ids), "counts": counts,
-                         "totaux": _totaux([d for d in dons if d["sector_id"] == s["id"]])})
+                         "polygon": s["polygon"],
+                         "totaux": _totaux([d for d in dons if d["sector_id"] == s["id"]]),
+                         "caisse": _caisse(s["id"])})
     return {"annee": annee, "secteurs": rows, "totaux": _totaux(dons),
             "attente": [_don_view(d, True, None) | {"sector_id": d["sector_id"], "slug": d["commune_slug"]}
                         for d in dons if d["statut"] == "attente"]}

@@ -188,3 +188,28 @@ class SumupRetourIn(BaseModel):
     foreign_id: str = Field(min_length=8, max_length=128)
     status: str = Field(default="", max_length=30)
     tx_code: str = Field(default="", max_length=64)
+
+
+class RemiseIn(BaseModel):
+    especes: float = Field(ge=0, le=100000)
+    cheques: float = Field(ge=0, le=100000)
+    nb_cheques: int = Field(default=0, ge=0, le=2000)
+    recu_par: str = Field(min_length=1, max_length=80)
+    note: str = Field(default="", max_length=300)
+
+    @field_validator("note")
+    @classmethod
+    def strip_note(cls, v: str) -> str:
+        return " ".join(v.split())
+
+    @field_validator("recu_par")
+    @classmethod
+    def strip_recu(cls, v: str) -> str:
+        v = " ".join(v.split())
+        if not v:
+            raise ValueError("indiquez à qui la caisse est remise")
+        return v
+
+
+class ConfirmIn(BaseModel):
+    confirme: bool

@@ -97,6 +97,22 @@ def init_db() -> None:
                 updated_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS dons_sector ON dons (annee, sector_id);
+            -- caisse remise par le responsable d'un secteur au trésorier
+            CREATE TABLE IF NOT EXISTS remises (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                annee INTEGER NOT NULL,
+                sector_id INTEGER NOT NULL,
+                especes_cents INTEGER NOT NULL,
+                cheques_cents INTEGER NOT NULL,
+                nb_cheques INTEGER NOT NULL,
+                attendu_especes_cents INTEGER NOT NULL,
+                attendu_cheques_cents INTEGER NOT NULL,
+                remis_par TEXT NOT NULL,
+                recu_par TEXT NOT NULL,
+                note TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                confirme_le TEXT
+            );
             -- organisation du secteur : date, créneau, avancement, consignes
             CREATE TABLE IF NOT EXISTS sector_plan (
                 sector_id INTEGER PRIMARY KEY,
@@ -112,6 +128,25 @@ def init_db() -> None:
             conn.execute("ALTER TABLE sectors ADD COLUMN limite TEXT")
         if "limite_src" not in columns:
             conn.execute("ALTER TABLE sectors ADD COLUMN limite_src TEXT")
+        # statuts par année de tournée (avant : une seule année, sans colonne)
+        scols = {row[1] for row in conn.execute("PRAGMA table_info(address_status)")}
+        if "annee" not in scols:
+            annee = _current_annee(conn)
+            conn.executescript(f"""
+                CREATE TABLE address_status_new (
+                    commune_slug TEXT NOT NULL,
+                    address_id TEXT NOT NULL,
+                    annee INTEGER NOT NULL,
+                    status TEXT,
+                    note TEXT,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (commune_slug, address_id, annee)
+                );
+                INSERT INTO address_status_new (commune_slug, address_id, annee, status, note, updated_at)
+                    SELECT commune_slug, address_id, {int(annee)}, status, note, updated_at FROM address_status;
+                DROP TABLE address_status;
+                ALTER TABLE address_status_new RENAME TO address_status;
+            """)
         # code d'accès personnel des équipes (ajouté après coup : on complète les anciennes fiches)
         pcols = {row[1] for row in conn.execute("PRAGMA table_info(personnes)")}
         if "code" not in pcols:
@@ -131,6 +166,21 @@ def _new_code(conn) -> str:
         code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LENGTH))
         if not conn.execute("SELECT 1 FROM personnes WHERE code = ?", (code,)).fetchone():
             return code
+
+
+def _current_annee(conn) -> int:
+    row = conn.execute("SELECT value FROM settings WHERE key = 'annee'").fetchone()
+    if row and str(row[0]).isdigit():
+        return int(row[0])
+    today = datetime.now().date()
+    return today.year + 1 if today.month >= 7 else today.year
+
+
+def current_annee() -> int:
+    """Année de la tournée : réglée dans l'admin, sinon celle des calendriers distribués
+    à cette saison (à partir de juillet, ceux de l'année suivante)."""
+    with get_conn() as conn:
+        return _current_annee(conn)
 
 
 def normalize_code(raw: str) -> str:
@@ -294,11 +344,12 @@ def set_excluded(commune_slug: str, address_ids: list[str], excluded: bool) -> N
 
 # ---- Statuts des adresses -----------------------------------------------------
 
-def get_statuses(commune_slug: str) -> dict[str, dict]:
+def get_statuses(commune_slug: str, annee: int | None = None) -> dict[str, dict]:
+    annee = annee or current_annee()
     with get_conn() as conn:
         cur = conn.execute(
-            "SELECT address_id, status, note, updated_at FROM address_status WHERE commune_slug = ?",
-            (commune_slug,),
+            "SELECT address_id, status, note, updated_at FROM address_status WHERE commune_slug = ? AND annee = ?",
+            (commune_slug, annee),
         )
         return {row[0]: {"status": row[1], "note": row[2], "updated_at": row[3]} for row in cur.fetchall()}
 
@@ -307,24 +358,52 @@ def set_status(commune_slug: str, address_id: str, status: str | None, note: str
     if status is not None and status not in VALID_STATUSES:
         raise ValueError(f"statut invalide: {status}")
     now = _now()
+    annee = current_annee()
     with get_conn() as conn:
         conn.execute(
             """
-            INSERT INTO address_status (commune_slug, address_id, status, note, updated_at)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(commune_slug, address_id)
+            INSERT INTO address_status (commune_slug, address_id, annee, status, note, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(commune_slug, address_id, annee)
             DO UPDATE SET status = excluded.status, note = excluded.note, updated_at = excluded.updated_at
             """,
-            (commune_slug, address_id, status, note, now),
+            (commune_slug, address_id, annee, status, note, now),
         )
         conn.commit()
     return {"address_id": address_id, "status": status, "note": note, "updated_at": now}
 
 
 def reset_statuses(commune_slug: str) -> None:
+    """Efface les statuts de l'année en cours (les années passées restent pour l'historique)."""
     with get_conn() as conn:
-        conn.execute("DELETE FROM address_status WHERE commune_slug = ?", (commune_slug,))
+        conn.execute("DELETE FROM address_status WHERE commune_slug = ? AND annee = ?",
+                     (commune_slug, current_annee()))
         conn.commit()
+
+
+def previous_year(commune_slug: str, annee: int) -> dict[str, dict]:
+    """Ce qui s'est passé à chaque adresse lors de la dernière tournée avant `annee` :
+    {address_id: {annee, status, montant_cents, nb_dons}}."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT MAX(a) FROM (SELECT MAX(annee) AS a FROM address_status WHERE commune_slug = ? AND annee < ? "
+            "UNION SELECT MAX(annee) FROM dons WHERE commune_slug = ? AND annee < ?)",
+            (commune_slug, annee, commune_slug, annee),
+        ).fetchone()
+        last = row[0] if row else None
+        if not last:
+            return {}
+        out: dict[str, dict] = {}
+        for aid, status in conn.execute(
+                "SELECT address_id, status FROM address_status WHERE commune_slug = ? AND annee = ? AND status IS NOT NULL",
+                (commune_slug, last)):
+            out[aid] = {"annee": last, "status": status, "montant_cents": 0, "nb_dons": 0}
+        for aid, total, nb in conn.execute(
+                "SELECT address_id, SUM(montant_cents), COUNT(*) FROM dons WHERE commune_slug = ? AND annee = ? "
+                "AND statut = 'ok' GROUP BY address_id", (commune_slug, last)):
+            item = out.setdefault(aid, {"annee": last, "status": "fait", "montant_cents": 0, "nb_dons": 0})
+            item["montant_cents"], item["nb_dons"] = total, nb
+    return out
 
 
 # ---- Équipes : personnes et organisation de chaque secteur ----------------------
@@ -511,3 +590,100 @@ def delete_don(don_id: int) -> None:
     with get_conn() as conn:
         conn.execute("DELETE FROM dons WHERE id = ?", (don_id,))
         conn.commit()
+
+
+# ---- Remises de caisse ------------------------------------------------------------
+
+_REMISE_COLS = ("id", "annee", "sector_id", "especes_cents", "cheques_cents", "nb_cheques", "attendu_especes_cents",
+                "attendu_cheques_cents", "remis_par", "recu_par", "note", "created_at", "confirme_le")
+
+
+def add_remise(r: dict) -> dict:
+    with get_conn() as conn:
+        rid = conn.execute(
+            f"INSERT INTO remises ({', '.join(_REMISE_COLS[1:12])}) VALUES ({', '.join('?' * 11)})",
+            tuple(r[k] for k in _REMISE_COLS[1:11]) + (_now(),),
+        ).lastrowid
+        conn.commit()
+    return get_remise(rid)
+
+
+def get_remise(remise_id: int) -> dict | None:
+    with get_conn() as conn:
+        r = conn.execute(f"SELECT {', '.join(_REMISE_COLS)} FROM remises WHERE id = ?", (remise_id,)).fetchone()
+    return dict(zip(_REMISE_COLS, r)) if r else None
+
+
+def list_remises(annee: int, sector_id: int | None = None) -> list[dict]:
+    sql = f"SELECT {', '.join(_REMISE_COLS)} FROM remises WHERE annee = ?"
+    args: list = [annee]
+    if sector_id is not None:
+        sql += " AND sector_id = ?"
+        args.append(sector_id)
+    with get_conn() as conn:
+        rows = conn.execute(sql + " ORDER BY id", args).fetchall()
+    return [dict(zip(_REMISE_COLS, r)) for r in rows]
+
+
+def confirm_remise(remise_id: int, confirmed: bool) -> dict | None:
+    with get_conn() as conn:
+        conn.execute("UPDATE remises SET confirme_le = ? WHERE id = ?", (_now() if confirmed else None, remise_id))
+        conn.commit()
+    return get_remise(remise_id)
+
+
+def delete_remise(remise_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM remises WHERE id = ?", (remise_id,))
+        conn.commit()
+
+
+# ---- Sauvegardes ------------------------------------------------------------------
+
+BACKUP_KEEP = 30
+
+
+def backup_dir() -> str:
+    return os.environ.get("BACKUP_DIR") or os.path.join(os.path.dirname(DB_PATH) or ".", "sauvegardes")
+
+
+def make_backup(tag: str | None = None) -> str:
+    """Copie cohérente de la base (API de sauvegarde SQLite), même pendant l'utilisation."""
+    os.makedirs(backup_dir(), exist_ok=True)
+    stamp = datetime.now().strftime("%Y-%m-%d_%H%M")
+    name = f"calendriers-{stamp}{'-' + tag if tag else ''}.db"
+    target = os.path.join(backup_dir(), name)
+    with get_conn() as conn:
+        dest = sqlite3.connect(target)
+        try:
+            conn.backup(dest)
+        finally:
+            dest.close()
+    prune_backups()
+    return name
+
+
+def list_backups() -> list[dict]:
+    folder = backup_dir()
+    if not os.path.isdir(folder):
+        return []
+    out = []
+    for name in sorted(os.listdir(folder), reverse=True):
+        if name.startswith("calendriers-") and name.endswith(".db"):
+            st = os.stat(os.path.join(folder, name))
+            out.append({"nom": name, "taille": st.st_size,
+                        "date": datetime.fromtimestamp(st.st_mtime, timezone.utc).isoformat()})
+    return out
+
+
+def prune_backups(keep: int = BACKUP_KEEP) -> None:
+    for item in list_backups()[keep:]:
+        try:
+            os.remove(os.path.join(backup_dir(), item["nom"]))
+        except OSError:
+            pass
+
+
+def backup_done_today() -> bool:
+    today = datetime.now().strftime("%Y-%m-%d")
+    return any(b["nom"].startswith(f"calendriers-{today}") for b in list_backups())

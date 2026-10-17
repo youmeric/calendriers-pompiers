@@ -6,7 +6,8 @@
 #   docker compose up -d --build backend
 #
 # Données sur le serveur (bind mounts, faciles à sauvegarder) :
-#   ./data/db/       base SQLite (secteurs dessinés + statuts fait/absent/refus)
+#   ./data/db/       base SQLite (secteurs, équipes, suivi, dons) et ./data/db/sauvegardes/
+#                    (une sauvegarde automatique par jour, 30 gardées)
 #   ./data/sectors/  fichiers générés par le pipeline
 #   ./data/cache/    téléchargements BAN / OSM
 

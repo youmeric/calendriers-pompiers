@@ -70,6 +70,18 @@ sur Courzieu et Brussieu (69690).
   - **Bilan** : maisons faites, dons et totaux (espèces / chèques / carte) par
     secteur et au total, export de tous les dons (Excel). Les dons sont classés
     par année de tournée.
+  - **Avancement en direct** : carte des secteurs colorés selon le pourcentage
+    de maisons faites (gris → orange → vert), avec le total des dons ;
+    actualisée toutes les 30 secondes.
+  - **Remise de la caisse** : le responsable du secteur déclare dans son appli
+    les espèces et chèques comptés et à qui il les remet ; le site les compare
+    aux dons saisis et signale l'écart. L'admin (trésorier) confirme la
+    réception ; la colonne « À remettre » montre ce qui reste dehors.
+  - **Mémoire de l'an dernier** : le suivi est rangé par année ; sur chaque
+    maison, l'équipe voit ce qui s'est passé à la tournée précédente
+    (« 2026 : absent », « refus », « don de 15 € » — le montant seulement pour
+    le responsable). Changer l'année dans les réglages démarre une nouvelle
+    tournée sans rien effacer.
 - **Équipes (admin, onglet « Équipes »)** : qui fait quel secteur.
   - **Personnes** : la liste des membres de la caserne (nom, téléphone
     facultatif), à saisir un par un ou en collant toute une liste
@@ -245,8 +257,13 @@ secteur.
 
 ## Sauvegarde
 
-Tout l'état du site se trouve dans `./data/db/status.db` (secteurs, équipes, réglages et statuts).
-Une copie de ce fichier suffit.
+Tout l'état du site se trouve dans `./data/db/status.db` (secteurs, équipes, réglages, suivi, dons).
+
+Le site en fait **une sauvegarde automatique par jour** dans `./data/db/sauvegardes/`
+(30 gardées). Depuis l'admin (onglet « Suivi & dons ») : « Sauvegarder maintenant » et
+téléchargement des dernières sauvegardes. Pensez à en garder une copie ailleurs que sur le
+serveur (clé USB, cloud). Pour restaurer : arrêter le site, remplacer `status.db` par la
+sauvegarde voulue (renommée `status.db`), relancer.
 
 ## Développement local
 

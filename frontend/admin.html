@@ -248,17 +248,36 @@
           </label>
           <p class="hint">À créer dans votre compte SumUp : <b>me.sumup.com → Développeurs</b> (« affiliate key »), avec le même identifiant d'application. Sur chaque téléphone : l'appli SumUp installée et connectée au compte de l'amicale. Si SumUp ne s'ouvre pas, les équipes peuvent encaisser dans l'appli SumUp puis saisir le don à la main.</p>
         </div>
+
+        <h3 class="panel-title backup-title">Sauvegardes</h3>
+        <p id="backup-info" class="hint"></p>
+        <button id="backup-now" class="btn" type="button">Sauvegarder maintenant</button>
+        <ul id="backup-list" class="backup-list"></ul>
+        <p class="hint">Une sauvegarde est faite chaque jour automatiquement ; les 30 dernières sont gardées sur le serveur (dossier <code>data/db/sauvegardes</code>). Téléchargez-en une de temps en temps pour en avoir une copie ailleurs.</p>
       </section>
 
       <section class="bilan-main">
+        <div class="live-map-card">
+          <div class="live-map-head">
+            <h3 class="panel-title">Avancement en direct</h3>
+            <span id="live-updated" class="hint"></span>
+          </div>
+          <div id="live-map" class="live-map" aria-label="Carte de l'avancement des secteurs"></div>
+          <div class="live-legend"><span><i style="background:#cbd5e1"></i>pas commencé</span><span><i style="background:#f59e0b"></i>en cours</span><span><i style="background:#16a34a"></i>terminé</span></div>
+        </div>
         <div id="bilan-cards" class="bilan-cards"></div>
         <div id="bilan-attente"></div>
         <div class="bilan-table-wrap">
           <table class="bilan-table">
-            <thead><tr><th>Secteur</th><th>Maisons</th><th>Dons</th><th>Espèces</th><th>Chèques</th><th>Carte</th><th>Total</th></tr></thead>
+            <thead><tr><th>Secteur</th><th>Maisons</th><th>Dons</th><th>Espèces</th><th>Chèques</th><th>Carte</th><th>Total</th><th>À remettre</th></tr></thead>
             <tbody id="bilan-body"></tbody>
           </table>
         </div>
+        <section class="caisse-section">
+          <h3 class="panel-title">Caisse : remises au trésorier</h3>
+          <p class="hint">Le responsable de chaque secteur déclare dans son appli les espèces et chèques comptés et à qui il les a remis. Confirmez ici quand vous les avez bien reçus.</p>
+          <div id="remises-list"></div>
+        </section>
       </section>
     </div>
   </main>
