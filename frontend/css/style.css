@@ -81,9 +81,9 @@ a { color: var(--link); }
   justify-content: space-between;
   gap: 10px;
   padding: env(safe-area-inset-top) 14px 0;
-  background: rgba(255, 255, 255, 0.86);
-  -webkit-backdrop-filter: saturate(180%) blur(16px);
-  backdrop-filter: saturate(180%) blur(16px);
+  /* fond opaque : Safari (iOS 26) reprend alors sa couleur sous l'heure et la batterie
+     au lieu d'y appliquer son effet de flou */
+  background: #fff;
   border-bottom: 1px solid rgba(15, 23, 42, 0.07);
   color: var(--text);
 }
@@ -1469,9 +1469,11 @@ body.terrain { height: 100vh; height: 100dvh; overflow: hidden; background: var(
   gap: 10px;
   height: calc(56px + env(safe-area-inset-top));
   padding: env(safe-area-inset-top) 12px 0;
-  background: rgba(255, 255, 255, 0.92);
-  -webkit-backdrop-filter: saturate(180%) blur(16px);
-  backdrop-filter: saturate(180%) blur(16px);
+  /* barre collée en haut et opaque : Safari (iOS 26) la reconnaît et prolonge sa couleur
+     sous la barre d'état au lieu de flouter le haut de la page */
+  position: sticky;
+  top: 0;
+  background: #fff;
   border-bottom: 1px solid rgba(15, 23, 42, 0.07);
   z-index: 10;
 }
@@ -1528,9 +1530,9 @@ body[data-tab="carte"] .t-main { overflow: hidden; }
   flex: 0 0 auto;
   display: flex;
   padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
-  background: rgba(255, 255, 255, 0.96);
-  -webkit-backdrop-filter: saturate(180%) blur(16px);
-  backdrop-filter: saturate(180%) blur(16px);
+  position: sticky;
+  bottom: 0;
+  background: #fff;
   border-top: 1px solid rgba(15, 23, 42, 0.08);
   z-index: 10;
 }
