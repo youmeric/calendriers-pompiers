@@ -103,16 +103,8 @@
           </section>
 
           <section id="suivi-locked" class="info-card suivi-locked" hidden></section>
-
-          <section id="suivi-block" hidden>
-            <h3 class="suivi-title">Suivi de la distribution</h3>
-            <div id="dons-totaux" class="dons-totaux" hidden></div>
-            <div id="sector-progress" class="progress-bar" aria-hidden="true"></div>
-            <p id="sector-stats" class="hint"></p>
-            <label class="toggle"><input type="checkbox" id="hide-done" /> Masquer les adresses déjà traitées</label>
-            <div id="address-list"></div>
-          </section>
         </section>
+
       </div>
     </div>
   </main>
@@ -140,68 +132,7 @@
     </form>
   </dialog>
 
-  <!-- Saisie d'un don -->
-  <dialog id="don-dialog" class="app-dialog don-dialog" aria-labelledby="don-title">
-    <form id="don-form" method="dialog">
-      <h3 id="don-title">Don</h3>
-      <p id="don-address" class="hint"></p>
-      <div id="don-existing" class="don-existing"></div>
-      <label class="don-amount">
-        <span>Montant</span>
-        <span class="amount-field"><input id="don-montant" type="text" inputmode="decimal" autocomplete="off" placeholder="0" aria-label="Montant en euros" /><b>€</b></span>
-      </label>
-      <div class="amount-chips">
-        <button type="button" data-amount="5">5 €</button><button type="button" data-amount="10">10 €</button><button type="button" data-amount="15">15 €</button><button type="button" data-amount="20">20 €</button><button type="button" data-amount="30">30 €</button>
-      </div>
-      <div class="mode-switch" role="radiogroup" aria-label="Moyen de paiement">
-        <label><input type="radio" name="mode" value="especes" checked /><span>Espèces</span></label>
-        <label><input type="radio" name="mode" value="cheque" /><span>Chèque</span></label>
-        <label><input type="radio" name="mode" value="cb" /><span>Carte</span></label>
-      </div>
-      <div id="don-cb-manual" class="don-cb-manual" hidden>
-        <input id="don-tx" type="text" maxlength="64" autocomplete="off" placeholder="N° de transaction SumUp (facultatif)" aria-label="Numéro de transaction" />
-      </div>
-      <p id="don-ios-hint" class="hint don-ios-hint" hidden>Sur iPhone, si SumUp ne s'ouvre pas depuis l'application installée, ouvrez le site dans Safari pour payer par carte.</p>
-      <p id="don-error" class="error-text" hidden></p>
-      <div class="dialog-actions">
-        <button type="button" class="btn" data-close>Fermer</button>
-        <button id="don-save" type="submit" class="btn primary">Enregistrer</button>
-      </div>
-      <button id="don-sumup" type="button" class="btn sumup-btn" hidden>Payer par carte avec SumUp</button>
-      <button id="don-manual-toggle" type="button" class="link-btn don-manual-toggle" hidden>Paiement déjà encaissé dans SumUp ? Saisir à la main</button>
-    </form>
-  </dialog>
 
-  <!-- Remise de la caisse au trésorier (responsable du secteur) -->
-  <dialog id="caisse-dialog" class="app-dialog" aria-labelledby="caisse-title">
-    <form id="caisse-form" method="dialog">
-      <h3 id="caisse-title">Remettre la caisse</h3>
-      <p id="caisse-attendu" class="hint"></p>
-      <label class="field">Espèces comptées (€)
-        <input id="caisse-especes" type="text" inputmode="decimal" autocomplete="off" />
-      </label>
-      <div class="field-row">
-        <label class="field">Chèques (total €)
-          <input id="caisse-cheques" type="text" inputmode="decimal" autocomplete="off" />
-        </label>
-        <label class="field">Nombre
-          <input id="caisse-nb" type="number" inputmode="numeric" min="0" step="1" />
-        </label>
-      </div>
-      <label class="field">Remis à
-        <input id="caisse-recu" type="text" maxlength="80" autocomplete="off" placeholder="Nom du trésorier" required />
-      </label>
-      <label class="field">Remarque (facultatif)
-        <input id="caisse-note" type="text" maxlength="300" autocomplete="off" />
-      </label>
-      <p id="caisse-ecart" class="caisse-ecart" hidden></p>
-      <p id="caisse-error" class="error-text" hidden></p>
-      <div class="dialog-actions">
-        <button type="button" class="btn" data-close>Annuler</button>
-        <button type="submit" class="btn primary">Enregistrer la remise</button>
-      </div>
-    </form>
-  </dialog>
 
   <div id="toast" class="toast" hidden></div>
 

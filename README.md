@@ -44,9 +44,10 @@ sur Courzieu et Brussieu (69690).
 - **Suivi & dons (admin, onglet « Suivi & dons »)** — tout est optionnel :
   - **Accès protégé** : chaque personne de l'onglet Équipes a un **code
     personnel** (bouton 🔑 : code, lien à envoyer par WhatsApp ou SMS, « changer
-    le code » pour couper un accès). Sur son téléphone, elle ouvre le lien (ou
-    saisit le code dans « Espace équipe ») et voit le suivi de **ses secteurs
-    seulement**. Sans code, personne ne voit les statuts ni les montants.
+    le code » pour couper un accès). Sur son téléphone, elle ouvre le lien
+    (`/equipe#acces=CODE`, ou saisit le code dans « Espace équipe ») et arrive
+    dans l'**espace équipe** (voir plus bas), limité à **ses secteurs**. Sans
+    code, personne ne voit les statuts ni les montants.
     10 codes faux d'affilée bloquent les essais pendant 10 minutes.
   - **Suivi des maisons** : ✓ fait / ⏳ absent / ✕ refus, partagé en direct
     entre les membres de l'équipe (actualisé chaque minute), fonctionne sans
@@ -82,6 +83,31 @@ sur Courzieu et Brussieu (69690).
     (« 2026 : absent », « refus », « don de 15 € » — le montant seulement pour
     le responsable). Changer l'année dans les réglages démarre une nouvelle
     tournée sans rien effacer.
+- **Espace équipe (`/equipe`)**, l'appli des équipes sur le terrain, avec 5
+  onglets en bas de l'écran :
+  - **Accueil** : dès la connexion, le **bilan de son secteur** : date,
+    créneau et consignes, anneau d'avancement (maisons passées / total), à
+    faire · faites · absents · refus (un appui ouvre la liste filtrée), dons
+    (total du secteur et caisse à remettre pour le responsable, ses propres
+    dons pour un équipier) et le bilan de la tournée de l'an dernier ;
+  - **Carte** : le secteur seul, les maisons colorées selon leur statut, 📍 ma
+    position ; toucher une maison ouvre sa fiche (statut, don, « Y aller ») ;
+  - **Maisons** : liste par hameau / rue, filtres À faire · Absents · Faits ·
+    Refus · Toutes, recherche, boutons ✓ ⏳ ✕ € sur chaque ligne ;
+  - **Caisse** (si les dons sont activés) : totaux, paiements carte en
+    attente, remise de la caisse (responsable) ou ses dons (équipier) ;
+  - **Équipe** : les membres avec boutons appeler / SMS, l'avancement du
+    secteur (à faire / en cours / terminé, réglé par le responsable), le plan
+    à imprimer, changer de secteur, se déconnecter.
+  - **▶ Commencer la tournée** (mode « maison suivante ») : une maison à la
+    fois en grand, la plus proche de sa position GPS (sinon de la dernière
+    maison passée), avec trois gros boutons Fait / Absent / Refus, « € Don »,
+    « 🧭 Y aller » et « ⏭ Passer ». Chaque action passe à la maison suivante.
+  - Après chaque marquage, un bandeau **« Annuler »** reste 5 secondes pour
+    corriger une erreur de doigt.
+  - L'appli installée sur l'écran d'accueil ouvre directement l'espace
+    équipe pour une personne connectée ; dans le navigateur, le plan public
+    garde un bouton « Mon espace équipe ».
 - **Équipes (admin, onglet « Équipes »)** : qui fait quel secteur.
   - **Personnes** : la liste des membres de la caserne (nom, téléphone
     facultatif), à saisir un par un ou en collant toute une liste
@@ -225,10 +251,11 @@ tunnel SSH), jamais directement sur Internet.
    alertes disparaissent, puis cliquez **Enregistrer**. C'est publié
    immédiatement sur la page publique.
 4. Envoyez à chaque équipe le lien de son secteur (page publique → secteur →
-   **Partager**).
+   **Partager**) et, si le suivi est activé, à chaque personne son **lien
+   personnel** (onglet Équipes → 🔑).
 
-Si vous activez le suivi des adresses, pensez au début de chaque nouvelle
-tournée : « Autres outils » → *Remettre à zéro les statuts*.
+Le suivi des maisons est rangé par année de tournée : une nouvelle année
+repart de zéro toute seule (l'an dernier reste visible comme « mémoire »).
 
 La description des limites suit les routes **réellement** collées par le
 tracé : dessinez avec l'aimantation activée pour obtenir « suit la D50 sur
@@ -279,7 +306,8 @@ Puis ouvrir `http://localhost:8000` et `http://localhost:8000/admin`.
 
 ```
 data_pipeline/   récupération BAN / OSM, groupes d'habitations, proposition auto
-backend/         API FastAPI : secteurs (SQLite), statuts, connexion admin
-frontend/        index.html (public) + admin.html, Leaflet et Leaflet-Geoman intégrés
+backend/         API FastAPI : secteurs (SQLite), équipes, statuts, dons, caisse, connexions
+frontend/        index.html (public), equipe.html (appli des équipes), admin.html, plan.html ;
+                 Leaflet et Leaflet-Geoman intégrés
 docker-compose.yml
 ```

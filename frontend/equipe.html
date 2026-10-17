@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#ffffff" />
+<meta name="robots" content="noindex" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Calendriers" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<title>Espace équipe — Tournée des calendriers</title>
+<link rel="preload" href="/vendor/inter/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
+<link rel="stylesheet" href="/css/style.css?v=__V__" />
+</head>
+<body class="terrain">
+  <!-- Connexion -->
+  <section id="t-login" class="t-login" hidden>
+    <form id="t-login-form" class="t-login-card">
+      <img src="/img/logo-courzieu.png" alt="Sapeurs-pompiers de Courzieu" width="65" height="90" />
+      <h1>Espace équipe</h1>
+      <p id="t-login-title" class="hint">Tournée des calendriers</p>
+      <input id="t-code" type="text" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false"
+             maxlength="12" placeholder="ABCD-EFGH" aria-label="Code personnel" required />
+      <p id="t-login-error" class="error-text" hidden></p>
+      <button class="btn primary" type="submit">Se connecter</button>
+      <p class="hint">Le code personnel vous a été envoyé par le chef de tournée.</p>
+      <a class="t-link" href="/">Voir le plan des secteurs</a>
+    </form>
+  </section>
+
+  <!-- Application -->
+  <div id="t-app" class="t-app" hidden>
+    <header class="t-top">
+      <img class="t-logo" src="/img/logo-courzieu.png" alt="" width="29" height="40" />
+      <button id="t-sector" class="t-sector-btn" type="button" aria-label="Changer de secteur"></button>
+      <span id="t-sync" class="t-sync" hidden title="Modifications en attente de réseau"></span>
+    </header>
+
+    <main id="t-main" class="t-main">
+      <section id="v-accueil" class="t-view" data-view="accueil"></section>
+      <section id="v-carte" class="t-view t-view-map" data-view="carte" hidden>
+        <div id="t-map" class="t-map"></div>
+        <div class="t-map-legend">
+          <span><i class="dot todo"></i>À faire</span><span><i class="dot fait"></i>Fait</span>
+          <span><i class="dot absent"></i>Absent</span><span><i class="dot refus"></i>Refus</span>
+        </div>
+      </section>
+      <section id="v-maisons" class="t-view" data-view="maisons" hidden>
+        <div class="t-filters" role="tablist" aria-label="Filtrer les maisons"></div>
+        <input id="t-search" class="t-search" type="search" placeholder="Rechercher une adresse, une rue…" aria-label="Rechercher une maison" />
+        <div id="t-list" class="t-list"></div>
+      </section>
+      <section id="v-caisse" class="t-view" data-view="caisse" hidden></section>
+      <section id="v-equipe" class="t-view" data-view="equipe" hidden></section>
+    </main>
+
+    <nav class="t-tabs" aria-label="Rubriques">
+      <a href="#accueil" data-tab="accueil"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7" /><path d="M5 10v10h14V10" /><path d="M10 20v-6h4v6" /></svg><span>Accueil</span></a>
+      <a href="#carte" data-tab="carte"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2z" /><path d="M9 4v14M15 6v14" /></svg><span>Carte</span></a>
+      <a href="#maisons" data-tab="maisons"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11" /><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2" /></svg><span>Maisons</span></a>
+      <a href="#caisse" data-tab="caisse"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="13" rx="2" /><circle cx="12" cy="12.5" r="2.5" /><path d="M6 6V4h12v2" /></svg><span>Caisse</span></a>
+      <a href="#equipe" data-tab="equipe"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5" /><circle cx="17" cy="9" r="2.6" /><path d="M16.5 14.6c2.6.2 4.4 1.8 5 4.4" /></svg><span>Équipe</span></a>
+    </nav>
+  </div>
+
+  <!-- Mode tournée : une maison à la fois -->
+  <section id="t-tournee" class="t-tournee" hidden aria-label="Tournée maison par maison">
+    <header class="t-tournee-top">
+      <button id="tt-quit" class="btn small" type="button">✕ Quitter</button>
+      <span id="tt-progress" class="tt-progress"></span>
+    </header>
+    <div id="tt-card" class="tt-card"></div>
+    <div class="tt-actions">
+      <button type="button" class="tt-btn fait" data-status="fait">✓<span>Fait</span></button>
+      <button type="button" class="tt-btn absent" data-status="absent">⏳<span>Absent</span></button>
+      <button type="button" class="tt-btn refus" data-status="refus">✕<span>Refus</span></button>
+    </div>
+    <div class="tt-actions secondary">
+      <button type="button" class="tt-btn2" id="tt-don">€ Don</button>
+      <a class="tt-btn2" id="tt-go" target="_blank" rel="noopener">🧭 Y aller</a>
+      <button type="button" class="tt-btn2" id="tt-skip">⏭ Passer</button>
+    </div>
+  </section>
+
+  <!-- Fiche d'une maison -->
+  <dialog id="t-fiche" class="app-dialog t-fiche" aria-labelledby="tf-title">
+    <div class="tf-body">
+      <h3 id="tf-title"></h3>
+      <p id="tf-sub" class="hint"></p>
+      <div id="tf-info" class="tf-info"></div>
+      <div class="tf-status">
+        <button type="button" class="tt-btn fait" data-status="fait">✓<span>Fait</span></button>
+        <button type="button" class="tt-btn absent" data-status="absent">⏳<span>Absent</span></button>
+        <button type="button" class="tt-btn refus" data-status="refus">✕<span>Refus</span></button>
+      </div>
+      <div class="tf-more">
+        <button type="button" class="btn" id="tf-don">€ Don</button>
+        <a class="btn" id="tf-go" target="_blank" rel="noopener">🧭 Y aller</a>
+        <button type="button" class="btn" id="tf-close">Fermer</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Choix du secteur -->
+  <dialog id="t-sectors" class="app-dialog" aria-labelledby="ts-title">
+    <form method="dialog">
+      <h3 id="ts-title">Choisir le secteur</h3>
+      <div id="ts-list" class="ts-list"></div>
+      <div class="dialog-actions"><button class="btn" type="submit">Fermer</button></div>
+    </form>
+  </dialog>
+
+  <!-- Saisie d'un don -->
+  <dialog id="don-dialog" class="app-dialog don-dialog" aria-labelledby="don-title">
+    <form id="don-form" method="dialog">
+      <h3 id="don-title">Don</h3>
+      <p id="don-address" class="hint"></p>
+      <div id="don-existing" class="don-existing"></div>
+      <label class="don-amount">
+        <span>Montant</span>
+        <span class="amount-field"><input id="don-montant" type="text" inputmode="decimal" autocomplete="off" placeholder="0" aria-label="Montant en euros" /><b>€</b></span>
+      </label>
+      <div class="amount-chips">
+        <button type="button" data-amount="5">5 €</button><button type="button" data-amount="10">10 €</button><button type="button" data-amount="15">15 €</button><button type="button" data-amount="20">20 €</button><button type="button" data-amount="30">30 €</button>
+      </div>
+      <div class="mode-switch" role="radiogroup" aria-label="Moyen de paiement">
+        <label><input type="radio" name="mode" value="especes" checked /><span>Espèces</span></label>
+        <label><input type="radio" name="mode" value="cheque" /><span>Chèque</span></label>
+        <label><input type="radio" name="mode" value="cb" /><span>Carte</span></label>
+      </div>
+      <div id="don-cb-manual" class="don-cb-manual" hidden>
+        <input id="don-tx" type="text" maxlength="64" autocomplete="off" placeholder="N° de transaction SumUp (facultatif)" aria-label="Numéro de transaction" />
+      </div>
+      <p id="don-ios-hint" class="hint don-ios-hint" hidden>Sur iPhone, si SumUp ne s'ouvre pas depuis l'application installée, ouvrez le site dans Safari pour payer par carte.</p>
+      <p id="don-error" class="error-text" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close>Fermer</button>
+        <button id="don-save" type="submit" class="btn primary">Enregistrer</button>
+      </div>
+      <button id="don-sumup" type="button" class="btn sumup-btn" hidden>Payer par carte avec SumUp</button>
+      <button id="don-manual-toggle" type="button" class="link-btn don-manual-toggle" hidden>Paiement déjà encaissé dans SumUp ? Saisir à la main</button>
+    </form>
+  </dialog>
+
+  <!-- Remise de la caisse au trésorier -->
+  <dialog id="caisse-dialog" class="app-dialog" aria-labelledby="caisse-title">
+    <form id="caisse-form" method="dialog">
+      <h3 id="caisse-title">Remettre la caisse</h3>
+      <p id="caisse-attendu" class="hint"></p>
+      <label class="field">Espèces comptées (€)
+        <input id="caisse-especes" type="text" inputmode="decimal" autocomplete="off" />
+      </label>
+      <div class="field-row">
+        <label class="field">Chèques (total €)
+          <input id="caisse-cheques" type="text" inputmode="decimal" autocomplete="off" />
+        </label>
+        <label class="field">Nombre
+          <input id="caisse-nb" type="number" inputmode="numeric" min="0" step="1" />
+        </label>
+      </div>
+      <label class="field">Remis à
+        <input id="caisse-recu" type="text" maxlength="80" autocomplete="off" placeholder="Nom du trésorier" required />
+      </label>
+      <label class="field">Remarque (facultatif)
+        <input id="caisse-note" type="text" maxlength="300" autocomplete="off" />
+      </label>
+      <p id="caisse-ecart" class="caisse-ecart" hidden></p>
+      <p id="caisse-error" class="error-text" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close>Annuler</button>
+        <button type="submit" class="btn primary">Enregistrer la remise</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="t-snack" class="t-snack" hidden><span id="t-snack-text"></span><button id="t-snack-undo" type="button">Annuler</button></div>
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="/vendor/leaflet/leaflet.js"></script>
+  <script src="/js/common.js?v=__V__"></script>
+  <script src="/js/terrain.js?v=__V__"></script>
+</body>
+</html>

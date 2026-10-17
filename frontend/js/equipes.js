@@ -579,7 +579,7 @@
   let accessFor = null;
 
   const formatCode = (c) => `${c.slice(0, 4)}-${c.slice(4)}`;
-  const accessLink = (p) => `${location.origin}/#acces=${p.code}`;
+  const accessLink = (p) => `${location.origin}/equipe#acces=${p.code}`;
 
   /** Numéro au format international pour WhatsApp (06… -> 336…). */
   function intlPhone(tel) {

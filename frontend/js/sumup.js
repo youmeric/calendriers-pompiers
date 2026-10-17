@@ -29,10 +29,11 @@
       show("✕", `Paiement non abouti (${amount})`, params.get("smp-message") || "Aucun montant n'a été encaissé. Vous pouvez recommencer.", "fail");
     }
     const back = $("sumup-back");
-    back.href = `/#/${encodeURIComponent(data.slug)}/${data.sector_id}`;
+    back.href = "/equipe#caisse";
     back.hidden = false;
   } catch (err) {
     show("!", "Résultat non enregistré", `${err.message}. Vérifiez le paiement dans l'appli SumUp et saisissez-le à la main si besoin.`, "fail");
+    $("sumup-back").href = "/equipe#caisse";
     $("sumup-back").hidden = false;
   }
 })();

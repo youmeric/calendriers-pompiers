@@ -213,3 +213,7 @@ class RemiseIn(BaseModel):
 
 class ConfirmIn(BaseModel):
     confirme: bool
+
+
+class AvancementIn(BaseModel):
+    statut: Literal["a_faire", "en_cours", "termine"]

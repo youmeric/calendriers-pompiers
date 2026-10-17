@@ -300,6 +300,31 @@ window.Common = (() => {
       ${e.note ? `<p class="equipe-note">${escapeHtml(e.note)}</p>` : ""}`;
   }
 
+  // ---- Téléphone : GPS, montants ----------------------------------------------------
+
+  const UA = navigator.userAgent;
+  const IS_IOS = /iPhone|iPad|iPod/.test(UA) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const IS_ANDROID = /Android/.test(UA);
+
+  /** Liens « Y aller » : Plans sur iPhone, choix des applis GPS sur Android, Google Maps ailleurs. */
+  function navLinks(lat, lon, label) {
+    const ll = `${Number(lat).toFixed(6)},${Number(lon).toFixed(6)}`;
+    const google = `https://www.google.com/maps/dir/?api=1&destination=${ll}&travelmode=driving`;
+    const waze = `https://waze.com/ul?ll=${ll}&navigate=yes`;
+    const apple = `https://maps.apple.com/?daddr=${ll}&dirflg=d`;
+    const main = IS_IOS ? apple : IS_ANDROID ? `geo:${ll}?q=${ll}(${encodeURIComponent(label)})` : google;
+    return { main, others: main === google ? [["Waze", waze]] : [["Google Maps", google], ["Waze", waze]] };
+  }
+
+  function euros(v) {
+    const n = Number(v) || 0;
+    return `${n.toLocaleString("fr-FR", { minimumFractionDigits: Math.abs(n % 1) > 0.001 ? 2 : 0, maximumFractionDigits: 2 })} €`;
+  }
+
+  function parseEuros(v) {
+    return Number(String(v).replace(",", ".").replace(/[^0-9.]/g, "")) || 0;
+  }
+
   function tourneeTitle(annee) {
     return annee ? `Tournée des calendriers ${annee}` : "Tournée des calendriers";
   }
@@ -314,6 +339,6 @@ window.Common = (() => {
     formatDistance, formatDuration, renderLimite, renderResume, hameauxPreview,
     toPolys, pointInPolys, outerRings, holeRings, OFF_ROAD,
     addBaseLayers, sectorCode, labelHtml, compactLabelsBelow, distanceToEdge, normalizeText,
-    tourneeTitle, STATUT_LABEL, personAvatar, formatDay, telHref, hasTeam, statutPill, teamLine, renderEquipe,
+    tourneeTitle, IS_IOS, IS_ANDROID, navLinks, euros, parseEuros, STATUT_LABEL, personAvatar, formatDay, telHref, hasTeam, statutPill, teamLine, renderEquipe,
   };
 })();

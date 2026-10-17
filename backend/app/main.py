@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from . import auth, db
 from .geo import point_in_polys
 from .limits import RoadIndex, describe_limit_polys
-from .models import (CodeIn, ConfirmIn, DonIn, DonStatutIn, EquipeIn, ExclusionIn, LoginIn, PersonneIn,
+from .models import (AvancementIn, CodeIn, ConfirmIn, DonIn, DonStatutIn, EquipeIn, ExclusionIn, LoginIn, PersonneIn,
                      PersonnesIn, RemiseIn, SectorsIn, SettingsIn, StatusUpdate, SumupRetourIn)
 from .resume import build_resume, commune_voie_counts
 
@@ -283,6 +283,20 @@ def _require_role(request: Request, sector_id: int) -> str:
     raise HTTPException(status_code=403, detail="Ce secteur n'est pas le vôtre")
 
 
+def _team_view(sector_id: int) -> dict:
+    """L'équipe d'un secteur telle que ses membres la voient (avec les téléphones)."""
+    team = db.get_teams().get(sector_id) or {"date": "", "creneau": "", "statut": "a_faire", "note": "", "membres": []}
+    people = {p["id"]: p for p in db.list_personnes()}
+    view = {k: team[k] for k in ("date", "creneau", "statut", "note")}
+    view["responsables"], view["equipiers"] = [], []
+    for m in team["membres"]:
+        p = people.get(m["personne_id"])
+        if p:
+            view["responsables" if m["role"] == "responsable" else "equipiers"].append(
+                {"id": p["id"], "nom": p["nom"], "telephone": p["telephone"]})
+    return view
+
+
 def _sumup_config() -> dict | None:
     key = db.get_setting("sumup_affiliate_key", "") or ""
     if not (_flag("sumup_actif", False) and _flag("dons_actifs", False) and key):
@@ -367,7 +381,8 @@ def team_sector_tracking(sector_id: int, request: Request):
     full = role in ("admin", "responsable")
     person = auth.team_member(request)
     me = person["id"] if person else None
-    out = {"slug": slug, "role": role, "statuses": statuses, "dons": None, "totaux": None, "precedent": {}}
+    out = {"slug": slug, "role": role, "statuses": statuses, "dons": None, "totaux": None, "precedent": {},
+           "equipe": _team_view(sector_id)}
     for aid, prev in db.previous_year(slug, _annee()).items():
         if aid in ids:
             item = {"annee": prev["annee"], "status": prev["status"], "nb_dons": prev["nb_dons"]}
@@ -467,6 +482,14 @@ def _require_lead(request: Request, sector_id: int) -> str:
     if role == "equipier":
         raise HTTPException(status_code=403, detail="La caisse est gérée par le responsable du secteur")
     return role
+
+
+@app.post("/api/equipe/secteurs/{sector_id}/avancement")
+def team_sector_progress(sector_id: int, payload: AvancementIn, request: Request):
+    """Le responsable indique où en est son secteur (à faire / en cours / terminé)."""
+    _require_lead(request, sector_id)
+    db.set_sector_statut(sector_id, payload.statut)
+    return _team_view(sector_id)
 
 
 @app.get("/api/equipe/secteurs/{sector_id}/caisse")
@@ -760,6 +783,12 @@ def public_page():
 @app.get("/admin.html", include_in_schema=False)
 def admin_page():
     return _page("admin.html")
+
+
+@app.get("/equipe", include_in_schema=False)
+@app.get("/equipe.html", include_in_schema=False)
+def team_page():
+    return _page("equipe.html")
 
 
 @app.get("/sumup-retour/{foreign_id}", include_in_schema=False)

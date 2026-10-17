@@ -510,6 +510,16 @@ def get_teams() -> dict[int, dict]:
     return teams
 
 
+def set_sector_statut(sector_id: int, statut: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO sector_plan (sector_id, statut) VALUES (?, ?) "
+            "ON CONFLICT(sector_id) DO UPDATE SET statut = excluded.statut",
+            (sector_id, statut),
+        )
+        conn.commit()
+
+
 def set_team(sector_id: int, plan: dict, membres: list[dict]) -> None:
     with get_conn() as conn:
         conn.execute(

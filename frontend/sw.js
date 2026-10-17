@@ -1,6 +1,6 @@
 /* Service worker : réseau d'abord (jamais de version périmée), cache seulement
    en secours hors connexion. L'admin et les données d'équipe ne sont jamais mis en cache. */
-const CACHE = "secteurs-v3";
+const CACHE = "secteurs-v4";
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => {
