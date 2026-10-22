@@ -5,6 +5,25 @@ sur Courzieu et Brussieu (69690).
 
 - **Page admin (`/admin`)**, protégée par mot de passe : vous créez vous-même
   les secteurs, vous les nommez et leur donnez une couleur.
+- **Comptes et rôles** (onglet « Comptes & journal ») : en plus du compte
+  principal (mot de passe `ADMIN_PASSWORD` du fichier `.env`, tous les droits,
+  connexion avec l'identifiant vide), chacun peut avoir **son compte**
+  (identifiant + mot de passe) avec un **rôle** qui donne des droits :
+  *Secteurs*, *Équipes*, *Suivi*, *Dons et caisse*, *Réglages*, *Journal*,
+  *Comptes*. Rôles prêts à l'emploi : **Administrateur** (tout),
+  **Trésorier** (dons, caisse, export, bilan de l'année, journal), **Chef de
+  tournée** (secteurs, équipes, suivi) ; on peut en créer d'autres et cocher
+  leurs droits (effet immédiat). Chacun ne voit que les onglets et les blocs
+  permis ; le serveur refuse le reste. Désactiver un compte ou changer son mot
+  de passe coupe ses sessions ; chacun peut changer son propre mot de passe
+  (clic sur son nom en haut). Mots de passe chiffrés (PBKDF2).
+- **Journal des modifications** (même onglet) : qui a fait quoi et quand —
+  statuts des maisons, dons (ajout, paiement validé/refusé, suppression, avec
+  qui l'avait saisi), remises de caisse et confirmations, équipes, personnes et
+  codes, envois WhatsApp, secteurs et adresses, signalements, notes,
+  réglages (avant → après), comptes et rôles, connexions (y compris les
+  mots de passe faux). Depuis l'admin ou le terrain, avec filtres (type
+  d'action, personne), recherche et export Excel.
   - **Par hameaux** (le plus simple) : en cliquant une maison, tout son hameau
     entre dans le secteur (et sort de l'autre secteur s'il y était) ; recliquer
     le retire. Un secteur peut ainsi être en plusieurs morceaux, ou avoir une

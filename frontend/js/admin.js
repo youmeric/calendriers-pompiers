@@ -90,30 +90,50 @@
     els.editorView.hidden = true;
     $("teams-view").hidden = true;
     $("bilan-view").hidden = true;
+    $("comptes-view").hidden = true;
     $("admin-tabs").hidden = true;
+    $("btn-me").hidden = true;
     els.select.hidden = true;
     els.logout.hidden = true;
     els.password.focus();
   }
 
-  /** Onglet affiché : « secteurs » (carte d'édition) ou « equipes ». */
+  // compte connecté et ses droits (rôle) : les onglets suivent
+  let me = null;
+  const can = (...perms) => !!me && perms.some((p) => me.permissions.includes(p));
+  const TAB_PERMS = { secteurs: ["secteurs"], equipes: ["equipes"], bilan: ["suivi", "dons", "reglages"], comptes: ["comptes", "journal"] };
+  const allowedTabs = () => Object.keys(TAB_PERMS).filter((t) => can(...TAB_PERMS[t]));
+
+  /** Onglet affiché : « secteurs » (carte d'édition), « equipes », « bilan » ou « comptes ». */
   function currentTab() {
-    return { "#equipes": "equipes", "#bilan": "bilan" }[location.hash] || "secteurs";
+    const asked = { "#equipes": "equipes", "#bilan": "bilan", "#comptes": "comptes" }[location.hash] || "secteurs";
+    const ok = allowedTabs();
+    return ok.includes(asked) ? asked : ok[0] || "secteurs";
   }
 
   function showEditor() {
     const tab = currentTab();
     els.loginView.hidden = true;
     $("admin-tabs").hidden = false;
-    document.querySelectorAll(".admin-tab").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
+    document.querySelectorAll(".admin-tab").forEach((a) => {
+      a.classList.toggle("active", a.dataset.tab === tab);
+      a.hidden = !allowedTabs().includes(a.dataset.tab);
+    });
     els.editorView.hidden = tab !== "secteurs";
     $("teams-view").hidden = tab !== "equipes";
     $("bilan-view").hidden = tab !== "bilan";
+    $("comptes-view").hidden = tab !== "comptes";
     els.select.hidden = tab !== "secteurs";
     els.logout.hidden = false;
     if (tab === "secteurs" && state.map) setTimeout(() => (state.fitPending ? fitCommune() : state.map.invalidateSize()), 50);
+    if (tab === "comptes") {
+      window.Comptes.open({
+        onUnauthorized: () => { showToast("Session expirée : reconnectez-vous.", true); showLogin(); },
+      }).catch((err) => { if (err.status !== 401) showToast(`Erreur de chargement : ${err.message}`, true); });
+    }
     if (tab === "bilan") {
       window.Bilan.open({
+        perms: me.permissions,
         onUnauthorized: () => { showToast("Session expirée : reconnectez-vous.", true); showLogin(); },
       }).catch((err) => { if (err.status !== 401) showToast(`Erreur de chargement : ${err.message}`, true); });
     }
@@ -134,7 +154,7 @@
       await fetchJSON("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: els.password.value }),
+        body: JSON.stringify({ identifiant: $("login-id").value.trim(), password: els.password.value }),
       });
     } catch (err) {
       els.loginError.textContent = err.message;
@@ -142,7 +162,10 @@
       return;
     }
     els.password.value = "";
-    if (state.data) {
+    const wasEditing = !!state.data;
+    const before = me && me.id;
+    await loadMe();
+    if (wasEditing && before === me.id) {
       showEditor();
       showToast("Reconnecté : vous pouvez enregistrer.");
     } else {
@@ -1069,7 +1092,7 @@
   async function loadSettings() {
     const settings = await fetchJSON("/api/admin/settings");
     els.suivi.checked = settings.suivi_adresses;
-    els.resetBlock.hidden = !settings.suivi_adresses;
+    els.resetBlock.hidden = !settings.suivi_adresses || !can("suivi");
     showAnnee(settings.annee);
   }
 
@@ -1105,7 +1128,7 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ suivi_adresses: value }),
       });
-      els.resetBlock.hidden = !value;
+      els.resetBlock.hidden = !value || !can("suivi");
       showToast(value ? "Suivi activé : les équipes le voient en se connectant avec leur code." : "Suivi désactivé : le site sert uniquement de plan.");
       window.dispatchEvent(new Event("suivi-change"));
     } catch (err) {
@@ -1205,10 +1228,17 @@
     else if (data.commune.mairie) state.map.setView([data.commune.mairie.lat, data.commune.mairie.lon], 14);
   }
 
+  async function loadMe() {
+    me = await fetchJSON("/api/admin/me");
+    window.Comptes.setMe(me);
+    $("public-settings-card").hidden = !can("reglages");
+  }
+
   async function start() {
     showEditor();
-    if (!state.map) initMap();
     await loadSettings();
+    if (!can("secteurs")) return; // pas le droit de modifier les secteurs : pas d'éditeur à préparer
+    if (!state.map) initMap();
     const { communes } = await fetchJSON("/api/communes");
     if (!communes.length) {
       els.warnings.innerHTML = `<div class="warning danger">Aucune donnée de commune : lancez d'abord le pipeline (<code>docker compose run --rm pipeline</code>).</div>`;
@@ -1291,7 +1321,7 @@
 
   (async () => {
     try {
-      await fetchJSON("/api/admin/me");
+      await loadMe();
       await start();
     } catch (err) {
       if (err.status === 401) showLogin();

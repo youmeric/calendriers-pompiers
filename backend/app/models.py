@@ -15,7 +15,51 @@ class StatusUpdate(BaseModel):
 
 
 class LoginIn(BaseModel):
+    identifiant: str = Field(default="", max_length=60)  # vide : compte principal (ADMIN_PASSWORD)
     password: str = Field(max_length=200)
+
+
+PERMISSION_KEYS = Literal["secteurs", "equipes", "suivi", "dons", "reglages", "journal", "comptes"]
+
+
+class RoleIn(BaseModel):
+    nom: str = Field(min_length=1, max_length=60)
+    permissions: list[PERMISSION_KEYS] = Field(default_factory=list, max_length=20)
+
+    @field_validator("nom")
+    @classmethod
+    def strip_nom(cls, v: str) -> str:
+        v = " ".join(v.split())
+        if not v:
+            raise ValueError("nom obligatoire")
+        return v
+
+
+class CompteIn(BaseModel):
+    identifiant: str = Field(min_length=2, max_length=60, pattern=r"^[A-Za-z0-9._@\-]+$")
+    nom: str = Field(min_length=1, max_length=80)
+    role_id: int
+    password: str = Field(min_length=8, max_length=200)
+
+    @field_validator("nom")
+    @classmethod
+    def strip_nom(cls, v: str) -> str:
+        v = " ".join(v.split())
+        if not v:
+            raise ValueError("nom obligatoire")
+        return v
+
+
+class CompteUpdateIn(BaseModel):
+    nom: str | None = Field(default=None, min_length=1, max_length=80)
+    role_id: int | None = None
+    actif: bool | None = None
+    password: str | None = Field(default=None, min_length=8, max_length=200)
+
+
+class MotDePasseIn(BaseModel):
+    actuel: str = Field(max_length=200)
+    nouveau: str = Field(min_length=8, max_length=200)
 
 
 MAX_POINTS = 30000

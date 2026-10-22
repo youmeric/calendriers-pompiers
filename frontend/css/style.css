@@ -1880,3 +1880,47 @@ body.terrain .toast { bottom: calc(80px + env(safe-area-inset-bottom)); }
 .btn.danger { background: #b91c1c; border-color: #b91c1c; color: #fff; }
 .sent-tag { font-size: 12px; }
 @media (max-width: 760px) { .send-cols { grid-template-columns: 1fr; } }
+
+/* ---- Admin : comptes, rôles, journal ---- */
+.me-link { font-weight: 600; }
+.comptes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 0 16px 24px; align-items: start; }
+.comptes-grid .journal-card { grid-column: 1 / -1; }
+.cpt-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.cpt-row.off { opacity: 0.55; }
+.cpt-row.principal { color: var(--muted); }
+.cpt-who { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; }
+.cpt-who small { color: var(--muted); font-size: 12px; }
+.cpt-row select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 14px; background: #fff; }
+.cpt-actions { display: flex; align-items: center; gap: 6px; }
+.cpt-form { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 8px; }
+.cpt-form h4 { margin: 0; font-size: 14px; }
+.cpt-form select, .cpt-form input { width: 100%; }
+.cpt-form-actions { display: flex; justify-content: space-between; gap: 8px; }
+.role-card { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+.role-card.fixed { background: var(--surface-2); }
+.role-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.role-head b { flex: 1; }
+.role-perms { display: grid; grid-template-columns: 1fr; gap: 4px; }
+.role-perms label { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; cursor: pointer; }
+.role-perms label small { color: var(--muted); }
+.role-perms input { margin-top: 3px; }
+.role-form { display: flex; gap: 8px; margin-top: 8px; }
+.role-form input { flex: 1; padding: 7px 10px; border: 1px solid var(--border); border-radius: 10px; font: inherit; }
+.journal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.journal-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.journal-filters input { flex: 1 1 240px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 10px; font: inherit; }
+.journal-filters select { padding: 7px 10px; border: 1px solid var(--border); border-radius: 10px; font: inherit; background: #fff; }
+.journal-table-wrap { max-height: 60vh; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
+.journal-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.journal-table th { position: sticky; top: 0; background: var(--surface-2); text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); padding: 6px 8px; }
+.journal-table td { padding: 6px 8px; border-top: 1px solid var(--border); vertical-align: top; }
+.journal-table td:first-child { white-space: nowrap; color: var(--muted); }
+.journal-table tr.warn td:nth-child(3) { color: #b91c1c; font-weight: 600; }
+.src { font-size: 10px; font-weight: 700; border-radius: 6px; padding: 0 5px; background: var(--surface-2); color: var(--muted); }
+.src-terrain { background: #e0f2fe; color: #075985; }
+.src-console { background: #fef3c7; color: #92400e; }
+#jr-more { margin-top: 8px; }
+@media (max-width: 900px) { .comptes-grid { grid-template-columns: 1fr; } }
+.cpt-form .field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; flex: 1; }
+.cpt-form .field input, .cpt-form .field select { padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; font: inherit; font-weight: 400; font-size: 14px; background: #fff; }
+.cpt-form .field-row { display: flex; gap: 10px; }

@@ -23,6 +23,7 @@
     <div class="topbar-actions">
       <select id="commune-select" aria-label="Choisir la commune" hidden></select>
       <a class="topbar-link" href="/" target="_blank" rel="noopener">Site public ↗</a>
+      <button id="btn-me" class="topbar-link me-link" type="button" hidden title="Mon compte"></button>
       <button id="btn-logout" class="topbar-link" type="button" hidden>Déconnexion</button>
     </div>
   </header>
@@ -32,6 +33,8 @@
       <img class="login-logo" src="img/logo-courzieu.png" alt="Sapeurs-pompiers de Courzieu" width="72" height="100" />
       <h2>Connexion administrateur</h2>
       <p class="hint">Sapeurs-pompiers de Courzieu · gestion des secteurs de la tournée des calendriers.</p>
+      <label for="login-id">Identifiant</label>
+      <input id="login-id" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="60" placeholder="vide = compte principal" />
       <label for="password">Mot de passe</label>
       <input id="password" type="password" autocomplete="current-password" required />
       <button type="submit" class="btn primary">Se connecter</button>
@@ -48,6 +51,9 @@
     </a>
     <a href="#bilan" class="admin-tab" data-tab="bilan">
       <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>Suivi &amp; dons
+    </a>
+    <a href="#comptes" class="admin-tab" data-tab="comptes">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 018 0v3" /></svg>Comptes &amp; journal
     </a>
   </nav>
 
@@ -115,7 +121,7 @@
       <h2 class="panel-title">Secteurs</h2>
       <div id="sector-editor-list"></div>
 
-      <section class="settings-card">
+      <section class="settings-card" id="public-settings-card">
         <h2 class="panel-title">Page publique</h2>
         <label class="setting-row setting-year">
           <span>Année de la tournée</span>
@@ -306,6 +312,92 @@
     </form>
   </dialog>
 
+  <!-- Comptes de la console, rôles et journal des modifications -->
+  <main id="comptes-view" class="teams comptes" hidden>
+    <header class="teams-head">
+      <div>
+        <h2>Comptes &amp; journal</h2>
+        <p class="hint">Chacun se connecte avec son identifiant et ne voit que ce que son rôle permet. Le compte principal (mot de passe du fichier <code>.env</code>) garde tous les droits.</p>
+      </div>
+    </header>
+    <div class="comptes-grid">
+      <section id="cpt-accounts" class="settings-card">
+        <h3 class="panel-title">Comptes</h3>
+        <div id="cpt-list"></div>
+        <form id="cpt-form" class="cpt-form">
+          <h4>Nouveau compte</h4>
+          <div class="field-row">
+            <label class="field">Nom<input id="cpt-nom" maxlength="80" required placeholder="Paul Martin" /></label>
+            <label class="field">Identifiant<input id="cpt-ident" maxlength="60" required autocapitalize="none" spellcheck="false" placeholder="paul" /></label>
+          </div>
+          <div class="field-row">
+            <label class="field">Rôle<select id="cpt-role"></select></label>
+            <label class="field">Mot de passe (8 caractères mini)<input id="cpt-pwd" type="text" minlength="8" maxlength="200" required autocomplete="off" /></label>
+          </div>
+          <div class="cpt-form-actions">
+            <button type="button" class="btn small" id="cpt-gen">Générer un mot de passe</button>
+            <button type="submit" class="btn primary">Créer le compte</button>
+          </div>
+        </form>
+      </section>
+      <section id="cpt-roles" class="settings-card">
+        <h3 class="panel-title">Rôles</h3>
+        <p class="hint">Un rôle = un ensemble de droits. Cochez, c'est enregistré aussitôt.</p>
+        <div id="role-list"></div>
+        <form id="role-form" class="role-form">
+          <input id="role-nom" maxlength="60" required placeholder="Nouveau rôle (ex. Secrétaire)" aria-label="Nom du nouveau rôle" />
+          <button type="submit" class="btn small">Ajouter le rôle</button>
+        </form>
+      </section>
+      <section id="cpt-journal" class="settings-card journal-card">
+        <div class="journal-head">
+          <h3 class="panel-title">Journal des modifications</h3>
+          <button type="button" class="btn small" id="jr-export">Exporter (Excel)</button>
+        </div>
+        <div class="journal-filters">
+          <input id="jr-q" type="search" placeholder="Rechercher (adresse, secteur, montant…)" aria-label="Rechercher dans le journal" />
+          <select id="jr-action" aria-label="Type d'action">
+            <option value="">Toutes les actions</option>
+            <option value="don">Dons</option>
+            <option value="remise">Caisse (remises)</option>
+            <option value="statut">Statuts des maisons</option>
+            <option value="equipe">Équipes</option>
+            <option value="personne">Personnes et codes</option>
+            <option value="acces">Envois WhatsApp</option>
+            <option value="secteurs">Secteurs</option>
+            <option value="adresses">Adresses</option>
+            <option value="signalement">Signalements</option>
+            <option value="note">Notes</option>
+            <option value="reglages">Réglages</option>
+            <option value="compte">Comptes</option>
+            <option value="role">Rôles</option>
+            <option value="connexion">Connexions</option>
+          </select>
+          <select id="jr-qui" aria-label="Personne"><option value="">Tout le monde</option></select>
+        </div>
+        <div class="journal-table-wrap"><table class="journal-table"><thead><tr><th>Quand</th><th>Qui</th><th>Action</th><th>Sur</th><th>Détail</th></tr></thead><tbody id="jr-body"></tbody></table></div>
+        <button type="button" class="btn small" id="jr-more" hidden>Voir plus ancien</button>
+      </section>
+    </div>
+  </main>
+
+  <!-- Mon compte : changer son mot de passe -->
+  <dialog id="me-dialog" class="app-dialog" aria-labelledby="me-title">
+    <form id="me-form" method="dialog">
+      <h3 id="me-title">Mon compte</h3>
+      <p id="me-info" class="hint"></p>
+      <div id="me-pwd">
+        <label class="field">Mot de passe actuel<input id="me-old" type="password" autocomplete="current-password" /></label>
+        <label class="field">Nouveau mot de passe (8 caractères mini)<input id="me-new" type="password" minlength="8" autocomplete="new-password" /></label>
+      </div>
+      <p id="me-error" class="error-text" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn" data-close>Fermer</button>
+        <button type="submit" class="btn primary" id="me-save">Changer le mot de passe</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Envoi groupé des codes d'accès par le bot WhatsApp -->
   <dialog id="send-dialog" class="app-dialog send-dialog" aria-labelledby="send-title">
     <form id="send-form" method="dialog">
@@ -364,6 +456,7 @@
   <script src="js/geometry.js?v=__V__"></script>
   <script src="js/equipes.js?v=__V__"></script>
   <script src="js/bilan.js?v=__V__"></script>
+  <script src="js/comptes.js?v=__V__"></script>
   <script src="js/admin.js?v=__V__"></script>
 </body>
 </html>

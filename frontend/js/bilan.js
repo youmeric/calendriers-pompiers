@@ -8,6 +8,8 @@
   const MODE = { especes: "Espèces", cheque: "Chèque", cb: "Carte" };
 
   let onUnauthorized = () => {};
+  let perms = []; // droits du compte connecté : chaque bloc de l'onglet n'apparaît qu'avec le sien
+  const can = (...p) => p.some((x) => perms.includes(x));
   let codes = new Map(); // sector_id -> {code, couleur}
 
   async function api(url, options) {
@@ -239,12 +241,16 @@
   });
 
   async function render() {
-    const [settings, bilan, backups, sig] = await Promise.all([api("/api/admin/settings"), api("/api/admin/bilan"),
-      api("/api/admin/sauvegardes"), api("/api/admin/signalements")]);
+    const none = Promise.resolve(null);
+    const [settings, bilan, backups, sig] = await Promise.all([api("/api/admin/settings"),
+      can("suivi", "dons") ? api("/api/admin/bilan") : none,
+      can("reglages") ? api("/api/admin/sauvegardes") : none,
+      can("suivi") ? api("/api/admin/signalements") : none]);
     applySettings(settings);
-    renderBackups(backups);
+    if (backups) renderBackups(backups);
+    if (!bilan) return;
     renderLiveMap(bilan.secteurs);
-    renderSignalements(sig.signalements);
+    if (sig) renderSignalements(sig.signalements);
     renderRemises(bilan.secteurs);
     const t = bilan.totaux;
     const maisons = bilan.secteurs.reduce((n, s) => n + s.adresses, 0);
@@ -353,6 +359,12 @@
   window.Bilan = {
     async open(opts = {}) {
       if (opts.onUnauthorized) onUnauthorized = opts.onUnauthorized;
+      if (opts.perms) perms = opts.perms;
+      const show = (sel, ok) => document.querySelectorAll(sel).forEach((el) => { el.hidden = !ok; });
+      show("#bilan-view .bilan-settings", can("reglages"));
+      show("#bilan-view .bilan-main", can("suivi", "dons"));
+      show("#sig-section", can("suivi"));
+      show("#bilan-export, #bilan-print, #bilan-view .caisse-section, #bilan-attente", can("dons"));
       await loadCodes();
       await render();
     },

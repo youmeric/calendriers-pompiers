@@ -23,7 +23,8 @@ from .limits import RoadIndex, describe_limit_polys
 from . import whatsapp
 from .models import (AvancementIn, CodeIn, ConfirmIn, DonIn, DonStatutIn, EquipeIn, ExclusionIn, LoginIn, PersonneIn,
                      PersonnesIn, RemiseIn, RenfortIn, SectorsIn, SettingsIn, StatusUpdate, SumupRetourIn,
-                     NoteIn, SignalementIn, SignalementActionIn, EnvoiAccesIn)
+                     NoteIn, SignalementIn, SignalementActionIn, EnvoiAccesIn, RoleIn, CompteIn,
+                     CompteUpdateIn, MotDePasseIn)
 from .resume import build_resume, commune_voie_counts
 
 DATA_DIR = Path(os.environ.get("SECTORS_DATA_DIR") or (Path(__file__).resolve().parent / "data"))
@@ -268,7 +269,12 @@ def update_status(slug: str, address_id: str, payload: StatusUpdate, request: Re
         raise HTTPException(status_code=403, detail="Le suivi des adresses est désactivé")
     sector_id = _sector_of_address(slug, address_id)
     _require_role(request, sector_id)
-    return db.set_status(slug, address_id, payload.status, payload.note)
+    before = (db.get_statuses(slug).get(address_id) or {}).get("status")
+    result = db.set_status(slug, address_id, payload.status, payload.note)
+    if before != payload.status:
+        _log(request, "statut", f"{_sector_label(sector_id)} · {_addr_label(slug, address_id)}",
+             f"{STATUS_FR.get(before, before)} → {STATUS_FR.get(payload.status, payload.status)}")
+    return result
 
 
 # ---- Accès des équipes (code personnel) --------------------------------------------
@@ -441,9 +447,12 @@ def team_add_don(payload: DonIn, request: Request):
         "statut": "attente" if use_sumup else "ok",
         "foreign_id": f"cal-{secrets.token_hex(12)}" if use_sumup else None,
         "tx_code": payload.tx_code, "note": payload.note,
-        "personne_id": person["id"] if person else None, "personne_nom": person["nom"] if person else "Admin",
+        "personne_id": person["id"] if person else None, "personne_nom": person["nom"] if person else _actor(request)[0],
         "client_id": payload.client_id,
     })
+    if created:
+        _log(request, "don.ajout", f"{_sector_label(sector_id)} · {_addr_label(payload.slug, payload.address_id)}",
+             f"{_euros(don['montant_cents'])} {MODE_FR[don['mode']]}{' (SumUp, en attente)' if use_sumup else ''}")
     # un don reçu veut dire que la maison est faite (paiement carte : une fois confirmé)
     if created and don["statut"] == "ok":
         db.set_status(payload.slug, payload.address_id, "fait", None)
@@ -469,6 +478,9 @@ def team_don_statut(don_id: int, payload: DonStatutIn, request: Request):
     updated = db.set_don_statut(don["id"], payload.statut, payload.tx_code or None)
     if updated["statut"] == "ok":
         db.set_status(updated["commune_slug"], updated["address_id"], "fait", None)
+    _log(request, "don.statut", f"{_sector_label(don['sector_id'])} · {_addr_label(don['commune_slug'], don['address_id'])}",
+         f"{_euros(don['montant_cents'])} {MODE_FR[don['mode']]} : {'payé' if payload.statut == 'ok' else 'non payé'}"
+         f"{' · n° ' + payload.tx_code if payload.tx_code else ''} (saisi par {don['personne_nom']})")
     return _don_view(updated, True, None)
 
 
@@ -476,6 +488,8 @@ def team_don_statut(don_id: int, payload: DonStatutIn, request: Request):
 def team_delete_don(don_id: int, request: Request):
     don = _don_for_edit(request, don_id)
     db.delete_don(don["id"])
+    _log(request, "don.suppression", f"{_sector_label(don['sector_id'])} · {_addr_label(don['commune_slug'], don['address_id'])}",
+         f"{_euros(don['montant_cents'])} {MODE_FR[don['mode']]} (saisi par {don['personne_nom']})")
     return {"ok": True}
 
 
@@ -491,7 +505,9 @@ def team_set_note(payload: NoteIn, request: Request):
     """Note de l'équipe sur une maison (vide = effacée), gardée d'une année sur l'autre."""
     if not _suivi_enabled():
         raise HTTPException(status_code=403, detail="Le suivi des adresses est désactivé")
-    _require_role(request, _sector_of_address(payload.slug, payload.address_id))
+    sector_id = _sector_of_address(payload.slug, payload.address_id)
+    _require_role(request, sector_id)
+    _log(request, "note", f"{_sector_label(sector_id)} · {_addr_label(payload.slug, payload.address_id)}", payload.note or "note effacée")
     return {"note": db.set_note(payload.slug, payload.address_id, payload.note, _person_name(request))}
 
 
@@ -512,10 +528,12 @@ def team_report(payload: SignalementIn, request: Request):
     _require_role(request, sector_id)
     sig = db.add_signalement({**payload.model_dump(exclude={"slug", "sector_id"}), "commune_slug": payload.slug,
                               "sector_id": sector_id, "personne_nom": _person_name(request)})
+    where = _addr_label(payload.slug, payload.address_id) if payload.address_id else " ".join(x for x in (payload.numero, payload.nom_voie) if x) or "position sur la carte"
+    _log(request, "signalement", f"{_sector_label(sector_id)} · {where}", f"{payload.type}{' · ' + payload.note if payload.note else ''}")
     return _sig_view(sig)
 
 
-@app.get("/api/admin/signalements", dependencies=[Depends(auth.require_admin)])
+@app.get("/api/admin/signalements", dependencies=[Depends(auth.require("suivi"))])
 def admin_reports():
     labels: dict[str, dict] = {}
     for slug in db.sector_communes():
@@ -535,8 +553,8 @@ def admin_reports():
     return {"signalements": out}
 
 
-@app.post("/api/admin/signalements/{sig_id}", dependencies=[Depends(auth.require_admin)])
-def admin_handle_report(sig_id: int, payload: SignalementActionIn):
+@app.post("/api/admin/signalements/{sig_id}", dependencies=[Depends(auth.require("suivi"))])
+def admin_handle_report(sig_id: int, payload: SignalementActionIn, request: Request):
     sig = db.get_signalement(sig_id)
     if not sig:
         raise HTTPException(status_code=404, detail="Signalement inconnu")
@@ -552,6 +570,10 @@ def admin_handle_report(sig_id: int, payload: SignalementActionIn):
             raise HTTPException(status_code=409, detail="Aucune adresse à exclure")
         db.set_excluded(sig["commune_slug"], [sig["address_id"]], True)
     statut = {"rouvrir": "nouveau", "ignore": "ignore"}.get(payload.action, "traite")
+    where = _addr_label(sig["commune_slug"], sig["address_id"]) if sig["address_id"] else " ".join(x for x in (payload.numero or sig["numero"], payload.nom_voie or sig["nom_voie"]) if x)
+    _log(request, "signalement.traite", f"{_sector_label(sig['sector_id'])} · {where}",
+         {"ajouter": "maison ajoutée", "exclure": "adresse exclue", "traite": "marqué traité", "ignore": "ignoré", "rouvrir": "rouvert"}[payload.action]
+         + f" (signalé par {sig['personne_nom']})")
     return {**_sig_view(db.set_signalement_statut(sig_id, statut)), "adresse_ajoutee": added}
 
 
@@ -594,6 +616,7 @@ def team_sector_progress(sector_id: int, payload: AvancementIn, request: Request
     """Le responsable indique où en est son secteur (à faire / en cours / terminé)."""
     _require_lead(request, sector_id)
     db.set_sector_statut(sector_id, payload.statut)
+    _log(request, "avancement", _sector_label(sector_id), STATUT_FR.get(payload.statut, payload.statut))
     return _team_view(sector_id)
 
 
@@ -642,6 +665,8 @@ def team_add_member(sector_id: int, payload: RenfortIn, request: Request):
         pid = payload.personne_id
     if not db.add_member(sector_id, pid, "equipier"):
         raise HTTPException(status_code=409, detail="Cette personne fait déjà partie de l'équipe")
+    _log(request, "equipe.renfort", _sector_label(sector_id),
+         f"{db.get_personne(pid)['nom']} ajouté(e) en équipier{' (nouvelle personne)' if payload.personne else ''}")
     return _team_view(sector_id)
 
 
@@ -651,6 +676,8 @@ def team_remove_member(sector_id: int, personne_id: int, request: Request):
     _require_lead(request, sector_id, TEAM_LEAD_ONLY)
     if not db.remove_member(sector_id, personne_id, "equipier"):
         raise HTTPException(status_code=404, detail="Cet équipier n'est pas dans l'équipe")
+    gone = db.get_personne(personne_id)
+    _log(request, "equipe.retrait", _sector_label(sector_id), f"{gone['nom'] if gone else personne_id} retiré(e) de l'équipe")
     return _team_view(sector_id)
 
 
@@ -674,24 +701,33 @@ def team_cash_handover(sector_id: int, payload: RemiseIn, request: Request):
         "especes_cents": round(payload.especes * 100), "cheques_cents": round(payload.cheques * 100),
         "nb_cheques": payload.nb_cheques,
         "attendu_especes_cents": round(before["especes"] * 100), "attendu_cheques_cents": round(before["cheques"] * 100),
-        "remis_par": person["nom"] if person else ("Admin" if role == "admin" else "?"),
+        "remis_par": person["nom"] if person else _actor(request)[0],
         "recu_par": payload.recu_par, "note": payload.note,
     })
+    _log(request, "remise.declaree", _sector_label(sector_id),
+         f"{_euros(round(payload.especes * 100))} espèces + {_euros(round(payload.cheques * 100))} chèques ({payload.nb_cheques}) "
+         f"remis à {payload.recu_par}{' · ' + payload.note if payload.note else ''}")
     return _caisse(sector_id)
 
 
-@app.post("/api/admin/remises/{remise_id}/confirmer", dependencies=[Depends(auth.require_admin)])
-def admin_confirm_handover(remise_id: int, payload: ConfirmIn):
-    if not db.get_remise(remise_id):
+@app.post("/api/admin/remises/{remise_id}/confirmer", dependencies=[Depends(auth.require("dons"))])
+def admin_confirm_handover(remise_id: int, payload: ConfirmIn, request: Request):
+    r = db.get_remise(remise_id)
+    if not r:
         raise HTTPException(status_code=404, detail="Remise inconnue")
+    _log(request, "remise.confirmee" if payload.confirme else "remise.annulee", _sector_label(r["sector_id"]),
+         f"{_euros(r['especes_cents'] + r['cheques_cents'])} remis par {r['remis_par']} à {r['recu_par']}")
     return db.confirm_remise(remise_id, payload.confirme)
 
 
-@app.delete("/api/admin/remises/{remise_id}", dependencies=[Depends(auth.require_admin)])
-def admin_delete_handover(remise_id: int):
-    if not db.get_remise(remise_id):
+@app.delete("/api/admin/remises/{remise_id}", dependencies=[Depends(auth.require("dons"))])
+def admin_delete_handover(remise_id: int, request: Request):
+    r = db.get_remise(remise_id)
+    if not r:
         raise HTTPException(status_code=404, detail="Remise inconnue")
     db.delete_remise(remise_id)
+    _log(request, "remise.suppression", _sector_label(r["sector_id"]),
+         f"{_euros(r['especes_cents'])} espèces + {_euros(r['cheques_cents'])} chèques, remis par {r['remis_par']} à {r['recu_par']}")
     return {"ok": True}
 
 
@@ -700,18 +736,19 @@ def admin_delete_handover(remise_id: int):
 BACKUP_NAME = re.compile(r"^calendriers-[0-9_-]+(-[a-z]+)?\.db$")
 
 
-@app.get("/api/admin/sauvegardes", dependencies=[Depends(auth.require_admin)])
+@app.get("/api/admin/sauvegardes", dependencies=[Depends(auth.require("reglages"))])
 def admin_list_backups():
     return {"sauvegardes": db.list_backups(), "dossier": db.backup_dir(), "garde": db.BACKUP_KEEP}
 
 
-@app.post("/api/admin/sauvegardes", dependencies=[Depends(auth.require_admin)])
-def admin_backup_now():
+@app.post("/api/admin/sauvegardes", dependencies=[Depends(auth.require("reglages"))])
+def admin_backup_now(request: Request):
     name = db.make_backup("manuelle")
+    _log(request, "sauvegarde", name)
     return {"nom": name, "sauvegardes": db.list_backups()}
 
 
-@app.get("/api/admin/sauvegardes/{name}", dependencies=[Depends(auth.require_admin)])
+@app.get("/api/admin/sauvegardes/{name}", dependencies=[Depends(auth.require("reglages"))])
 def admin_download_backup(name: str):
     path = Path(db.backup_dir()) / name
     if not BACKUP_NAME.match(name) or not path.is_file():
@@ -733,23 +770,60 @@ def sumup_return(payload: SumupRetourIn):
         don = db.set_don_statut(don["id"], statut, payload.tx_code or None)
         if statut == "ok":
             db.set_status(don["commune_slug"], don["address_id"], "fait", None)
+        db.log("SumUp", "système", "don.statut", f"{_sector_label(don['sector_id'])} · {_addr_label(don['commune_slug'], don['address_id'])}",
+               f"{_euros(don['montant_cents'])} carte : {'payé' if statut == 'ok' else 'refusé'}"
+               f"{' · n° ' + payload.tx_code if payload.tx_code else ''} (saisi par {don['personne_nom']})")
     return {"statut": don["statut"], "montant": don["montant_cents"] / 100, "mode": don["mode"],
             "slug": don["commune_slug"], "sector_id": don["sector_id"], "address_id": don["address_id"]}
 
 
+def _euros(cents: int) -> str:
+    return f"{cents / 100:.2f}".replace(".", ",") + " €"
+
+
+STATUT_FR = {"a_faire": "à faire", "en_cours": "en cours", "termine": "terminé"}
+MODE_FR = {"especes": "espèces", "cheque": "chèque", "cb": "carte"}
+STATUS_FR = {"fait": "fait", "absent": "absent", "refus": "refus", None: "à faire"}
+
+
 # ---- API admin -----------------------------------------------------------------
 
-@app.post("/api/admin/login")
-def login(payload: LoginIn, response: Response):
-    if not auth.admin_password():
-        raise HTTPException(status_code=503, detail="ADMIN_PASSWORD n'est pas configuré sur le serveur")
-    if not auth.check_password(payload.password):
-        time.sleep(1)  # ralentit les essais en série
-        raise HTTPException(status_code=401, detail="Mot de passe incorrect")
+def _set_session(response: Response, account: dict | None) -> None:
     response.set_cookie(
-        auth.COOKIE_NAME, auth.make_token(), max_age=auth.SESSION_SECONDS,
+        auth.COOKIE_NAME, auth.make_token(account), max_age=auth.SESSION_SECONDS,
         httponly=True, samesite="strict", secure=auth.COOKIE_SECURE, path="/",
     )
+
+
+@app.post("/api/admin/login")
+def login(payload: LoginIn, request: Request, response: Response):
+    ip = request.client.host if request.client else "?"
+    if auth.too_many_attempts(ip):
+        raise HTTPException(status_code=429, detail="Trop d'essais : réessayez dans quelques minutes")
+    ident = payload.identifiant.strip()
+    if not ident:
+        if not auth.admin_password():
+            raise HTTPException(status_code=503, detail="ADMIN_PASSWORD n'est pas configuré sur le serveur")
+        if not auth.check_password(payload.password):
+            auth.record_failure(ip)
+            db.log(auth.PRINCIPAL_NAME, "console", "connexion.echec", "compte principal", f"adresse {ip}")
+            time.sleep(1)  # ralentit les essais en série
+            raise HTTPException(status_code=401, detail="Mot de passe incorrect")
+        _set_session(response, None)
+        db.log(auth.PRINCIPAL_NAME, "console", "connexion")
+        return {"ok": True}
+    found = db.compte_login(ident)
+    if not found or not auth.verify_password(payload.password, found[1]):
+        auth.record_failure(ip)
+        db.log(ident, "console", "connexion.echec", ident, f"adresse {ip}")
+        time.sleep(1)
+        raise HTTPException(status_code=401, detail="Identifiant ou mot de passe incorrect")
+    account = found[0]
+    if not account["actif"]:
+        raise HTTPException(status_code=403, detail="Ce compte est désactivé")
+    _set_session(response, account)
+    db.touch_compte(account["id"])
+    db.log(account["nom"], "console", "connexion", account["role"])
     return {"ok": True}
 
 
@@ -760,13 +834,68 @@ def logout(response: Response):
 
 
 @app.get("/api/admin/me", dependencies=[Depends(auth.require_admin)])
-def me():
-    return {"admin": True}
+def me(request: Request):
+    u = auth.console_user(request)
+    return {"admin": True, "id": u["id"], "nom": u["nom"], "identifiant": u.get("identifiant", ""), "role": u["role"],
+            "principal": u["principal"], "permissions": u["permissions"]}
+
+
+@app.post("/api/admin/mot-de-passe", dependencies=[Depends(auth.require_admin)])
+def change_own_password(payload: MotDePasseIn, request: Request, response: Response):
+    u = auth.console_user(request)
+    if u["principal"]:
+        raise HTTPException(status_code=409, detail="Le mot de passe principal se change dans le fichier .env (ADMIN_PASSWORD)")
+    found = db.compte_login(u["identifiant"])
+    if not found or not auth.verify_password(payload.actuel, found[1]):
+        raise HTTPException(status_code=401, detail="Mot de passe actuel incorrect")
+    account = db.update_compte(u["id"], mdp_hash=auth.hash_password(payload.nouveau))
+    _set_session(response, account)  # les autres sessions sont coupées, celle-ci continue
+    db.log(u["nom"], "console", "compte.mot_de_passe", u["nom"], "a changé son mot de passe")
+    return {"ok": True}
+
+
+def _actor(request: Request) -> tuple[str, str]:
+    """Qui fait l'action (pour le journal) : compte de la console, membre d'équipe, ou système."""
+    u = auth.console_user(request)
+    if u:
+        return u["nom"], "console"
+    p = auth.team_member(request)
+    if p:
+        return p["nom"], "terrain"
+    return "Système", "système"
+
+
+def _log(request: Request, action: str, objet: str = "", details: str = "") -> None:
+    qui, source = _actor(request)
+    db.log(qui, source, action, objet, details)
+
+
+def _addr_label(slug: str, address_id: str) -> str:
+    try:
+        data = _load_commune(slug)
+    except HTTPException:
+        return address_id
+    for a in _addresses(slug, data):
+        if a["id"] == address_id:
+            return a["label"]
+    return address_id
+
+
+def _sector_label(sector_id: int | None) -> str:
+    return _sector_labels().get(sector_id, f"secteur {sector_id}") if sector_id else ""
+
+
+PUBLIC_SETTINGS = ("suivi_adresses", "annee", "equipes_public", "telephones_public", "dons_actifs", "sumup_actif")
+SETTING_PERMS = {  # qui peut changer quoi
+    "equipes_public": ("reglages", "equipes"), "telephones_public": ("reglages", "equipes"),
+    "whatsapp_bot_url": ("reglages", "equipes"), "whatsapp_bot_key": ("reglages", "equipes"),
+    "whatsapp_message": ("reglages", "equipes"),
+}
 
 
 @app.get("/api/admin/settings", dependencies=[Depends(auth.require_admin)])
-def admin_get_settings():
-    return {"suivi_adresses": _suivi_enabled(), "annee": _annee(),
+def admin_get_settings(request: Request):
+    full = {"suivi_adresses": _suivi_enabled(), "annee": _annee(),
             "equipes_public": _flag("equipes_public", True), "telephones_public": _flag("telephones_public", False),
             "dons_actifs": _flag("dons_actifs", False), "sumup_actif": _flag("sumup_actif", False),
             "sumup_affiliate_key": db.get_setting("sumup_affiliate_key", "") or "",
@@ -776,10 +905,21 @@ def admin_get_settings():
             "whatsapp_bot_key_set": bool(db.get_setting("whatsapp_bot_key", "")),
             "whatsapp_message": db.get_setting("whatsapp_message", "") or whatsapp.DEFAULT_MESSAGE,
             "whatsapp_message_defaut": whatsapp.DEFAULT_MESSAGE}
+    if auth.has_perm(request, "reglages"):
+        return full
+    out = {k: full[k] for k in PUBLIC_SETTINGS}
+    if auth.has_perm(request, "equipes"):
+        out.update({k: v for k, v in full.items() if k.startswith("whatsapp_")})
+    return out
 
 
 @app.put("/api/admin/settings", dependencies=[Depends(auth.require_admin)])
-def admin_save_settings(payload: SettingsIn):
+def admin_save_settings(payload: SettingsIn, request: Request):
+    sent = payload.model_dump(exclude_none=True)
+    for key in sent:
+        if not auth.has_perm(request, *SETTING_PERMS.get(key, ("reglages",))):
+            raise HTTPException(status_code=403, detail="Votre rôle ne permet pas de changer ce réglage")
+    before = admin_get_settings(request)
     if payload.suivi_adresses is not None:
         db.set_setting("suivi_adresses", "1" if payload.suivi_adresses else "0")
     if payload.annee is not None:
@@ -795,7 +935,122 @@ def admin_save_settings(payload: SettingsIn):
     if payload.whatsapp_message is not None:
         msg = payload.whatsapp_message.strip()
         db.set_setting("whatsapp_message", "" if msg == whatsapp.DEFAULT_MESSAGE.strip() else msg)
-    return admin_get_settings()
+    after = admin_get_settings(request)
+    shown = lambda v: "oui" if v is True else "non" if v is False else str(v)  # noqa: E731
+    changes = []
+    for key in sent:
+        if key in ("whatsapp_bot_key", "sumup_affiliate_key", "whatsapp_message"):
+            changes.append(f"{key} modifié")
+        elif before.get(key) != after.get(key):
+            changes.append(f"{key} : {shown(before.get(key))} → {shown(after.get(key))}")
+    if changes:
+        _log(request, "reglages", "réglages", " · ".join(changes))
+    return after
+
+
+# ---- Comptes et rôles de la console ------------------------------------------------
+
+@app.get("/api/admin/comptes", dependencies=[Depends(auth.require("comptes"))])
+def admin_list_accounts():
+    return {"comptes": db.list_comptes(), "roles": db.list_roles(), "permissions": db.PERMISSIONS}
+
+
+def _check_role(role_id: int) -> dict:
+    role = db.get_role(role_id)
+    if not role:
+        raise HTTPException(status_code=404, detail="Rôle inconnu")
+    return role
+
+
+@app.post("/api/admin/comptes", dependencies=[Depends(auth.require("comptes"))])
+def admin_add_account(payload: CompteIn, request: Request):
+    role = _check_role(payload.role_id)
+    if db.compte_login(payload.identifiant):
+        raise HTTPException(status_code=409, detail="Cet identifiant existe déjà")
+    acc = db.add_compte(payload.identifiant.strip(), payload.nom, auth.hash_password(payload.password), payload.role_id)
+    _log(request, "compte.ajout", acc["nom"], f"identifiant {acc['identifiant']} · rôle {role['nom']}")
+    return acc
+
+
+@app.put("/api/admin/comptes/{compte_id}", dependencies=[Depends(auth.require("comptes"))])
+def admin_update_account(compte_id: int, payload: CompteUpdateIn, request: Request):
+    acc = db.get_compte(compte_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Compte inconnu")
+    me_ = auth.console_user(request)
+    if me_["id"] == compte_id and (payload.actif is False or payload.role_id not in (None, acc["role_id"])):
+        raise HTTPException(status_code=409, detail="Vous ne pouvez pas désactiver votre propre compte ni changer votre rôle")
+    if payload.role_id is not None:
+        _check_role(payload.role_id)
+    updated = db.update_compte(compte_id, nom=" ".join(payload.nom.split()) if payload.nom else None, role_id=payload.role_id,
+                               actif=payload.actif,
+                               mdp_hash=auth.hash_password(payload.password) if payload.password else None)
+    changes = []
+    if payload.nom and updated["nom"] != acc["nom"]:
+        changes.append(f"nom : {acc['nom']} → {updated['nom']}")
+    if payload.role_id is not None and updated["role"] != acc["role"]:
+        changes.append(f"rôle : {acc['role']} → {updated['role']}")
+    if payload.actif is not None and payload.actif != acc["actif"]:
+        changes.append("réactivé" if payload.actif else "désactivé")
+    if payload.password:
+        changes.append("nouveau mot de passe")
+    if changes:
+        _log(request, "compte.modif", updated["nom"], " · ".join(changes))
+    return updated
+
+
+@app.delete("/api/admin/comptes/{compte_id}", dependencies=[Depends(auth.require("comptes"))])
+def admin_delete_account(compte_id: int, request: Request):
+    acc = db.get_compte(compte_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Compte inconnu")
+    if auth.console_user(request)["id"] == compte_id:
+        raise HTTPException(status_code=409, detail="Vous ne pouvez pas supprimer votre propre compte")
+    db.delete_compte(compte_id)
+    _log(request, "compte.suppression", acc["nom"], f"identifiant {acc['identifiant']}")
+    return {"ok": True}
+
+
+@app.post("/api/admin/roles", dependencies=[Depends(auth.require("comptes"))])
+def admin_add_role(payload: RoleIn, request: Request):
+    if any(r["nom"].lower() == payload.nom.lower() for r in db.list_roles()):
+        raise HTTPException(status_code=409, detail="Ce rôle existe déjà")
+    role = db.save_role(None, payload.nom, payload.permissions)
+    _log(request, "role.ajout", role["nom"], ", ".join(role["permissions"]) or "aucun droit")
+    return role
+
+
+@app.put("/api/admin/roles/{role_id}", dependencies=[Depends(auth.require("comptes"))])
+def admin_update_role(role_id: int, payload: RoleIn, request: Request):
+    role = _check_role(role_id)
+    if role["fixe"]:
+        raise HTTPException(status_code=409, detail="Le rôle Administrateur garde tous les droits")
+    if any(r["nom"].lower() == payload.nom.lower() and r["id"] != role_id for r in db.list_roles()):
+        raise HTTPException(status_code=409, detail="Ce rôle existe déjà")
+    updated = db.save_role(role_id, payload.nom, payload.permissions)
+    _log(request, "role.modif", updated["nom"], f"droits : {', '.join(updated['permissions']) or 'aucun'}")
+    return updated
+
+
+@app.delete("/api/admin/roles/{role_id}", dependencies=[Depends(auth.require("comptes"))])
+def admin_delete_role(role_id: int, request: Request):
+    role = _check_role(role_id)
+    if role["fixe"]:
+        raise HTTPException(status_code=409, detail="Le rôle Administrateur ne peut pas être supprimé")
+    if db.role_in_use(role_id):
+        raise HTTPException(status_code=409, detail="Des comptes ont encore ce rôle : changez-leur de rôle d'abord")
+    db.delete_role(role_id)
+    _log(request, "role.suppression", role["nom"])
+    return {"ok": True}
+
+
+# ---- Journal des modifications ------------------------------------------------------
+
+@app.get("/api/admin/journal", dependencies=[Depends(auth.require("journal", "comptes"))])
+def admin_journal(before: int | None = None, q: str = "", action: str = "", qui: str = "", limit: int = 200):
+    limit = max(1, min(limit, 5000))
+    return {"entrees": db.list_journal(limit, before, q.strip()[:80], action.strip()[:40], qui.strip()[:80]),
+            "personnes": db.journal_people()}
 
 
 # ---- Envoi des codes d'accès par le bot WhatsApp ---------------------------------
@@ -842,7 +1097,7 @@ def _person_or_404(personne_id: int) -> dict:
     return p
 
 
-@app.get("/api/admin/whatsapp/etat", dependencies=[Depends(auth.require_admin)])
+@app.get("/api/admin/whatsapp/etat", dependencies=[Depends(auth.require("equipes", "reglages"))])
 def admin_bot_state():
     url = db.get_setting("whatsapp_bot_url", "") or ""
     if not url:
@@ -855,14 +1110,14 @@ def admin_bot_state():
     return {"configure": True, "pret": ready, "erreur": "" if ready else "Le bot répond mais WhatsApp n'est pas connecté (QR à rescanner ?)"}
 
 
-@app.post("/api/admin/whatsapp/apercu", dependencies=[Depends(auth.require_admin)])
+@app.post("/api/admin/whatsapp/apercu", dependencies=[Depends(auth.require("equipes"))])
 def admin_bot_preview(payload: EnvoiAccesIn):
     p = _person_or_404(payload.personne_id)
     return {"message": _access_message(p, payload.origin, payload.modele), "to": whatsapp.whatsapp_id(p["telephone"])}
 
 
-@app.post("/api/admin/whatsapp/envoyer", dependencies=[Depends(auth.require_admin)])
-def admin_bot_send_access(payload: EnvoiAccesIn):
+@app.post("/api/admin/whatsapp/envoyer", dependencies=[Depends(auth.require("equipes"))])
+def admin_bot_send_access(payload: EnvoiAccesIn, request: Request):
     """Envoie à une personne son code et son lien d'accès, directement par le bot WhatsApp.
     L'écran admin appelle cette route personne par personne (avec la progression)."""
     global _last_send
@@ -882,49 +1137,59 @@ def admin_bot_send_access(payload: EnvoiAccesIn):
             raise HTTPException(status_code=err.status, detail=str(err)) from err
         finally:
             _last_send = time.monotonic()
+    _log(request, "acces.envoi", p["nom"], f"code d'accès envoyé par WhatsApp au {p['telephone']}")
     return {"ok": True, "acces_envoye_le": db.mark_access_sent(p["id"])}
 
 
 # ---- Équipes ---------------------------------------------------------------------
 
-@app.get("/api/admin/equipes", dependencies=[Depends(auth.require_admin)])
+@app.get("/api/admin/equipes", dependencies=[Depends(auth.require("equipes"))])
 def admin_get_equipes():
     sector_ids = db.existing_sector_ids()
     teams = {sid: t for sid, t in db.get_teams().items() if sid in sector_ids}
     return {"personnes": db.list_personnes(), "equipes": teams}
 
 
-@app.post("/api/admin/personnes", dependencies=[Depends(auth.require_admin)])
-def admin_add_personnes(payload: PersonnesIn):
+@app.post("/api/admin/personnes", dependencies=[Depends(auth.require("equipes"))])
+def admin_add_personnes(payload: PersonnesIn, request: Request):
     if len(db.list_personnes()) + len(payload.personnes) > 500:
         raise HTTPException(status_code=422, detail="Trop de personnes (500 au maximum)")
-    return {"personnes": db.add_personnes([p.model_dump() for p in payload.personnes])}
+    added = db.add_personnes([p.model_dump() for p in payload.personnes])
+    _log(request, "personne.ajout", ", ".join(p["nom"] for p in added)[:200], f"{len(added)} personne(s)")
+    return {"personnes": added}
 
 
-@app.put("/api/admin/personnes/{personne_id}", dependencies=[Depends(auth.require_admin)])
-def admin_update_personne(personne_id: int, payload: PersonneIn):
+@app.put("/api/admin/personnes/{personne_id}", dependencies=[Depends(auth.require("equipes"))])
+def admin_update_personne(personne_id: int, payload: PersonneIn, request: Request):
+    old = db.get_personne(personne_id)
     person = db.update_personne(personne_id, payload.nom, payload.telephone)
     if person is None:
         raise HTTPException(status_code=404, detail="Personne inconnue")
+    changes = [f"{k} : {old[k] or '—'} → {person[k] or '—'}" for k in ("nom", "telephone") if old[k] != person[k]]
+    if changes:
+        _log(request, "personne.modif", person["nom"], " · ".join(changes))
     return person
 
 
-@app.delete("/api/admin/personnes/{personne_id}", dependencies=[Depends(auth.require_admin)])
-def admin_delete_personne(personne_id: int):
+@app.delete("/api/admin/personnes/{personne_id}", dependencies=[Depends(auth.require("equipes"))])
+def admin_delete_personne(personne_id: int, request: Request):
+    old = db.get_personne(personne_id)
     if not db.delete_personne(personne_id):
         raise HTTPException(status_code=404, detail="Personne inconnue")
+    _log(request, "personne.suppression", old["nom"])
     return {"ok": True}
 
 
-@app.post("/api/admin/personnes/{personne_id}/code", dependencies=[Depends(auth.require_admin)])
-def admin_regenerate_code(personne_id: int):
+@app.post("/api/admin/personnes/{personne_id}/code", dependencies=[Depends(auth.require("equipes"))])
+def admin_regenerate_code(personne_id: int, request: Request):
     person = db.regenerate_code(personne_id)
     if person is None:
         raise HTTPException(status_code=404, detail="Personne inconnue")
+    _log(request, "personne.code", person["nom"], "nouveau code d'accès (l'ancien ne marche plus)")
     return person
 
 
-@app.get("/api/admin/bilan", dependencies=[Depends(auth.require_admin)])
+@app.get("/api/admin/bilan", dependencies=[Depends(auth.require("suivi", "dons"))])
 def admin_bilan():
     annee = _annee()
     dons = db.list_dons(annee)
@@ -947,7 +1212,7 @@ def admin_bilan():
                         for d in dons if d["statut"] == "attente"]}
 
 
-@app.get("/api/admin/bilan-annee", dependencies=[Depends(auth.require_admin)])
+@app.get("/api/admin/bilan-annee", dependencies=[Depends(auth.require("dons"))])
 def admin_year_report(annee: int | None = None):
     """Bilan d'une tournée comparé à la précédente, sur les secteurs actuels : les maisons et les dons
     de l'an dernier sont rangés dans le secteur où se trouve aujourd'hui leur adresse."""
@@ -1005,7 +1270,7 @@ def admin_year_report(annee: int | None = None):
     }
 
 
-@app.get("/api/admin/dons", dependencies=[Depends(auth.require_admin)])
+@app.get("/api/admin/dons", dependencies=[Depends(auth.require("dons"))])
 def admin_dons():
     labels = {}
     for slug in db.sector_communes():
@@ -1017,8 +1282,8 @@ def admin_dons():
     ]}
 
 
-@app.put("/api/admin/secteurs/{sector_id}/equipe", dependencies=[Depends(auth.require_admin)])
-def admin_set_equipe(sector_id: int, payload: EquipeIn):
+@app.put("/api/admin/secteurs/{sector_id}/equipe", dependencies=[Depends(auth.require("equipes"))])
+def admin_set_equipe(sector_id: int, payload: EquipeIn, request: Request):
     if sector_id not in db.existing_sector_ids():
         raise HTTPException(status_code=404, detail="Secteur inconnu (a-t-il été supprimé ?)")
     known = {p["id"] for p in db.list_personnes()}
@@ -1026,11 +1291,21 @@ def admin_set_equipe(sector_id: int, payload: EquipeIn):
     if unknown:
         raise HTTPException(status_code=404, detail="Personne inconnue dans l'équipe")
     plan = payload.model_dump(exclude={"membres"})
+    before = db.get_teams().get(sector_id) or {"date": "", "creneau": "", "statut": "a_faire", "note": "", "membres": []}
     db.set_team(sector_id, plan, [m.model_dump() for m in payload.membres])
-    return db.get_teams().get(sector_id)
+    after = db.get_teams().get(sector_id)
+    names = {p["id"]: p["nom"] for p in db.list_personnes()}
+    fmt = lambda t: {f"{names.get(m['personne_id'], '?')}{' ★' if m['role'] == 'responsable' else ''}" for m in t["membres"]}  # noqa: E731
+    changes = [f"+ {n}" for n in sorted(fmt(after) - fmt(before))] + [f"− {n}" for n in sorted(fmt(before) - fmt(after))]
+    for k, label in (("date", "date"), ("creneau", "créneau"), ("statut", "avancement"), ("note", "consignes")):
+        if before[k] != after[k]:
+            changes.append(f"{label} : {STATUT_FR.get(before[k], before[k]) or '—'} → {STATUT_FR.get(after[k], after[k]) or '—'}")
+    if changes:
+        _log(request, "equipe.modif", _sector_label(sector_id), " · ".join(changes))
+    return after
 
 
-@app.get("/api/admin/communes/{slug}", dependencies=[Depends(auth.require_admin)])
+@app.get("/api/admin/communes/{slug}", dependencies=[Depends(auth.require("secteurs"))])
 def admin_get_commune(slug: str):
     data = _load_commune(slug)
     return {
@@ -1047,31 +1322,34 @@ def admin_get_commune(slug: str):
     }
 
 
-@app.put("/api/admin/communes/{slug}/sectors", dependencies=[Depends(auth.require_admin)])
-def admin_save_sectors(slug: str, payload: SectorsIn):
+@app.put("/api/admin/communes/{slug}/sectors", dependencies=[Depends(auth.require("secteurs"))])
+def admin_save_sectors(slug: str, payload: SectorsIn, request: Request):
     data = _load_commune(slug)
     db.replace_sectors(slug, [s.model_dump() for s in payload.sectors])
+    _log(request, "secteurs.enregistres", data["commune"]["nom"], f"{len(payload.sectors)} secteur(s) : " + ", ".join(x.nom for x in payload.sectors)[:300])
     return {"sectors": _sectors_with_limits(slug, data)}
 
 
-@app.put("/api/admin/communes/{slug}/excluded", dependencies=[Depends(auth.require_admin)])
-def admin_set_excluded(slug: str, payload: ExclusionIn):
+@app.put("/api/admin/communes/{slug}/excluded", dependencies=[Depends(auth.require("secteurs"))])
+def admin_set_excluded(slug: str, payload: ExclusionIn, request: Request):
     data = _load_commune(slug)
     known = _address_ids(slug, data)
     unknown = [a for a in payload.address_ids if a not in known]
     if unknown:
         raise HTTPException(status_code=404, detail=f"Adresse(s) inconnue(s) : {', '.join(unknown[:5])}")
     db.set_excluded(slug, payload.address_ids, payload.excluded)
+    _log(request, "adresses.exclues" if payload.excluded else "adresses.reintegrees", data["commune"]["nom"],
+         ", ".join(_addr_label(slug, a) for a in payload.address_ids[:10]) + (f" (+{len(payload.address_ids) - 10})" if len(payload.address_ids) > 10 else ""))
     return {"excluded": sorted(db.get_excluded(slug))}
 
 
-@app.get("/api/admin/communes/{slug}/versions", dependencies=[Depends(auth.require_admin)])
+@app.get("/api/admin/communes/{slug}/versions", dependencies=[Depends(auth.require("secteurs"))])
 def admin_list_versions(slug: str):
     _load_commune(slug)
     return {"versions": db.list_versions(slug)}
 
 
-@app.get("/api/admin/communes/{slug}/versions/{version_id}", dependencies=[Depends(auth.require_admin)])
+@app.get("/api/admin/communes/{slug}/versions/{version_id}", dependencies=[Depends(auth.require("secteurs"))])
 def admin_get_version(slug: str, version_id: int):
     _load_commune(slug)
     sectors = db.get_version(slug, version_id)
@@ -1080,10 +1358,11 @@ def admin_get_version(slug: str, version_id: int):
     return {"sectors": sectors}
 
 
-@app.post("/api/admin/communes/{slug}/reset-statuses", dependencies=[Depends(auth.require_admin)])
-def admin_reset_statuses(slug: str):
-    _load_commune(slug)
+@app.post("/api/admin/communes/{slug}/reset-statuses", dependencies=[Depends(auth.require("suivi"))])
+def admin_reset_statuses(slug: str, request: Request):
+    data = _load_commune(slug)
     db.reset_statuses(slug)
+    _log(request, "statuts.remise_a_zero", data["commune"]["nom"], f"tournée {_annee()}")
     return {"ok": True}
 
 

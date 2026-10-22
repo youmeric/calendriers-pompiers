@@ -121,6 +121,35 @@ def init_db() -> None:
                 statut TEXT NOT NULL DEFAULT 'a_faire',
                 note TEXT NOT NULL DEFAULT ''
             );
+            -- comptes de la console d'administration (en plus du compte principal ADMIN_PASSWORD)
+            CREATE TABLE IF NOT EXISTS roles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nom TEXT NOT NULL UNIQUE,
+                permissions TEXT NOT NULL DEFAULT '[]',
+                fixe INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS comptes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                identifiant TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                nom TEXT NOT NULL,
+                mdp TEXT NOT NULL,
+                role_id INTEGER NOT NULL,
+                actif INTEGER NOT NULL DEFAULT 1,
+                version INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                derniere_connexion TEXT
+            );
+            -- journal des modifications : qui a fait quoi, quand
+            CREATE TABLE IF NOT EXISTS journal (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                at TEXT NOT NULL,
+                qui TEXT NOT NULL,
+                source TEXT NOT NULL,
+                action TEXT NOT NULL,
+                objet TEXT NOT NULL DEFAULT '',
+                details TEXT NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS journal_at ON journal (at);
             -- note de l'équipe sur une maison (« chien », « repasser le soir »…), gardée d'une année sur l'autre
             CREATE TABLE IF NOT EXISTS address_notes (
                 commune_slug TEXT NOT NULL,
@@ -197,7 +226,25 @@ def init_db() -> None:
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS personnes_code ON personnes (code)")
         for (pid,) in conn.execute("SELECT id FROM personnes WHERE code IS NULL OR code = ''").fetchall():
             conn.execute("UPDATE personnes SET code = ? WHERE id = ?", (_new_code(conn), pid))
+        if not conn.execute("SELECT 1 FROM roles LIMIT 1").fetchone():
+            conn.executemany("INSERT INTO roles (nom, permissions, fixe) VALUES (?, ?, ?)", [
+                ("Administrateur", json.dumps(list(PERMISSIONS)), 1),
+                ("Trésorier", json.dumps(["dons", "journal"]), 0),
+                ("Chef de tournée", json.dumps(["secteurs", "equipes", "suivi"]), 0),
+            ])
         conn.commit()
+
+
+# droits de la console d'administration (clé -> libellé affiché)
+PERMISSIONS = {
+    "secteurs": "Secteurs : dessiner et modifier les secteurs, exclure des adresses",
+    "equipes": "Équipes : personnes, équipes, codes d'accès et envoi WhatsApp",
+    "suivi": "Suivi : avancement, statuts des maisons, signalements, espace équipe de tous les secteurs",
+    "dons": "Dons et caisse : montants, paiements en attente, remises, export, bilan de l'année",
+    "reglages": "Réglages : suivi, dons, SumUp, année, page publique, bot WhatsApp, sauvegardes",
+    "journal": "Journal : voir qui a fait quoi",
+    "comptes": "Comptes : créer les comptes et les rôles",
+}
 
 
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # sans 0/O ni 1/I : se dicte sans erreur
@@ -877,3 +924,143 @@ def prune_backups(keep: int = BACKUP_KEEP) -> None:
 def backup_done_today() -> bool:
     today = datetime.now().strftime("%Y-%m-%d")
     return any(b["nom"].startswith(f"calendriers-{today}") for b in list_backups())
+
+
+# ---- Comptes et rôles de la console -------------------------------------------------
+
+def _role(r) -> dict:
+    return {"id": r[0], "nom": r[1], "permissions": [p for p in json.loads(r[2]) if p in PERMISSIONS], "fixe": bool(r[3])}
+
+
+def list_roles() -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT id, nom, permissions, fixe FROM roles ORDER BY fixe DESC, nom COLLATE NOCASE").fetchall()
+    return [_role(r) for r in rows]
+
+
+def get_role(role_id: int) -> dict | None:
+    with get_conn() as conn:
+        r = conn.execute("SELECT id, nom, permissions, fixe FROM roles WHERE id = ?", (role_id,)).fetchone()
+    return _role(r) if r else None
+
+
+def save_role(role_id: int | None, nom: str, permissions: list[str]) -> dict:
+    perms = json.dumps([p for p in PERMISSIONS if p in permissions])
+    with get_conn() as conn:
+        if role_id is None:
+            role_id = conn.execute("INSERT INTO roles (nom, permissions) VALUES (?, ?)", (nom, perms)).lastrowid
+        else:
+            conn.execute("UPDATE roles SET nom = ?, permissions = ? WHERE id = ? AND fixe = 0", (nom, perms, role_id))
+        conn.commit()
+    return get_role(role_id)
+
+
+def delete_role(role_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM roles WHERE id = ? AND fixe = 0", (role_id,))
+        conn.commit()
+
+
+def role_in_use(role_id: int) -> int:
+    with get_conn() as conn:
+        return conn.execute("SELECT COUNT(*) FROM comptes WHERE role_id = ?", (role_id,)).fetchone()[0]
+
+
+_COMPTE_COLS = "c.id, c.identifiant, c.nom, c.role_id, c.actif, c.version, c.created_at, c.derniere_connexion, r.nom, r.permissions"
+
+
+def _compte(r) -> dict:
+    return {"id": r[0], "identifiant": r[1], "nom": r[2], "role_id": r[3], "actif": bool(r[4]), "version": r[5],
+            "created_at": r[6], "derniere_connexion": r[7], "role": r[8] or "",
+            "permissions": [p for p in json.loads(r[9] or "[]") if p in PERMISSIONS]}
+
+
+def list_comptes() -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(f"SELECT {_COMPTE_COLS} FROM comptes c LEFT JOIN roles r ON r.id = c.role_id "
+                            "ORDER BY c.nom COLLATE NOCASE").fetchall()
+    return [_compte(r) for r in rows]
+
+
+def get_compte(compte_id: int) -> dict | None:
+    with get_conn() as conn:
+        r = conn.execute(f"SELECT {_COMPTE_COLS} FROM comptes c LEFT JOIN roles r ON r.id = c.role_id WHERE c.id = ?",
+                         (compte_id,)).fetchone()
+    return _compte(r) if r else None
+
+
+def compte_login(identifiant: str) -> tuple[dict, str] | None:
+    """Compte et empreinte du mot de passe, pour la connexion."""
+    with get_conn() as conn:
+        r = conn.execute("SELECT id, mdp FROM comptes WHERE identifiant = ?", (identifiant.strip(),)).fetchone()
+    return (get_compte(r[0]), r[1]) if r else None
+
+
+def add_compte(identifiant: str, nom: str, mdp_hash: str, role_id: int) -> dict:
+    with get_conn() as conn:
+        cid = conn.execute("INSERT INTO comptes (identifiant, nom, mdp, role_id, created_at) VALUES (?, ?, ?, ?, ?)",
+                           (identifiant, nom, mdp_hash, role_id, _now())).lastrowid
+        conn.commit()
+    return get_compte(cid)
+
+
+def update_compte(compte_id: int, *, nom: str | None = None, role_id: int | None = None, actif: bool | None = None,
+                  mdp_hash: str | None = None) -> dict | None:
+    sets, args = [], []
+    for col, val in (("nom", nom), ("role_id", role_id), ("actif", None if actif is None else int(actif)), ("mdp", mdp_hash)):
+        if val is not None:
+            sets.append(f"{col} = ?")
+            args.append(val)
+    if mdp_hash is not None or actif is False:
+        sets.append("version = version + 1")  # coupe les sessions ouvertes
+    if sets:
+        with get_conn() as conn:
+            conn.execute(f"UPDATE comptes SET {', '.join(sets)} WHERE id = ?", (*args, compte_id))
+            conn.commit()
+    return get_compte(compte_id)
+
+
+def delete_compte(compte_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM comptes WHERE id = ?", (compte_id,))
+        conn.commit()
+
+
+def touch_compte(compte_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute("UPDATE comptes SET derniere_connexion = ? WHERE id = ?", (_now(), compte_id))
+        conn.commit()
+
+
+# ---- Journal des modifications ---------------------------------------------------------
+
+def log(qui: str, source: str, action: str, objet: str = "", details: str = "") -> None:
+    with get_conn() as conn:
+        conn.execute("INSERT INTO journal (at, qui, source, action, objet, details) VALUES (?, ?, ?, ?, ?, ?)",
+                     (_now(), qui[:80], source, action, objet[:200], details[:500]))
+        conn.commit()
+
+
+def list_journal(limit: int = 200, before: int | None = None, q: str = "", action: str = "", qui: str = "") -> list[dict]:
+    sql = "SELECT id, at, qui, source, action, objet, details FROM journal WHERE 1 = 1"
+    args: list = []
+    if before:
+        sql += " AND id < ?"
+        args.append(before)
+    if action:
+        sql += " AND action LIKE ?"
+        args.append(f"{action}%")
+    if qui:
+        sql += " AND qui = ?"
+        args.append(qui)
+    if q:
+        sql += " AND (objet LIKE ? OR details LIKE ? OR qui LIKE ?)"
+        args += [f"%{q}%"] * 3
+    with get_conn() as conn:
+        rows = conn.execute(sql + " ORDER BY id DESC LIMIT ?", (*args, limit)).fetchall()
+    return [dict(zip(("id", "at", "qui", "source", "action", "objet", "details"), r)) for r in rows]
+
+
+def journal_people() -> list[str]:
+    with get_conn() as conn:
+        return [r[0] for r in conn.execute("SELECT DISTINCT qui FROM journal ORDER BY qui COLLATE NOCASE").fetchall()]
