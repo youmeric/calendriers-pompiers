@@ -33,6 +33,10 @@ services:
     volumes:
       - ./data/db:/app/db
       - ./data/sectors:/app/sectors
+    # bot WhatsApp sur la même machine : joignable par http://host.docker.internal:3000
+    # (à régler dans l'admin, onglet Équipes → « Envoyer les accès » → Bot WhatsApp)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - proxy
     healthcheck:

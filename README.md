@@ -49,6 +49,19 @@ sur Courzieu et Brussieu (69690).
     dans l'**espace équipe** (voir plus bas), limité à **ses secteurs**. Sans
     code, personne ne voit les statuts ni les montants.
     10 codes faux d'affilée bloquent les essais pendant 10 minutes.
+  - **📲 Envoyer les accès en masse** (onglet Équipes) : on coche les personnes
+    (tous, jamais envoyé, responsables, l'équipe d'un secteur, ou à la main),
+    on ajuste le message (`{prenom}`, `{code}`, `{lien}`, `{secteurs}`…, avec
+    l'aperçu façon WhatsApp) et le site envoie chaque message **directement
+    par le bot WhatsApp** (wppconnect, son `POST /send`), sans passer par n8n
+    ni par le site de programmation. Un message toutes les 2 à 3 secondes,
+    progression et ✓/✕ par personne ; l'envoi s'arrête de lui-même si le bot
+    est déconnecté. La date du dernier envoi est gardée (📲 dans la liste) et
+    s'efface quand on change le code. Réglage une fois pour toutes dans la même
+    fenêtre → *Bot WhatsApp* : l'adresse du bot **vue depuis le serveur du
+    site** (ex. `http://192.168.1.20:3000`, ou `http://host.docker.internal:3000`
+    si le bot tourne sur la même machine) et, si le bot en demande une, une clé
+    envoyée dans l'en-tête `X-API-Key`.
   - **Suivi des maisons** : ✓ fait / ⏳ absent / ✕ refus, partagé en direct
     entre les membres de l'équipe (actualisé chaque minute), fonctionne sans
     réseau (envoi au retour du réseau).

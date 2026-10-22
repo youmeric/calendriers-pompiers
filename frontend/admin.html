@@ -156,6 +156,7 @@
       </div>
       <div class="teams-actions">
         <span id="teams-saved" class="saved-badge" hidden>Enregistré ✓</span>
+        <button id="send-open" class="btn primary" type="button">📲 Envoyer les accès</button>
         <a class="btn" href="plan.html#/" target="_blank" rel="noopener">
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6" /><rect x="3" y="9" width="18" height="8" rx="2" /><path d="M7 14h10v7H7z" /></svg>Imprimer le tableau
         </a>
@@ -302,6 +303,55 @@
       </div>
       <button type="button" class="link-btn danger-link" id="access-regen">Changer le code (l'ancien ne marchera plus)</button>
       <div class="dialog-actions"><button type="submit" class="btn primary">Fermer</button></div>
+    </form>
+  </dialog>
+
+  <!-- Envoi groupé des codes d'accès par le bot WhatsApp -->
+  <dialog id="send-dialog" class="app-dialog send-dialog" aria-labelledby="send-title">
+    <form id="send-form" method="dialog">
+      <div class="send-head">
+        <h3 id="send-title">Envoyer les accès par WhatsApp</h3>
+        <span id="send-bot-state" class="bot-state"></span>
+      </div>
+      <details id="send-bot" class="send-bot">
+        <summary>Bot WhatsApp</summary>
+        <p class="hint">Le site appelle directement le bot (son <code>POST /send</code>), sans passer par n8n ni le site de programmation.
+          Adresse du bot <b>vue depuis le serveur du site</b>, par ex. <code>http://192.168.1.20:3000</code>, ou <code>http://host.docker.internal:3000</code> si le bot tourne sur la même machine.</p>
+        <div class="field-row">
+          <label class="field">Adresse du bot<input id="send-url" type="url" maxlength="300" placeholder="http://192.168.1.20:3000" autocomplete="off" spellcheck="false" /></label>
+          <label class="field">Clé (facultative)<input id="send-key" type="password" maxlength="200" autocomplete="new-password" placeholder="aucune" /></label>
+        </div>
+        <button id="send-test" type="button" class="btn small">Enregistrer et tester</button>
+      </details>
+
+      <div class="send-cols">
+        <section class="send-people">
+          <div class="send-quick">
+            <span class="hint">Choisir :</span>
+            <button type="button" class="chip-btn" data-pick="all">Tous</button>
+            <button type="button" class="chip-btn" data-pick="never">Jamais envoyé</button>
+            <button type="button" class="chip-btn" data-pick="lead">Responsables</button>
+            <button type="button" class="chip-btn" data-pick="none">Aucun</button>
+            <select id="send-sector" aria-label="Choisir les personnes d'un secteur"><option value="">Un secteur…</option></select>
+          </div>
+          <ul id="send-list" class="send-list"></ul>
+        </section>
+        <section class="send-msg">
+          <label class="field" for="send-template">Message
+            <textarea id="send-template" rows="8" maxlength="1500"></textarea>
+          </label>
+          <p class="hint send-vars">Remplacés pour chacun : <code>{prenom}</code> <code>{nom}</code> <code>{code}</code> <code>{lien}</code> <code>{secteurs}</code> <code>{tournee}</code> <code>{annee}</code> · <button type="button" class="link-btn" id="send-reset">message par défaut</button></p>
+          <div class="send-preview-head hint" id="send-preview-who">Aperçu</div>
+          <div id="send-preview" class="wa-bubble"></div>
+        </section>
+      </div>
+
+      <p id="send-progress" class="send-progress" hidden></p>
+      <p id="send-error" class="error-text" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="send-close">Fermer</button>
+        <button type="button" class="btn primary" id="send-go" disabled>Envoyer</button>
+      </div>
     </form>
   </dialog>
 

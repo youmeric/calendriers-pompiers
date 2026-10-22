@@ -8,6 +8,7 @@ import mimetypes
 import re
 import secrets
 import os
+import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -19,9 +20,10 @@ from fastapi.staticfiles import StaticFiles
 from . import auth, db
 from .geo import point_in_polys
 from .limits import RoadIndex, describe_limit_polys
+from . import whatsapp
 from .models import (AvancementIn, CodeIn, ConfirmIn, DonIn, DonStatutIn, EquipeIn, ExclusionIn, LoginIn, PersonneIn,
                      PersonnesIn, RemiseIn, RenfortIn, SectorsIn, SettingsIn, StatusUpdate, SumupRetourIn,
-                     NoteIn, SignalementIn, SignalementActionIn)
+                     NoteIn, SignalementIn, SignalementActionIn, EnvoiAccesIn)
 from .resume import build_resume, commune_voie_counts
 
 DATA_DIR = Path(os.environ.get("SECTORS_DATA_DIR") or (Path(__file__).resolve().parent / "data"))
@@ -768,7 +770,12 @@ def admin_get_settings():
             "equipes_public": _flag("equipes_public", True), "telephones_public": _flag("telephones_public", False),
             "dons_actifs": _flag("dons_actifs", False), "sumup_actif": _flag("sumup_actif", False),
             "sumup_affiliate_key": db.get_setting("sumup_affiliate_key", "") or "",
-            "sumup_app_id": db.get_setting("sumup_app_id", "") or ""}
+            "sumup_app_id": db.get_setting("sumup_app_id", "") or "",
+            "whatsapp_bot_url": db.get_setting("whatsapp_bot_url", "") or "",
+            # la clé du bot n'est jamais renvoyée : on dit seulement si elle est réglée
+            "whatsapp_bot_key_set": bool(db.get_setting("whatsapp_bot_key", "")),
+            "whatsapp_message": db.get_setting("whatsapp_message", "") or whatsapp.DEFAULT_MESSAGE,
+            "whatsapp_message_defaut": whatsapp.DEFAULT_MESSAGE}
 
 
 @app.put("/api/admin/settings", dependencies=[Depends(auth.require_admin)])
@@ -781,11 +788,101 @@ def admin_save_settings(payload: SettingsIn):
         value = getattr(payload, key)
         if value is not None:
             db.set_setting(key, "1" if value else "0")
-    for key in ("sumup_affiliate_key", "sumup_app_id"):
+    for key in ("sumup_affiliate_key", "sumup_app_id", "whatsapp_bot_url", "whatsapp_bot_key"):
         value = getattr(payload, key)
         if value is not None:
             db.set_setting(key, value)
+    if payload.whatsapp_message is not None:
+        msg = payload.whatsapp_message.strip()
+        db.set_setting("whatsapp_message", "" if msg == whatsapp.DEFAULT_MESSAGE.strip() else msg)
     return admin_get_settings()
+
+
+# ---- Envoi des codes d'accès par le bot WhatsApp ---------------------------------
+
+_send_lock = threading.Lock()
+_last_send = 0.0
+MIN_GAP = 1.5  # secondes entre deux messages, même si plusieurs onglets envoient (anti-spam WhatsApp)
+
+
+def _bot() -> tuple[str, str]:
+    url = db.get_setting("whatsapp_bot_url", "") or ""
+    if not url:
+        raise HTTPException(status_code=409, detail="Adresse du bot WhatsApp non réglée")
+    return url, db.get_setting("whatsapp_bot_key", "") or ""
+
+
+def _sector_labels() -> dict[int, str]:
+    out = {}
+    for slug in db.sector_communes():
+        nom = _load_commune(slug)["commune"]["nom"]
+        for i, s in enumerate(db.list_sectors(slug)):
+            out[s["id"]] = f"{(nom or '?').strip()[:1].upper()}{i + 1} {s['nom']}"
+    return out
+
+
+def _access_message(p: dict, origin: str, template: str | None) -> str:
+    labels = _sector_labels()
+    where = [f"{labels[sid]}{' (responsable)' if role == 'responsable' else ''}"
+             for sid, role in db.memberships(p["id"]).items() if sid in labels]
+    code = p["code"] or ""
+    annee = _annee()
+    return whatsapp.render(template or db.get_setting("whatsapp_message", "") or whatsapp.DEFAULT_MESSAGE, {
+        "prenom": p["nom"].split(" ")[0], "nom": p["nom"], "code": f"{code[:4]}-{code[4:]}",
+        "lien": f"{origin}/equipe#acces={code}", "annee": str(annee),
+        "tournee": f"tournée des calendriers {annee}",
+        "secteurs": f", secteur {', '.join(where)}" if where else "",
+    })
+
+
+def _person_or_404(personne_id: int) -> dict:
+    p = db.get_personne(personne_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Personne inconnue")
+    return p
+
+
+@app.get("/api/admin/whatsapp/etat", dependencies=[Depends(auth.require_admin)])
+def admin_bot_state():
+    url = db.get_setting("whatsapp_bot_url", "") or ""
+    if not url:
+        return {"configure": False, "pret": False, "erreur": "Adresse du bot non réglée"}
+    try:
+        h = whatsapp.health(url, db.get_setting("whatsapp_bot_key", "") or "")
+    except whatsapp.BotError as err:
+        return {"configure": True, "pret": False, "erreur": str(err)}
+    ready = bool(h.get("ready", h.get("ok")))
+    return {"configure": True, "pret": ready, "erreur": "" if ready else "Le bot répond mais WhatsApp n'est pas connecté (QR à rescanner ?)"}
+
+
+@app.post("/api/admin/whatsapp/apercu", dependencies=[Depends(auth.require_admin)])
+def admin_bot_preview(payload: EnvoiAccesIn):
+    p = _person_or_404(payload.personne_id)
+    return {"message": _access_message(p, payload.origin, payload.modele), "to": whatsapp.whatsapp_id(p["telephone"])}
+
+
+@app.post("/api/admin/whatsapp/envoyer", dependencies=[Depends(auth.require_admin)])
+def admin_bot_send_access(payload: EnvoiAccesIn):
+    """Envoie à une personne son code et son lien d'accès, directement par le bot WhatsApp.
+    L'écran admin appelle cette route personne par personne (avec la progression)."""
+    global _last_send
+    p = _person_or_404(payload.personne_id)
+    to = whatsapp.whatsapp_id(p["telephone"])
+    if not to:
+        raise HTTPException(status_code=422, detail="Pas de numéro de téléphone valable")
+    url, key = _bot()
+    message = _access_message(p, payload.origin, None)
+    with _send_lock:
+        wait = MIN_GAP - (time.monotonic() - _last_send)
+        if wait > 0:
+            time.sleep(wait)
+        try:
+            whatsapp.send(url, key, to, message)
+        except whatsapp.BotError as err:
+            raise HTTPException(status_code=err.status, detail=str(err)) from err
+        finally:
+            _last_send = time.monotonic()
+    return {"ok": True, "acces_envoye_le": db.mark_access_sent(p["id"])}
 
 
 # ---- Équipes ---------------------------------------------------------------------

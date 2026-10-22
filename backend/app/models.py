@@ -78,6 +78,25 @@ class SettingsIn(BaseModel):
     sumup_actif: bool | None = None
     sumup_affiliate_key: str | None = Field(default=None, max_length=200)
     sumup_app_id: str | None = Field(default=None, max_length=200)
+    # bot WhatsApp (wppconnect) : adresse de son « POST /send », clé facultative, modèle du message d'accès
+    whatsapp_bot_url: str | None = Field(default=None, max_length=300)
+    whatsapp_bot_key: str | None = Field(default=None, max_length=200)
+    whatsapp_message: str | None = Field(default=None, max_length=1500)
+
+    @field_validator("whatsapp_bot_url")
+    @classmethod
+    def check_bot_url(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip().rstrip("/")
+        if v and not re.fullmatch(r"https?://[A-Za-z0-9.\-_:\[\]]+(/[A-Za-z0-9._~\-/]*)?", v):
+            raise ValueError("adresse du bot invalide (ex. http://192.168.1.20:3000)")
+        return v
+
+    @field_validator("whatsapp_bot_key")
+    @classmethod
+    def check_bot_key(cls, v: str | None) -> str | None:
+        return v.strip() if v is not None else v
 
     @field_validator("sumup_affiliate_key", "sumup_app_id")
     @classmethod
@@ -280,3 +299,10 @@ class SignalementActionIn(BaseModel):
     @classmethod
     def strip_text(cls, v: str) -> str:
         return " ".join(v.split())
+
+
+class EnvoiAccesIn(BaseModel):
+    personne_id: int
+    # adresse du site telle que l'admin la voit (pour le lien personnel du message)
+    origin: str = Field(max_length=200, pattern=r"^https?://[A-Za-z0-9.\-:\[\]]+$")
+    modele: str | None = Field(default=None, max_length=1500)  # aperçu d'un modèle pas encore enregistré

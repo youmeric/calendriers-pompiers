@@ -258,7 +258,7 @@
         ${avatar(p)}
         <span class="person-main">
           <span class="person-name">${escapeHtml(p.nom)}</span>
-          <span class="person-sub">${p.telephone ? `<a href="${telHref(p.telephone)}">${escapeHtml(p.telephone)}</a>` : `<span class="hint-inline">pas de téléphone</span>`}${tags ? ` <span class="assign-tags">${tags}</span>` : ` <span class="free-tag">libre</span>`}</span>
+          <span class="person-sub">${p.telephone ? `<a href="${telHref(p.telephone)}">${escapeHtml(p.telephone)}</a>` : `<span class="hint-inline">pas de téléphone</span>`}${p.acces_envoye_le ? ` <span class="sent-tag" title="Code envoyé par WhatsApp le ${new Date(p.acces_envoye_le).toLocaleString("fr-FR")}">📲</span>` : ""}${tags ? ` <span class="assign-tags">${tags}</span>` : ` <span class="free-tag">libre</span>`}</span>
         </span>
         <span class="person-actions">
           <button class="icon-btn key-btn" type="button" data-action="access" title="Code d'accès personnel" aria-label="Code d'accès de ${escapeHtml(p.nom)}"><svg class="ico" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4" /><path d="M11 12l9-9M17 6l3 3M15 8l2 2" /></svg></button>
@@ -636,6 +636,210 @@
     } catch (err) {
       showToast(err.message, true);
     }
+  });
+
+  // ---- Envoi groupé des accès par le bot WhatsApp ---------------------------------------------
+
+  const sendDialog = $("send-dialog");
+  const send = { picked: new Set(), running: false, stop: false, results: new Map(), settings: null, previewTimer: null };
+  const hasPhone = (p) => String(p.telephone || "").replace(/\D/g, "").length >= 8;
+  const sentLabel = (iso) => new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+
+  async function refreshBotState() {
+    const el = $("send-bot-state");
+    el.className = "bot-state";
+    el.textContent = "…";
+    try {
+      const st = await api("/api/admin/whatsapp/etat");
+      el.classList.add(st.pret ? "ok" : "ko");
+      el.textContent = st.pret ? "● Bot connecté" : `● ${st.erreur}`;
+      if (!st.configure) $("send-bot").open = true;
+      send.ready = st.pret;
+    } catch (err) {
+      el.classList.add("ko");
+      el.textContent = `● ${err.message}`;
+      send.ready = false;
+    }
+    updateSendButton();
+  }
+
+  function renderSendList() {
+    const rows = state.personnes.map((p) => {
+      const ok = hasPhone(p);
+      const res = send.results.get(p.id);
+      const where = assignmentsOf(p.id).map((a) => `${a.role === "responsable" ? "★ " : ""}${a.sector.code}`).join(" ");
+      const status = res ? (res.ok ? `<span class="send-ok">✓ envoyé</span>` : res.pending ? `<span class="hint">⏳ envoi…</span>` : `<span class="send-ko" title="${escapeHtml(res.error)}">✕ ${escapeHtml(res.error)}</span>`)
+        : p.acces_envoye_le ? `<span class="hint">envoyé le ${sentLabel(p.acces_envoye_le)}</span>` : `<span class="hint">jamais envoyé</span>`;
+      return `<li class="${ok ? "" : "disabled"}"><label>
+          <input type="checkbox" data-id="${p.id}" ${send.picked.has(p.id) ? "checked" : ""} ${ok && !send.running ? "" : "disabled"} />
+          <span class="send-who"><b>${escapeHtml(p.nom)}</b><small>${ok ? escapeHtml(p.telephone) : "pas de téléphone"}${where ? ` · ${escapeHtml(where)}` : ""}</small></span>
+          <span class="send-status">${status}</span></label></li>`;
+    });
+    $("send-list").innerHTML = rows.join("") || `<li class="hint">Ajoutez d'abord des personnes.</li>`;
+    updateSendButton();
+  }
+
+  function updateSendButton() {
+    const n = send.picked.size;
+    $("send-go").disabled = send.running ? false : !n || !send.ready;
+    $("send-go").textContent = send.running ? "Arrêter" : `Envoyer à ${n} personne${n > 1 ? "s" : ""}`;
+    $("send-go").classList.toggle("danger", send.running);
+  }
+
+  function pick(kind) {
+    const eligible = state.personnes.filter(hasPhone);
+    const pickers = {
+      all: () => eligible,
+      none: () => [],
+      never: () => eligible.filter((p) => !p.acces_envoye_le),
+      lead: () => eligible.filter((p) => assignmentsOf(p.id).some((a) => a.role === "responsable")),
+    };
+    send.picked = new Set(pickers[kind]().map((p) => p.id));
+    renderSendList();
+    schedulePreview();
+  }
+
+  function schedulePreview() {
+    clearTimeout(send.previewTimer);
+    send.previewTimer = setTimeout(renderPreview, 250);
+  }
+
+  async function renderPreview() {
+    const first = state.personnes.find((p) => send.picked.has(p.id)) || state.personnes.find(hasPhone) || state.personnes[0];
+    if (!first) { $("send-preview").textContent = ""; return; }
+    $("send-preview-who").textContent = `Aperçu pour ${first.nom}`;
+    try {
+      const r = await api("/api/admin/whatsapp/apercu", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ personne_id: first.id, origin: location.origin, modele: $("send-template").value }),
+      });
+      $("send-preview").innerHTML = waFormat(r.message);
+    } catch (err) {
+      $("send-preview").textContent = err.message;
+    }
+  }
+
+  /** Mise en forme façon WhatsApp : *gras*, _italique_, liens. */
+  function waFormat(text) {
+    return escapeHtml(text)
+      .replace(/\*([^*\n]+)\*/g, "<b>$1</b>")
+      .replace(/(^|\s)_([^_\n]+)_/g, "$1<i>$2</i>")
+      .replace(/(https?:\/\/[^\s<]+)/g, '<span class="wa-link">$1</span>')
+      .replace(/\n/g, "<br>");
+  }
+
+  async function saveSendSettings(extra) {
+    send.settings = await api("/api/admin/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(extra) });
+    return send.settings;
+  }
+
+  $("send-open").addEventListener("click", async () => {
+    send.results.clear();
+    send.picked = new Set(state.personnes.filter((p) => hasPhone(p) && !p.acces_envoye_le).map((p) => p.id));
+    $("send-error").hidden = true;
+    $("send-progress").hidden = true;
+    $("send-sector").innerHTML = `<option value="">Un secteur…</option>${state.sectors.map((s) => `<option value="${s.id}">${escapeHtml(s.code)} ${escapeHtml(s.nom)}</option>`).join("")}`;
+    sendDialog.showModal();
+    renderSendList();
+    try {
+      send.settings = await api("/api/admin/settings");
+      $("send-url").value = send.settings.whatsapp_bot_url;
+      $("send-key").value = "";
+      $("send-key").placeholder = send.settings.whatsapp_bot_key_set ? "réglée (laisser vide pour la garder)" : "aucune";
+      $("send-template").value = send.settings.whatsapp_message;
+      $("send-bot").open = !send.settings.whatsapp_bot_url;
+    } catch (err) { showToast(err.message, true); }
+    renderPreview();
+    refreshBotState();
+  });
+
+  $("send-list").addEventListener("change", (e) => {
+    const id = Number(e.target.dataset.id);
+    if (!id) return;
+    if (e.target.checked) send.picked.add(id); else send.picked.delete(id);
+    updateSendButton();
+    schedulePreview();
+  });
+  sendDialog.querySelector(".send-quick").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-pick]");
+    if (b && !send.running) pick(b.dataset.pick);
+  });
+  $("send-sector").addEventListener("change", () => {
+    const sid = Number($("send-sector").value);
+    if (!sid || send.running) return;
+    send.picked = new Set(team(sid).membres.map((m) => person(m.personne_id)).filter((p) => p && hasPhone(p)).map((p) => p.id));
+    $("send-sector").value = "";
+    renderSendList();
+    schedulePreview();
+  });
+  $("send-template").addEventListener("input", schedulePreview);
+  $("send-reset").addEventListener("click", () => {
+    if (send.settings) $("send-template").value = send.settings.whatsapp_message_defaut;
+    schedulePreview();
+  });
+  $("send-test").addEventListener("click", async () => {
+    const body = { whatsapp_bot_url: $("send-url").value.trim() };
+    if ($("send-key").value) body.whatsapp_bot_key = $("send-key").value;
+    try {
+      await saveSendSettings(body);
+      $("send-key").value = "";
+      $("send-key").placeholder = send.settings.whatsapp_bot_key_set ? "réglée (laisser vide pour la garder)" : "aucune";
+      flashSaved();
+    } catch (err) { showToast(err.status === 422 ? "Adresse du bot invalide (ex. http://192.168.1.20:3000)" : err.message, true); return; }
+    await refreshBotState();
+  });
+  $("send-close").addEventListener("click", () => { send.stop = true; sendDialog.close(); });
+  sendDialog.addEventListener("cancel", (e) => { if (send.running) e.preventDefault(); });
+
+  $("send-go").addEventListener("click", async () => {
+    if (send.running) { send.stop = true; return; }
+    const ids = state.personnes.filter((p) => send.picked.has(p.id)).map((p) => p.id);
+    if (!ids.length) return;
+    if (!confirm(`Envoyer son code d'accès par WhatsApp à ${ids.length} personne${ids.length > 1 ? "s" : ""} ?`)) return;
+    try {
+      if ($("send-template").value.trim() !== (send.settings ? send.settings.whatsapp_message.trim() : "")) {
+        await saveSendSettings({ whatsapp_message: $("send-template").value });
+      }
+    } catch (err) { showToast(err.message, true); return; }
+    send.running = true;
+    send.stop = false;
+    $("send-error").hidden = true;
+    let ok = 0;
+    let ko = 0;
+    for (const [i, id] of ids.entries()) {
+      if (send.stop) break;
+      const p = person(id);
+      send.results.set(id, { pending: true });
+      $("send-progress").hidden = false;
+      $("send-progress").textContent = `Envoi ${i + 1} / ${ids.length} : ${p.nom}…`;
+      renderSendList();
+      try {
+        const r = await fetchJSON("/api/admin/whatsapp/envoyer", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ personne_id: id, origin: location.origin }),
+        });
+        p.acces_envoye_le = r.acces_envoye_le;
+        send.results.set(id, { ok: true });
+        send.picked.delete(id);
+        ok++;
+      } catch (err) {
+        send.results.set(id, { ok: false, error: err.message });
+        ko++;
+        if (err.status === 401) { state.onUnauthorized(); break; }
+        // bot arrêté ou injoignable : inutile de continuer la liste
+        if ([409, 503, 504].includes(err.status)) {
+          $("send-error").textContent = err.message;
+          $("send-error").hidden = false;
+          break;
+        }
+      }
+      // un petit temps entre deux messages, comme un envoi à la main (WhatsApp n'aime pas les rafales)
+      if (i < ids.length - 1 && !send.stop) await new Promise((r) => setTimeout(r, 800 + Math.random() * 1200));
+    }
+    send.running = false;
+    $("send-progress").textContent = `${ok} message${ok > 1 ? "s" : ""} envoyé${ok > 1 ? "s" : ""}${ko ? ` · ${ko} échec${ko > 1 ? "s" : ""}` : ""}${send.stop ? " · arrêté" : ""}.`;
+    renderSendList();
+    renderPeople();
   });
 
   // ---- Interface avec admin.js ------------------------------------------------------------

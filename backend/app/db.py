@@ -192,6 +192,8 @@ def init_db() -> None:
         pcols = {row[1] for row in conn.execute("PRAGMA table_info(personnes)")}
         if "code" not in pcols:
             conn.execute("ALTER TABLE personnes ADD COLUMN code TEXT")
+        if "acces_envoye_le" not in pcols:  # dernier envoi du code par le bot WhatsApp
+            conn.execute("ALTER TABLE personnes ADD COLUMN acces_envoye_le TEXT")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS personnes_code ON personnes (code)")
         for (pid,) in conn.execute("SELECT id FROM personnes WHERE code IS NULL OR code = ''").fetchall():
             conn.execute("UPDATE personnes SET code = ? WHERE id = ?", (_new_code(conn), pid))
@@ -453,16 +455,31 @@ ROLES = ("responsable", "equipier")
 STATUTS = ("a_faire", "en_cours", "termine")
 
 
+_PERS_COLS = "id, nom, telephone, code, acces_envoye_le"
+
+
+def _personne(r) -> dict:
+    return {"id": r[0], "nom": r[1], "telephone": r[2], "code": r[3], "acces_envoye_le": r[4]}
+
+
 def list_personnes() -> list[dict]:
     with get_conn() as conn:
-        rows = conn.execute("SELECT id, nom, telephone, code FROM personnes ORDER BY nom COLLATE NOCASE, id").fetchall()
-    return [{"id": r[0], "nom": r[1], "telephone": r[2], "code": r[3]} for r in rows]
+        rows = conn.execute(f"SELECT {_PERS_COLS} FROM personnes ORDER BY nom COLLATE NOCASE, id").fetchall()
+    return [_personne(r) for r in rows]
 
 
 def get_personne(personne_id: int) -> dict | None:
     with get_conn() as conn:
-        r = conn.execute("SELECT id, nom, telephone, code FROM personnes WHERE id = ?", (personne_id,)).fetchone()
-    return {"id": r[0], "nom": r[1], "telephone": r[2], "code": r[3]} if r else None
+        r = conn.execute(f"SELECT {_PERS_COLS} FROM personnes WHERE id = ?", (personne_id,)).fetchone()
+    return _personne(r) if r else None
+
+
+def mark_access_sent(personne_id: int) -> str:
+    now = _now()
+    with get_conn() as conn:
+        conn.execute("UPDATE personnes SET acces_envoye_le = ? WHERE id = ?", (now, personne_id))
+        conn.commit()
+    return now
 
 
 def get_personne_by_code(code: str) -> dict | None:
@@ -476,7 +493,8 @@ def get_personne_by_code(code: str) -> dict | None:
 
 def regenerate_code(personne_id: int) -> dict | None:
     with get_conn() as conn:
-        cur = conn.execute("UPDATE personnes SET code = ? WHERE id = ?", (_new_code(conn), personne_id))
+        # nouveau code : l'ancien envoi ne vaut plus
+        cur = conn.execute("UPDATE personnes SET code = ?, acces_envoye_le = NULL WHERE id = ?", (_new_code(conn), personne_id))
         conn.commit()
     return get_personne(personne_id) if cur.rowcount else None
 
