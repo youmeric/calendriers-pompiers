@@ -258,7 +258,7 @@
         ${avatar(p)}
         <span class="person-main">
           <span class="person-name">${escapeHtml(p.nom)}</span>
-          <span class="person-sub">${p.telephone ? `<a href="${telHref(p.telephone)}">${escapeHtml(p.telephone)}</a>` : `<span class="hint-inline">pas de téléphone</span>`}${p.acces_envoye_le ? ` <span class="sent-tag" title="Code envoyé par WhatsApp le ${new Date(p.acces_envoye_le).toLocaleString("fr-FR")}">📲</span>` : ""}${tags ? ` <span class="assign-tags">${tags}</span>` : ` <span class="free-tag">libre</span>`}</span>
+          <span class="person-sub">${p.telephone ? `<a href="${telHref(p.telephone)}">${escapeHtml(p.telephone)}</a>` : `<span class="hint-inline">pas de téléphone</span>`}${p.acces_envoye_le ? ` <span class="sent-tag" title="Code envoyé par WhatsApp le ${new Date(p.acces_envoye_le).toLocaleString("fr-FR")}">📲</span>` : ""}${p.superviseur ? ` <span class="super-tag" title="Superviseur : accès à toutes les tournées">👁 superviseur</span>` : ""}${tags ? ` <span class="assign-tags">${tags}</span>` : p.superviseur ? "" : ` <span class="free-tag">libre</span>`}</span>
         </span>
         <span class="person-actions">
           <button class="icon-btn key-btn" type="button" data-action="access" title="Code d'accès personnel" aria-label="Code d'accès de ${escapeHtml(p.nom)}"><svg class="ico" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4" /><path d="M11 12l9-9M17 6l3 3M15 8l2 2" /></svg></button>
@@ -592,8 +592,9 @@
 
   function accessMessage(p) {
     const first = p.nom.split(" ")[0];
-    const where = assignmentsOf(p.id).map((a) => `${a.sector.code} ${a.sector.nom}${a.role === "responsable" ? " (responsable)" : ""}`).join(", ");
-    return `Bonjour ${first}, voici ton accès personnel pour la ${window.Common.tourneeTitle(state.annee).toLowerCase()} des pompiers de Courzieu${where ? `, secteur ${where}` : ""} :\n${accessLink(p)}\n\nOu bien saisis le code ${formatCode(p.code)} dans « Espace équipe ». Il est personnel : ne le transfère pas.`;
+    const where = p.superviseur ? "toutes les tournées (superviseur)"
+      : assignmentsOf(p.id).map((a) => `${a.sector.code} ${a.sector.nom}${a.role === "responsable" ? " (responsable)" : ""}`).join(", ");
+    return `Bonjour ${first}, voici ton accès personnel pour la ${window.Common.tourneeTitle(state.annee).toLowerCase()} des pompiers de Courzieu${where ? `, ${p.superviseur ? "" : "secteur "}${where}` : ""} :\n${accessLink(p)}\n\nOu bien saisis le code ${formatCode(p.code)} dans « Espace équipe ». Il est personnel : ne le transfère pas.`;
   }
 
   function fillAccess() {
@@ -605,6 +606,7 @@
     $("access-link").value = accessLink(p);
     $("access-whatsapp").href = `https://wa.me/${intlPhone(p.telephone)}?text=${msg}`;
     $("access-sms").href = `sms:${(p.telephone || "").replace(/[^0-9+]/g, "")}?&body=${msg}`;
+    $("access-super").checked = !!p.superviseur;
   }
 
   function openAccess(p) {
@@ -621,6 +623,24 @@
     } catch {
       $("access-link").select();
       showToast("Sélectionnez puis copiez le lien.");
+    }
+  });
+
+  $("access-super").addEventListener("change", async () => {
+    const p = person(accessFor);
+    const value = $("access-super").checked;
+    try {
+      const updated = await api(`/api/admin/personnes/${p.id}/superviseur`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ superviseur: value }),
+      });
+      Object.assign(p, updated);
+      fillAccess();
+      renderPeople();
+      flashSaved();
+      showToast(value ? `${p.nom} voit maintenant toutes les tournées dans l'espace équipe.` : `${p.nom} ne voit plus que ses secteurs.`);
+    } catch (err) {
+      $("access-super").checked = !value;
+      showToast(err.message, true);
     }
   });
 

@@ -138,6 +138,7 @@
     const saved = Number(storage.get(SECTOR_KEY, ""));
     const pick = T.sectors.find((x) => x.sector.id === saved)
       || T.sectors.find((x) => x.role === "responsable") || T.sectors[0];
+    await loadOverview();
     await selectSector(pick);
     showTab(currentTab());
     if (!T.offline) {
@@ -251,6 +252,7 @@
     }
     if (readQueue().length) await flushQueue();
     try {
+      await loadOverview();
       await loadTracking();
       renderAll();
     } catch (err) {
@@ -317,7 +319,8 @@
     T.snap = readSnapshot() || T.snap;
     if (T.snap) {
       const r = T.snap.raw;
-      T.raw = { suivi: { ...r.suivi, ...T.raw.suivi }, caisse: { ...r.caisse, ...T.raw.caisse }, equipe: { ...r.equipe, ...T.raw.equipe } };
+      T.raw = { suivi: { ...r.suivi, ...T.raw.suivi }, caisse: { ...r.caisse, ...T.raw.caisse }, equipe: { ...r.equipe, ...T.raw.equipe },
+        apercu: T.raw.apercu || r.apercu };
     }
     showToast("Pas de réseau : vous pouvez continuer, tout sera envoyé au retour du réseau.");
     renderTop();
@@ -486,7 +489,7 @@
     const s = T.cur.sector;
     const tr = T.tr;
     const e = tr.equipe || s.equipe;
-    const roleLabel = { admin: "Administrateur", responsable: "Responsable du secteur", equipier: "Équipier" }[tr.role] || "";
+    const roleLabel = { admin: "Administrateur", responsable: "Responsable du secteur", superviseur: "Superviseur", equipier: "Équipier" }[tr.role] || "";
     const c = counts();
     const done = c.fait + c.absent + c.refus;
     const pct = c.total ? Math.round((done / c.total) * 100) : 0;
@@ -545,7 +548,36 @@
       html += `<div class="r-card r-prev"><span class="r-label">Tournée ${prev[0].annee}</span>
         <p>${plural(pc.fait, "faite")} · ${plural(pc.absent, "absent")} · ${pc.refus} refus${tr.full && nb ? ` · ${plural(nb, "don")}, ${euros(total)}` : ""}</p></div>`;
     }
+    html = html.replace('<div class="r-card r-when">', `${overviewCard()}<div class="r-card r-when">`);
     $("v-accueil").innerHTML = html;
+  }
+
+  /** Superviseur (ou admin) : toutes les tournées d'un coup d'œil, un appui ouvre le secteur. */
+  function overviewCard() {
+    const ov = T.raw.apercu;
+    if (!(T.me.superviseur || T.me.admin) || !ov || !ov.secteurs.length) return "";
+    const tot = ov.secteurs.reduce((a, x) => ({ ad: a.ad + x.adresses, done: a.done + x.fait + x.absent + x.refus, eur: a.eur + (x.dons ? x.dons.total : 0) }), { ad: 0, done: 0, eur: 0 });
+    const rows = ov.secteurs.map((x) => {
+      const done = x.fait + x.absent + x.refus;
+      const pct = x.adresses ? Math.round((done / x.adresses) * 100) : 0;
+      const cur = T.cur && T.cur.sector.id === x.sector_id;
+      return `<button type="button" class="ov-row${cur ? " current" : ""}" data-sector="${x.sector_id}">
+        <b class="sector-code" style="background:${x.couleur}">${escapeHtml(x.secteur.split(" ")[0])}</b>
+        <span class="ov-main"><span class="ov-name">${escapeHtml(x.secteur.split(" ").slice(1).join(" "))}</span>
+          <span class="ov-bar"><i style="width:${pct}%;background:${x.couleur}"></i></span>
+          <small>${done}/${x.adresses} · ${C.STATUT_LABEL[x.statut] || ""}${x.responsables.length ? ` · ${escapeHtml(x.responsables.join(", "))}` : ""}</small></span>
+        <span class="ov-num"><b>${pct} %</b>${x.dons ? `<small>${euros(x.dons.total)}</small>` : ""}</span></button>`;
+    }).join("");
+    return `<div class="r-card ov-card"><div class="ov-head"><span class="r-label">Toutes les tournées</span>
+        <small>${tot.done}/${tot.ad} maisons${ov.secteurs.some((x) => x.dons) ? ` · ${euros(tot.eur)}` : ""}</small></div>${rows}</div>`;
+  }
+
+  async function loadOverview() {
+    if (T.offline || !(T.me.superviseur || T.me.admin)) return;
+    try {
+      T.raw.apercu = await fetchJSON("/api/equipe/apercu");
+      saveSnapshot();
+    } catch { /* garde le dernier aperçu */ }
   }
 
   const FILTERS = [
@@ -1562,7 +1594,7 @@
   function openSectors() {
     $("ts-list").innerHTML = T.sectors.map((x) => `<button type="button" class="ts-item${x === T.cur ? " active" : ""}" data-id="${x.sector.id}">
         <b class="sector-code" style="background:${x.sector.couleur}">${escapeHtml(x.sector.code)}</b>
-        <span><b>${escapeHtml(x.sector.nom)}</b><small>${escapeHtml(x.communeNom)}${x.role === "responsable" ? " · responsable" : ""}</small></span></button>`).join("");
+        <span><b>${escapeHtml(x.sector.nom)}</b><small>${escapeHtml(x.communeNom)}${x.role === "responsable" ? " · responsable" : x.role === "superviseur" ? " · supervision" : ""}</small></span></button>`).join("");
     $("t-sectors").showModal();
   }
   $("t-sector").addEventListener("click", () => { if (T.sectors.length > 1) openSectors(); });
@@ -1599,6 +1631,12 @@
     if (action === "prepare-map") prepareMap(e.target.closest("[data-action]"));
     const rm = e.target.closest("[data-remove]");
     if (rm) { removeMember(Number(rm.dataset.remove)); return; }
+    const ov = e.target.closest(".ov-row[data-sector]");
+    if (ov) {
+      const item = T.sectors.find((x) => x.sector.id === Number(ov.dataset.sector));
+      if (item && item !== T.cur) { await selectSector(item); showToast(`Secteur ${item.sector.code} ${item.sector.nom}`); }
+      return;
+    }
     const gotoTab = e.target.closest("[data-goto]");
     if (gotoTab) goTab(gotoTab.dataset.goto);
     const av = e.target.closest("[data-avancement]");

@@ -1959,3 +1959,21 @@ body.terrain .toast { bottom: calc(80px + env(safe-area-inset-bottom)); }
 }
 .fiscal #fx-secteurs td:nth-child(n+4), .fiscal #fx-secteurs th:nth-child(n+4) { white-space: nowrap; }
 .fiscal #fx-registre td:nth-child(-n+2), .fiscal #fx-registre td:nth-child(n+5) { white-space: nowrap; }
+
+/* ---- Superviseur : toutes les tournées ---- */
+.ov-card { display: flex; flex-direction: column; gap: 4px; }
+.ov-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.ov-head small { color: var(--muted); font-size: 12px; }
+.ov-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 6px; border: none; border-top: 1px solid var(--border); background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.ov-row.current { background: var(--surface-2); border-radius: 10px; }
+.ov-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ov-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-main small { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-bar { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.ov-bar i { display: block; height: 100%; border-radius: 999px; }
+.ov-num { display: flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; }
+.ov-num small { color: var(--muted); font-size: 12px; }
+.super-tag { font-size: 11px; font-weight: 700; color: #5b21b6; background: #ede9fe; border-radius: 6px; padding: 0 6px; }
+.access-super { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; font-size: 13px; line-height: 1.4; cursor: pointer; }
+.access-super input { margin-top: 3px; }
+.ov-row.current .ov-bar { background: #fff; }

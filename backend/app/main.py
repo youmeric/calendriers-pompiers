@@ -26,7 +26,8 @@ from . import whatsapp
 from .models import (AvancementIn, CodeIn, ConfirmIn, DonIn, DonStatutIn, EquipeIn, ExclusionIn, LoginIn, PersonneIn,
                      PersonnesIn, RemiseIn, RenfortIn, SectorsIn, SettingsIn, StatusUpdate, SumupRetourIn,
                      NoteIn, SignalementIn, SignalementActionIn, EnvoiAccesIn, RoleIn, CompteIn,
-                     CompteUpdateIn, MotDePasseIn, DepotIn, ClotureIn, ReouvertureIn)
+                     CompteUpdateIn, MotDePasseIn, DepotIn, ClotureIn, ReouvertureIn,
+                     SuperviseurIn)
 from .resume import build_resume, commune_voie_counts
 
 DATA_DIR = Path(os.environ.get("SECTORS_DATA_DIR") or (Path(__file__).resolve().parent / "data"))
@@ -305,13 +306,17 @@ def _sector_of_address(slug: str, address_id: str) -> int:
 
 
 def _role(request: Request, sector_id: int) -> str | None:
-    """Rôle de la personne connectée sur un secteur : admin, responsable, equipier ou None."""
+    """Rôle de la personne connectée sur un secteur : admin, responsable, superviseur, equipier ou None.
+    Un superviseur a les droits d'un responsable sur toutes les tournées, sans figurer dans les équipes."""
     if auth.is_admin(request):
         return "admin"
     person = auth.team_member(request)
     if not person:
         return None
-    return db.memberships(person["id"]).get(sector_id)
+    role = db.memberships(person["id"]).get(sector_id)
+    if person.get("superviseur") and role != "responsable":
+        return "superviseur"
+    return role
 
 
 def _require_role(request: Request, sector_id: int) -> str:
@@ -374,8 +379,12 @@ def team_me(request: Request):
     if not admin and not person:
         raise HTTPException(status_code=401, detail="Non connecté")
     roles = {} if admin else db.memberships(person["id"])
+    superviseur = bool(person and person.get("superviseur"))
+    if superviseur:
+        roles = {sid: roles.get(sid) if roles.get(sid) == "responsable" else "superviseur" for sid in sorted(db.existing_sector_ids())}
     return {
         "admin": admin,
+        "superviseur": superviseur,
         "personne": {"id": person["id"], "nom": person["nom"]} if person else None,
         "secteurs": [{"sector_id": sid, "role": role} for sid, role in roles.items()],
         "suivi": _suivi_enabled(),
@@ -418,7 +427,7 @@ def team_sector_tracking(sector_id: int, request: Request):
     _, _, by_sector = _sector_map(slug)
     ids = {a["id"] for a in by_sector.get(sector_id, [])}
     statuses = {aid: st for aid, st in db.get_statuses(slug).items() if aid in ids and st.get("status")}
-    full = role in ("admin", "responsable")
+    full = role in ("admin", "responsable", "superviseur")
     person = auth.team_member(request)
     me = person["id"] if person else None
     out = {"slug": slug, "role": role, "statuses": statuses, "dons": None, "totaux": None, "precedent": {},
@@ -503,6 +512,39 @@ def team_delete_don(don_id: int, request: Request, motif: str = ""):
     _log(request, "don.suppression", f"{_sector_label(don['sector_id'])} · {_addr_label(don['commune_slug'], don['address_id'])}",
          f"n° {don['numero']} · {_euros(don['montant_cents'])} {MODE_FR[don['mode']]} (saisi par {don['personne_nom']}) · motif : {motif}")
     return {"ok": True}
+
+
+@app.get("/api/equipe/apercu")
+def team_overview(request: Request):
+    """Toutes les tournées d'un coup d'œil (superviseur ou administrateur) : avancement et dons par secteur."""
+    person = auth.team_member(request)
+    if not auth.is_admin(request) and not (person and person.get("superviseur")):
+        if not person:
+            raise HTTPException(status_code=401, detail="Connectez-vous avec votre code d'équipe")
+        raise HTTPException(status_code=403, detail="Réservé aux superviseurs")
+    labels = _sector_labels()
+    teams = db.get_teams()
+    people = {p["id"]: p["nom"] for p in db.list_personnes()}
+    dons_on = _suivi_enabled() and _flag("dons_actifs", False)
+    dons = db.list_dons(_annee()) if dons_on else []
+    out = []
+    for slug in db.sector_communes():
+        _, sectors, by_sector = _sector_map(slug)
+        statuses = db.get_statuses(slug) if _suivi_enabled() else {}
+        for s in sectors:
+            ids = [a["id"] for a in by_sector.get(s["id"], [])]
+            c = {"fait": 0, "absent": 0, "refus": 0}
+            for aid in ids:
+                st = (statuses.get(aid) or {}).get("status")
+                if st in c:
+                    c[st] += 1
+            team = teams.get(s["id"]) or {"date": "", "creneau": "", "statut": "a_faire", "membres": []}
+            mine = [d for d in dons if d["sector_id"] == s["id"] and d["statut"] == "ok"]
+            out.append({"sector_id": s["id"], "slug": slug, "secteur": labels.get(s["id"], s["nom"]), "couleur": s["couleur"],
+                        "adresses": len(ids), **c, "statut": team["statut"], "date": team["date"], "creneau": team["creneau"],
+                        "responsables": [people[m["personne_id"]] for m in team["membres"] if m["role"] == "responsable" and m["personne_id"] in people],
+                        "dons": ({"nb": len(mine), "total": sum(d["montant_cents"] for d in mine) / 100} if dons_on else None)})
+    return {"secteurs": out, "suivi": _suivi_enabled()}
 
 
 # ---- Notes et signalements des équipes ------------------------------------------------
@@ -1100,13 +1142,15 @@ def _access_message(p: dict, origin: str, template: str | None) -> str:
     labels = _sector_labels()
     where = [f"{labels[sid]}{' (responsable)' if role == 'responsable' else ''}"
              for sid, role in db.memberships(p["id"]).items() if sid in labels]
+
     code = p["code"] or ""
     annee = _annee()
     return whatsapp.render(template or db.get_setting("whatsapp_message", "") or whatsapp.DEFAULT_MESSAGE, {
         "prenom": p["nom"].split(" ")[0], "nom": p["nom"], "code": f"{code[:4]}-{code[4:]}",
         "lien": f"{origin}/equipe#acces={code}", "annee": str(annee),
         "tournee": f"tournée des calendriers {annee}",
-        "secteurs": f", secteur {', '.join(where)}" if where else "",
+        "secteurs": ", avec accès à toutes les tournées (superviseur)" if p.get("superviseur")
+        else f", secteur {', '.join(where)}" if where else "",
     })
 
 
@@ -1198,6 +1242,18 @@ def admin_delete_personne(personne_id: int, request: Request):
         raise HTTPException(status_code=404, detail="Personne inconnue")
     _log(request, "personne.suppression", old["nom"])
     return {"ok": True}
+
+
+@app.put("/api/admin/personnes/{personne_id}/superviseur", dependencies=[Depends(auth.require("equipes"))])
+def admin_set_supervisor(personne_id: int, payload: SuperviseurIn, request: Request):
+    old = db.get_personne(personne_id)
+    if not old:
+        raise HTTPException(status_code=404, detail="Personne inconnue")
+    person = db.set_superviseur(personne_id, payload.superviseur)
+    if old["superviseur"] != person["superviseur"]:
+        _log(request, "personne.superviseur", person["nom"],
+             "devient superviseur : accès à toutes les tournées" if person["superviseur"] else "n'est plus superviseur")
+    return person
 
 
 @app.post("/api/admin/personnes/{personne_id}/code", dependencies=[Depends(auth.require("equipes"))])

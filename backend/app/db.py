@@ -265,6 +265,8 @@ def init_db() -> None:
             conn.execute("ALTER TABLE personnes ADD COLUMN code TEXT")
         if "acces_envoye_le" not in pcols:  # dernier envoi du code par le bot WhatsApp
             conn.execute("ALTER TABLE personnes ADD COLUMN acces_envoye_le TEXT")
+        if "superviseur" not in pcols:  # accès à toutes les tournées sans être dans une équipe
+            conn.execute("ALTER TABLE personnes ADD COLUMN superviseur INTEGER NOT NULL DEFAULT 0")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS personnes_code ON personnes (code)")
         for (pid,) in conn.execute("SELECT id FROM personnes WHERE code IS NULL OR code = ''").fetchall():
             conn.execute("UPDATE personnes SET code = ? WHERE id = ?", (_new_code(conn), pid))
@@ -544,11 +546,18 @@ ROLES = ("responsable", "equipier")
 STATUTS = ("a_faire", "en_cours", "termine")
 
 
-_PERS_COLS = "id, nom, telephone, code, acces_envoye_le"
+_PERS_COLS = "id, nom, telephone, code, acces_envoye_le, superviseur"
 
 
 def _personne(r) -> dict:
-    return {"id": r[0], "nom": r[1], "telephone": r[2], "code": r[3], "acces_envoye_le": r[4]}
+    return {"id": r[0], "nom": r[1], "telephone": r[2], "code": r[3], "acces_envoye_le": r[4], "superviseur": bool(r[5])}
+
+
+def set_superviseur(personne_id: int, value: bool) -> dict | None:
+    with get_conn() as conn:
+        conn.execute("UPDATE personnes SET superviseur = ? WHERE id = ?", (int(value), personne_id))
+        conn.commit()
+    return get_personne(personne_id)
 
 
 def list_personnes() -> list[dict]:

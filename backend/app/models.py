@@ -383,3 +383,7 @@ class ClotureIn(BaseModel):
 
 class ReouvertureIn(BaseModel):
     motif: str = Field(min_length=5, max_length=300)
+
+
+class SuperviseurIn(BaseModel):
+    superviseur: bool

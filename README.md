@@ -198,6 +198,13 @@ sur Courzieu et Brussieu (69690).
     (et sur la carte en direct) : **« Ajouter la maison »** (elle entre dans
     le secteur, avec son hameau) ou **« Exclure l'adresse »** corrigent
     aussitôt les secteurs et les comptes.
+  - **Superviseur** (onglet Équipes → 🔑 d'une personne → case « 👁
+    Superviseur ») : la personne voit **toutes les tournées** dans son espace
+    équipe, avec les droits d'un responsable sur chacune (maisons, dons, caisse,
+    avancement), **sans être placée dans une équipe** ni affichée comme
+    référente. Son accueil commence par « Toutes les tournées » : avancement et
+    dons de chaque secteur, un appui ouvre le secteur. Décocher la case la
+    ramène à ses seuls secteurs.
   - L'appli installée sur l'écran d'accueil ouvre directement l'espace
     équipe pour une personne connectée ; dans le navigateur, le plan public
     garde un bouton « Mon espace équipe ».
