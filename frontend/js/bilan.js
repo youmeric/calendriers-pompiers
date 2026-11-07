@@ -197,7 +197,7 @@
         <td>${euros(r.especes)}${ecart(r.ecart_especes)}</td>
         <td>${euros(r.cheques)} <small>${r.nb_cheques} chèque${r.nb_cheques > 1 ? "s" : ""}</small>${ecart(r.ecart_cheques)}</td>
         <td>${r.confirme_le ? `<span class="confirmed">✓ ${new Date(r.confirme_le).toLocaleDateString("fr-FR")}</span>` : `<button type="button" class="btn small primary" data-act="confirm">Confirmer</button>`}</td>
-        <td><button type="button" class="icon-btn danger" data-act="delete" title="Supprimer cette remise" aria-label="Supprimer cette remise">✕</button></td>
+        <td><button type="button" class="icon-btn danger" data-act="delete" title="Annuler cette remise (elle reste visible dans le dossier comptable)" aria-label="Annuler cette remise">✕</button></td>
       </tr>`).join("")}</tbody></table>`
       : `<p class="hint">Aucune remise pour l'instant.</p>`;
   }
@@ -210,7 +210,7 @@
       if (btn.dataset.act === "confirm") {
         await api(`/api/admin/remises/${id}/confirmer`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirme: true }) });
       } else {
-        if (!confirm("Supprimer cette remise (saisie par erreur) ?")) return;
+        if (!confirm("Annuler cette remise (saisie par erreur) ? Elle ne comptera plus mais restera visible dans le dossier comptable.")) return;
         await api(`/api/admin/remises/${id}`, { method: "DELETE" });
       }
       flashSaved();
@@ -364,7 +364,7 @@
       show("#bilan-view .bilan-settings", can("reglages"));
       show("#bilan-view .bilan-main", can("suivi", "dons"));
       show("#sig-section", can("suivi"));
-      show("#bilan-export, #bilan-print, #bilan-view .caisse-section, #bilan-attente", can("dons"));
+      show("#bilan-export, #bilan-print, #bilan-fiscal, #bilan-view .caisse-section, #bilan-attente", can("dons"));
       await loadCodes();
       await render();
     },

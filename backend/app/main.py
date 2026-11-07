@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import hashlib
 import json
 import asyncio
@@ -12,6 +13,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse
@@ -24,7 +26,7 @@ from . import whatsapp
 from .models import (AvancementIn, CodeIn, ConfirmIn, DonIn, DonStatutIn, EquipeIn, ExclusionIn, LoginIn, PersonneIn,
                      PersonnesIn, RemiseIn, RenfortIn, SectorsIn, SettingsIn, StatusUpdate, SumupRetourIn,
                      NoteIn, SignalementIn, SignalementActionIn, EnvoiAccesIn, RoleIn, CompteIn,
-                     CompteUpdateIn, MotDePasseIn)
+                     CompteUpdateIn, MotDePasseIn, DepotIn, ClotureIn, ReouvertureIn)
 from .resume import build_resume, commune_voie_counts
 
 DATA_DIR = Path(os.environ.get("SECTORS_DATA_DIR") or (Path(__file__).resolve().parent / "data"))
@@ -220,6 +222,12 @@ def _public_teams() -> dict[int, dict]:
 
 def _annee() -> int:
     return db.current_annee()
+
+
+def _check_open(annee: int) -> None:
+    """Les montants d'une année clôturée ne bougent plus (dossier comptable figé)."""
+    if db.active_cloture(annee):
+        raise HTTPException(status_code=409, detail=f"La tournée {annee} est clôturée : les dons et la caisse ne peuvent plus être modifiés")
 
 
 @app.get("/api/communes")
@@ -437,6 +445,7 @@ def team_add_don(payload: DonIn, request: Request):
         raise HTTPException(status_code=403, detail="L'enregistrement des dons est désactivé")
     sector_id = _sector_of_address(payload.slug, payload.address_id)
     _require_role(request, sector_id)
+    _check_open(_annee())
     person = auth.team_member(request)
     use_sumup = payload.mode == "cb" and payload.sumup
     if use_sumup and not _sumup_config():
@@ -463,8 +472,9 @@ def team_add_don(payload: DonIn, request: Request):
 
 def _don_for_edit(request: Request, don_id: int) -> dict:
     don = db.get_don(don_id)
-    if not don:
+    if not don or don["annule_le"]:
         raise HTTPException(status_code=404, detail="Don inconnu")
+    _check_open(don["annee"])
     role = _require_role(request, don["sector_id"])
     person = auth.team_member(request)
     if role == "equipier" and not (person and don["personne_id"] == person["id"]):
@@ -485,11 +495,13 @@ def team_don_statut(don_id: int, payload: DonStatutIn, request: Request):
 
 
 @app.delete("/api/equipe/dons/{don_id}")
-def team_delete_don(don_id: int, request: Request):
+def team_delete_don(don_id: int, request: Request, motif: str = ""):
+    """Annule un don (erreur de saisie…) : il ne compte plus mais reste dans le registre, avec le motif."""
     don = _don_for_edit(request, don_id)
-    db.delete_don(don["id"])
+    motif = " ".join(motif.split())[:200] or "annulé sans motif"
+    db.cancel_don(don["id"], _actor(request)[0], motif)
     _log(request, "don.suppression", f"{_sector_label(don['sector_id'])} · {_addr_label(don['commune_slug'], don['address_id'])}",
-         f"{_euros(don['montant_cents'])} {MODE_FR[don['mode']]} (saisi par {don['personne_nom']})")
+         f"n° {don['numero']} · {_euros(don['montant_cents'])} {MODE_FR[don['mode']]} (saisi par {don['personne_nom']}) · motif : {motif}")
     return {"ok": True}
 
 
@@ -693,7 +705,8 @@ def team_cash(sector_id: int, request: Request):
 def team_cash_handover(sector_id: int, payload: RemiseIn, request: Request):
     if not (_suivi_enabled() and _flag("dons_actifs", False)):
         raise HTTPException(status_code=403, detail="L'enregistrement des dons est désactivé")
-    role = _require_lead(request, sector_id)
+    _require_lead(request, sector_id)
+    _check_open(_annee())
     person = auth.team_member(request)
     before = _caisse(sector_id)["reste"]  # ce qui restait à remettre avant cette remise
     db.add_remise({
@@ -713,8 +726,9 @@ def team_cash_handover(sector_id: int, payload: RemiseIn, request: Request):
 @app.post("/api/admin/remises/{remise_id}/confirmer", dependencies=[Depends(auth.require("dons"))])
 def admin_confirm_handover(remise_id: int, payload: ConfirmIn, request: Request):
     r = db.get_remise(remise_id)
-    if not r:
+    if not r or r["annule_le"]:
         raise HTTPException(status_code=404, detail="Remise inconnue")
+    _check_open(r["annee"])
     _log(request, "remise.confirmee" if payload.confirme else "remise.annulee", _sector_label(r["sector_id"]),
          f"{_euros(r['especes_cents'] + r['cheques_cents'])} remis par {r['remis_par']} à {r['recu_par']}")
     return db.confirm_remise(remise_id, payload.confirme)
@@ -723,9 +737,10 @@ def admin_confirm_handover(remise_id: int, payload: ConfirmIn, request: Request)
 @app.delete("/api/admin/remises/{remise_id}", dependencies=[Depends(auth.require("dons"))])
 def admin_delete_handover(remise_id: int, request: Request):
     r = db.get_remise(remise_id)
-    if not r:
+    if not r or r["annule_le"]:
         raise HTTPException(status_code=404, detail="Remise inconnue")
-    db.delete_remise(remise_id)
+    _check_open(r["annee"])
+    db.cancel_remise(remise_id, _actor(request)[0])
     _log(request, "remise.suppression", _sector_label(r["sector_id"]),
          f"{_euros(r['especes_cents'])} espèces + {_euros(r['cheques_cents'])} chèques, remis par {r['remis_par']} à {r['recu_par']}")
     return {"ok": True}
@@ -890,6 +905,7 @@ SETTING_PERMS = {  # qui peut changer quoi
     "equipes_public": ("reglages", "equipes"), "telephones_public": ("reglages", "equipes"),
     "whatsapp_bot_url": ("reglages", "equipes"), "whatsapp_bot_key": ("reglages", "equipes"),
     "whatsapp_message": ("reglages", "equipes"),
+    "asso_nom": ("reglages", "dons"), "asso_adresse": ("reglages", "dons"), "asso_siret": ("reglages", "dons"),
 }
 
 
@@ -904,10 +920,14 @@ def admin_get_settings(request: Request):
             # la clé du bot n'est jamais renvoyée : on dit seulement si elle est réglée
             "whatsapp_bot_key_set": bool(db.get_setting("whatsapp_bot_key", "")),
             "whatsapp_message": db.get_setting("whatsapp_message", "") or whatsapp.DEFAULT_MESSAGE,
-            "whatsapp_message_defaut": whatsapp.DEFAULT_MESSAGE}
+            "whatsapp_message_defaut": whatsapp.DEFAULT_MESSAGE,
+            "asso_nom": db.get_setting("asso_nom", "") or "", "asso_adresse": db.get_setting("asso_adresse", "") or "",
+            "asso_siret": db.get_setting("asso_siret", "") or ""}
     if auth.has_perm(request, "reglages"):
         return full
     out = {k: full[k] for k in PUBLIC_SETTINGS}
+    if auth.has_perm(request, "dons"):
+        out.update({k: v for k, v in full.items() if k.startswith("asso_")})
     if auth.has_perm(request, "equipes"):
         out.update({k: v for k, v in full.items() if k.startswith("whatsapp_")})
     return out
@@ -928,7 +948,7 @@ def admin_save_settings(payload: SettingsIn, request: Request):
         value = getattr(payload, key)
         if value is not None:
             db.set_setting(key, "1" if value else "0")
-    for key in ("sumup_affiliate_key", "sumup_app_id", "whatsapp_bot_url", "whatsapp_bot_key"):
+    for key in ("sumup_affiliate_key", "sumup_app_id", "whatsapp_bot_url", "whatsapp_bot_key", "asso_nom", "asso_adresse", "asso_siret"):
         value = getattr(payload, key)
         if value is not None:
             db.set_setting(key, value)
@@ -1270,6 +1290,283 @@ def admin_year_report(annee: int | None = None):
     }
 
 
+# ---- Dossier comptable et fiscal ----------------------------------------------------
+
+try:
+    PARIS = ZoneInfo("Europe/Paris")
+except Exception:  # noqa: BLE001 (base des fuseaux absente : heure d'hiver par défaut)
+    PARIS = dt.timezone(dt.timedelta(hours=1))
+
+STATUT_DON_FR = {"ok": "Encaissé", "attente": "En attente (SumUp)", "echec": "Paiement refusé"}
+
+
+def _local(iso: str) -> dt.datetime:
+    return dt.datetime.fromisoformat(iso).astimezone(PARIS)
+
+
+def _registre(annee: int) -> list[dict]:
+    """Tous les dons de l'année, annulés compris, dans l'ordre des numéros."""
+    labels = _sector_labels()
+    addr: dict[str, str] = {}
+    communes: dict[str, str] = {}
+    for slug in db.sector_communes():
+        data = _load_commune(slug)
+        communes[slug] = data["commune"]["nom"]
+        for a in _addresses(slug, data):
+            addr[f"{slug}/{a['id']}"] = a["label"]
+    out = []
+    for d in sorted(db.list_dons(annee, avec_annules=True), key=lambda x: x["numero"] or 0):
+        out.append({
+            "numero": d["numero"], "id": d["id"], "created_at": d["created_at"], "sector_id": d["sector_id"],
+            "secteur": labels.get(d["sector_id"], f"secteur {d['sector_id']} (supprimé)"),
+            "commune": communes.get(d["commune_slug"], d["commune_slug"]),
+            "adresse": addr.get(f"{d['commune_slug']}/{d['address_id']}", d["address_id"]),
+            "mode": d["mode"], "montant": d["montant_cents"] / 100, "reference": d["tx_code"],
+            "statut": "annule" if d["annule_le"] else d["statut"], "saisi_par": d["personne_nom"],
+            "annule_le": d["annule_le"], "annule_par": d["annule_par"], "motif": d["motif"], "note": d["note"],
+        })
+    return out
+
+
+def _csv(rows: list[list]) -> bytes:
+    """CSV pour Excel (point-virgule, BOM) ; pas de formule cachée dans une cellule."""
+    def cell(v) -> str:
+        v = "" if v is None else str(v)
+        if v[:1] in ("=", "+", "-", "@") and not re.fullmatch(r"-?[0-9]+(,[0-9]+)?", v):
+            v = "'" + v
+        return '"' + v.replace('"', '""') + '"'
+    return ("﻿" + "\r\n".join(";".join(cell(c) for c in r) for r in rows) + "\r\n").encode("utf-8")
+
+
+def _money(v: float) -> str:
+    return f"{v:.2f}".replace(".", ",")
+
+
+def _registre_csv(annee: int) -> bytes:
+    rows = [["N°", "Date", "Heure", "Secteur", "Commune", "Adresse", "Moyen", "Montant (€)", "Référence (n° chèque / transaction)",
+             "Statut", "Saisi par", "Annulé le", "Annulé par", "Motif d'annulation", "Note"]]
+    for r in _registre(annee):
+        t = _local(r["created_at"])
+        a = _local(r["annule_le"]).strftime("%d/%m/%Y %H:%M") if r["annule_le"] else ""
+        rows.append([r["numero"], t.strftime("%d/%m/%Y"), t.strftime("%H:%M:%S"), r["secteur"], r["commune"], r["adresse"],
+                     MODE_FR[r["mode"]], _money(r["montant"]), r["reference"],
+                     "Annulé" if r["statut"] == "annule" else STATUT_DON_FR[r["statut"]], r["saisi_par"], a,
+                     r["annule_par"] or "", r["motif"] or "", r["note"]])
+    return _csv(rows)
+
+
+def _fiscal(annee: int) -> dict:
+    reg = _registre(annee)
+    ok = [r for r in reg if r["statut"] == "ok"]
+    cents = lambda rows: round(sum(r["montant"] for r in rows) * 100)  # noqa: E731
+    by_mode = {m: [r for r in ok if r["mode"] == m] for m in ("especes", "cheque", "cb")}
+    total = cents(ok)
+    synth = {
+        "total": total / 100, "nb": len(ok), "moyen": (total / len(ok) / 100) if ok else 0,
+        **{m: cents(rows) / 100 for m, rows in by_mode.items()}, **{f"nb_{m}": len(rows) for m, rows in by_mode.items()},
+        "attente": {"nb": sum(1 for r in reg if r["statut"] == "attente"), "total": cents([r for r in reg if r["statut"] == "attente"]) / 100},
+        "echecs": {"nb": sum(1 for r in reg if r["statut"] == "echec"), "total": cents([r for r in reg if r["statut"] == "echec"]) / 100},
+        "annules": {"nb": sum(1 for r in reg if r["statut"] == "annule"), "total": cents([r for r in reg if r["statut"] == "annule"]) / 100},
+    }
+    # journal de caisse : un jour par ligne (heure de Paris)
+    days: dict[str, dict] = {}
+    for r in ok:
+        k = _local(r["created_at"]).date().isoformat()
+        day = days.setdefault(k, {"date": k, "nb": 0, "especes": 0, "cheque": 0, "cb": 0})
+        day["nb"] += 1
+        day[r["mode"]] += round(r["montant"] * 100)
+    cumul = 0
+    jours = []
+    for k in sorted(days):
+        d = days[k]
+        t = d["especes"] + d["cheque"] + d["cb"]
+        cumul += t
+        jours.append({"date": k, "nb": d["nb"], "especes": d["especes"] / 100, "cheque": d["cheque"] / 100, "cb": d["cb"] / 100,
+                      "total": t / 100, "cumul": cumul / 100})
+    # par secteur et par collecteur
+    remises_all = db.list_remises(annee, avec_annulees=True)
+    remises = [r for r in remises_all if not r["annule_le"]]
+    teams = db.get_teams()
+    people = {p["id"]: p["nom"] for p in db.list_personnes()}
+    labels = _sector_labels()
+    maisons = {"adresses": 0, "fait": 0, "absent": 0, "refus": 0}
+    secteurs = []
+    for slug in db.sector_communes():
+        _, sectors, by_sector = _sector_map(slug)
+        statuses = db.get_statuses(slug, annee)
+        for sct in sectors:
+            ids = [a["id"] for a in by_sector.get(sct["id"], [])]
+            c = {"fait": 0, "absent": 0, "refus": 0}
+            for aid in ids:
+                st = (statuses.get(aid) or {}).get("status")
+                if st in c:
+                    c[st] += 1
+            maisons["adresses"] += len(ids)
+            for k in c:
+                maisons[k] += c[k]
+            mine = [r for r in ok if r["sector_id"] == sct["id"]]
+            rem = [r for r in remises if r["sector_id"] == sct["id"]]
+            esp, chq = cents([r for r in mine if r["mode"] == "especes"]), cents([r for r in mine if r["mode"] == "cheque"])
+            r_esp, r_chq = sum(r["especes_cents"] for r in rem), sum(r["cheques_cents"] for r in rem)
+            secteurs.append({
+                "sector_id": sct["id"], "secteur": labels.get(sct["id"], sct["nom"]),
+                "responsables": [people[m["personne_id"]] for m in (teams.get(sct["id"]) or {"membres": []})["membres"]
+                                 if m["role"] == "responsable" and m["personne_id"] in people],
+                "adresses": len(ids), **c, "nb": len(mine), "especes": esp / 100, "cheque": chq / 100,
+                "cb": cents([r for r in mine if r["mode"] == "cb"]) / 100, "total": cents(mine) / 100,
+                "remis_especes": r_esp / 100, "remis_cheques": r_chq / 100,
+                "reste": (esp + chq - r_esp - r_chq) / 100,
+            })
+    # dons rattachés à un secteur supprimé depuis : comptés à part pour que les totaux tombent juste
+    known = {x["sector_id"] for x in secteurs}
+    orphans = [r for r in ok if r["sector_id"] not in known]
+    if orphans:
+        secteurs.append({"sector_id": None, "secteur": "Secteurs supprimés depuis", "responsables": [], "adresses": 0,
+                         "fait": 0, "absent": 0, "refus": 0, "nb": len(orphans),
+                         **{m: cents([r for r in orphans if r["mode"] == m]) / 100 for m in ("especes", "cheque", "cb")},
+                         "total": cents(orphans) / 100, "remis_especes": 0, "remis_cheques": 0,
+                         "reste": cents([r for r in orphans if r["mode"] != "cb"]) / 100})
+    coll: dict[str, dict] = {}
+    for r in ok:
+        c = coll.setdefault(r["saisi_par"] or "?", {"nom": r["saisi_par"] or "?", "nb": 0, "especes": 0, "cheque": 0, "cb": 0})
+        c["nb"] += 1
+        c[r["mode"]] += round(r["montant"] * 100)
+    collecteurs = sorted(({**c, "especes": c["especes"] / 100, "cheque": c["cheque"] / 100, "cb": c["cb"] / 100,
+                           "total": (c["especes"] + c["cheque"] + c["cb"]) / 100} for c in coll.values()),
+                         key=lambda c: -c["total"])
+    # chaîne des espèces et chèques : terrain -> trésorier -> banque
+    depots_all = db.list_depots(annee, avec_annules=True)
+    depots = [d for d in depots_all if not d["annule_le"]]
+    enc = {"especes": synth["especes"], "cheques": synth["cheque"], "nb_cheques": synth["nb_cheque"]}
+    sumr = lambda rows, k: sum(x[k] for x in rows) / 100  # noqa: E731
+    remis = {"especes": sumr(remises, "especes_cents"), "cheques": sumr(remises, "cheques_cents"),
+             "nb_cheques": sum(r["nb_cheques"] for r in remises)}
+    conf = [r for r in remises if r["confirme_le"]]
+    remis_conf = {"especes": sumr(conf, "especes_cents"), "cheques": sumr(conf, "cheques_cents"), "nb_cheques": sum(r["nb_cheques"] for r in conf)}
+    depose = {"especes": sumr(depots, "especes_cents"), "cheques": sumr(depots, "cheques_cents"), "nb_cheques": sum(d["nb_cheques"] for d in depots)}
+    diff = lambda a, b: {k: round(a[k] - b[k], 2) for k in a}  # noqa: E731
+    ok_dates = [r["created_at"] for r in ok]
+    asso = {k: db.get_setting(f"asso_{k}", "") or "" for k in ("nom", "adresse", "siret")}
+    return {
+        "annee": annee, "annees": sorted(set(db.list_annees()) | {annee}, reverse=True), "edite_le": db._now(),
+        "association": asso, "cloture": db.active_cloture(annee), "clotures": db.list_clotures(annee),
+        "periode": {"debut": min(ok_dates) if ok_dates else None, "fin": max(ok_dates) if ok_dates else None},
+        "synthese": synth, "maisons": maisons, "jours": jours, "secteurs": secteurs, "collecteurs": collecteurs,
+        "chaine": {"encaisse": enc, "remis": remis, "remis_confirme": remis_conf, "depose": depose,
+                   "reste_terrain": diff(enc, remis), "reste_tresorier": diff(remis, depose),
+                   "carte": {"total": synth["cb"], "nb": synth["nb_cb"]}},
+        "remises": [{**{k: r[k] for k in ("id", "remis_par", "recu_par", "note", "created_at", "confirme_le", "annule_le", "annule_par", "nb_cheques")},
+                     "secteur": labels.get(r["sector_id"], ""), "especes": r["especes_cents"] / 100, "cheques": r["cheques_cents"] / 100,
+                     "ecart_especes": (r["especes_cents"] - r["attendu_especes_cents"]) / 100,
+                     "ecart_cheques": (r["cheques_cents"] - r["attendu_cheques_cents"]) / 100} for r in remises_all],
+        "depots": [{**{k: d[k] for k in ("id", "date_depot", "nb_cheques", "reference", "note", "par", "created_at", "annule_le", "annule_par")},
+                    "especes": d["especes_cents"] / 100, "cheques": d["cheques_cents"] / 100} for d in depots_all],
+        "registre": reg,
+    }
+
+
+@app.get("/api/admin/fiscal", dependencies=[Depends(auth.require("dons"))])
+def admin_fiscal(annee: int | None = None):
+    return _fiscal(annee or _annee())
+
+
+def _download(content: bytes, filename: str, media: str = "text/csv; charset=utf-8") -> Response:
+    return Response(content, media_type=media, headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@app.get("/api/admin/fiscal/registre.csv", dependencies=[Depends(auth.require("dons"))])
+def admin_fiscal_register_csv(request: Request, annee: int | None = None):
+    annee = annee or _annee()
+    _log(request, "export", f"registre des dons {annee}")
+    return _download(_registre_csv(annee), f"registre-dons-{annee}.csv")
+
+
+@app.get("/api/admin/fiscal/caisse.csv", dependencies=[Depends(auth.require("dons"))])
+def admin_fiscal_cash_csv(annee: int | None = None):
+    f = _fiscal(annee or _annee())
+    rows = [["Date", "Nombre de dons", "Espèces (€)", "Chèques (€)", "Carte (€)", "Total du jour (€)", "Cumul (€)"]]
+    for j in f["jours"]:
+        rows.append([dt.date.fromisoformat(j["date"]).strftime("%d/%m/%Y"), j["nb"], _money(j["especes"]), _money(j["cheque"]),
+                     _money(j["cb"]), _money(j["total"]), _money(j["cumul"])])
+    s_ = f["synthese"]
+    rows.append(["Total", s_["nb"], _money(s_["especes"]), _money(s_["cheque"]), _money(s_["cb"]), _money(s_["total"]), ""])
+    return _download(_csv(rows), f"journal-caisse-{f['annee']}.csv")
+
+
+@app.post("/api/admin/depots", dependencies=[Depends(auth.require("dons"))])
+def admin_add_deposit(payload: DepotIn, request: Request):
+    annee = payload.annee or _annee()
+    _check_open(annee)
+    if payload.especes == 0 and payload.cheques == 0:
+        raise HTTPException(status_code=422, detail="Indiquez le montant déposé")
+    d = db.add_depot({"annee": annee, "date_depot": payload.date_depot.isoformat(), "especes_cents": round(payload.especes * 100),
+                      "cheques_cents": round(payload.cheques * 100), "nb_cheques": payload.nb_cheques,
+                      "reference": payload.reference, "note": payload.note, "par": _actor(request)[0]})
+    _log(request, "depot.ajout", f"dépôt du {payload.date_depot.strftime('%d/%m/%Y')}",
+         f"{_euros(d['especes_cents'])} espèces + {_euros(d['cheques_cents'])} chèques ({d['nb_cheques']})"
+         f"{' · bordereau ' + d['reference'] if d['reference'] else ''}")
+    return d
+
+
+@app.delete("/api/admin/depots/{depot_id}", dependencies=[Depends(auth.require("dons"))])
+def admin_cancel_deposit(depot_id: int, request: Request):
+    d = db.get_depot(depot_id)
+    if not d or d["annule_le"]:
+        raise HTTPException(status_code=404, detail="Dépôt inconnu")
+    _check_open(d["annee"])
+    db.cancel_depot(depot_id, _actor(request)[0])
+    _log(request, "depot.annulation", f"dépôt du {dt.date.fromisoformat(d['date_depot']).strftime('%d/%m/%Y')}",
+         f"{_euros(d['especes_cents'])} espèces + {_euros(d['cheques_cents'])} chèques")
+    return {"ok": True}
+
+
+def _clotures_dir() -> str:
+    path = os.path.join(db.backup_dir(), "clotures")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+@app.post("/api/admin/fiscal/cloture", dependencies=[Depends(auth.require("dons"))])
+def admin_close_year(payload: ClotureIn, request: Request):
+    """Clôture : les montants de l'année sont figés et le registre est archivé avec son empreinte SHA-256."""
+    if db.active_cloture(payload.annee):
+        raise HTTPException(status_code=409, detail="Cette année est déjà clôturée")
+    pending = [r for r in _registre(payload.annee) if r["statut"] == "attente"]
+    if pending:
+        raise HTTPException(status_code=409, detail=f"{len(pending)} paiement(s) carte encore en attente : validez-les ou annulez-les d'abord")
+    content = _registre_csv(payload.annee)
+    digest = hashlib.sha256(content).hexdigest()
+    name = f"registre-dons-{payload.annee}-cloture-{dt.datetime.now(PARIS).strftime('%Y%m%d-%H%M%S')}.csv"
+    with open(os.path.join(_clotures_dir(), name), "wb") as fh:
+        fh.write(content)
+    s_ = _fiscal(payload.annee)["synthese"]
+    c = db.add_cloture({"annee": payload.annee, "par": _actor(request)[0], "nb_dons": s_["nb"],
+                        "total_cents": round(s_["total"] * 100), "sha256": digest, "fichier": name})
+    db.make_backup("cloture")
+    _log(request, "cloture", f"tournée {payload.annee}", f"{s_['nb']} dons · {_euros(c['total_cents'])} · empreinte {digest[:16]}…")
+    return c
+
+
+@app.post("/api/admin/fiscal/cloture/{cloture_id}/reouvrir", dependencies=[Depends(auth.require("comptes"))])
+def admin_reopen_year(cloture_id: int, payload: ReouvertureIn, request: Request):
+    c = next((x for x in db.list_clotures() if x["id"] == cloture_id), None)
+    if not c or c["rouvert_le"]:
+        raise HTTPException(status_code=404, detail="Clôture inconnue ou déjà rouverte")
+    db.reopen_cloture(cloture_id, _actor(request)[0], " ".join(payload.motif.split()))
+    _log(request, "cloture.reouverture", f"tournée {c['annee']}", f"motif : {payload.motif}")
+    return {"ok": True}
+
+
+@app.get("/api/admin/fiscal/archive/{cloture_id}", dependencies=[Depends(auth.require("dons"))])
+def admin_close_archive(cloture_id: int):
+    c = next((x for x in db.list_clotures() if x["id"] == cloture_id), None)
+    path = os.path.join(_clotures_dir(), c["fichier"]) if c else ""
+    if not c or not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Archive introuvable")
+    with open(path, "rb") as fh:
+        return _download(fh.read(), c["fichier"])
+
+
 @app.get("/api/admin/dons", dependencies=[Depends(auth.require("dons"))])
 def admin_dons():
     labels = {}
@@ -1399,6 +1696,11 @@ def plan_page():
 @app.get("/bilan.html", include_in_schema=False)
 def year_report_page():
     return _page("bilan.html")
+
+
+@app.get("/fiscal.html", include_in_schema=False)
+def fiscal_page():
+    return _page("fiscal.html")
 
 
 if FRONTEND_DIR.exists():

@@ -8,16 +8,18 @@
   const ACTIONS = {
     connexion: "Connexion", "connexion.echec": "Connexion refusée",
     statut: "Statut d'une maison", note: "Note", signalement: "Signalement", "signalement.traite": "Signalement traité",
-    "don.ajout": "Don enregistré", "don.statut": "Paiement validé / refusé", "don.suppression": "Don supprimé",
+    "don.ajout": "Don enregistré", "don.statut": "Paiement validé / refusé", "don.suppression": "Don annulé",
     "remise.declaree": "Remise de caisse", "remise.confirmee": "Remise confirmée", "remise.annulee": "Confirmation annulée",
-    "remise.suppression": "Remise supprimée",
+    "remise.suppression": "Remise annulée",
     avancement: "Avancement du secteur", "equipe.modif": "Équipe modifiée", "equipe.renfort": "Équipier ajouté (terrain)",
     "equipe.retrait": "Équipier retiré (terrain)",
     "personne.ajout": "Personne ajoutée", "personne.modif": "Personne modifiée", "personne.suppression": "Personne supprimée",
     "personne.code": "Nouveau code d'accès", "acces.envoi": "Code envoyé par WhatsApp",
     "secteurs.enregistres": "Secteurs enregistrés", "adresses.exclues": "Adresses exclues", "adresses.reintegrees": "Adresses réintégrées",
     "statuts.remise_a_zero": "Statuts remis à zéro",
-    reglages: "Réglages", sauvegarde: "Sauvegarde",
+    reglages: "Réglages", sauvegarde: "Sauvegarde", export: "Export",
+    "depot.ajout": "Dépôt en banque", "depot.annulation": "Dépôt annulé",
+    cloture: "Clôture de l'année", "cloture.reouverture": "Réouverture de l'année",
     "compte.ajout": "Compte créé", "compte.modif": "Compte modifié", "compte.suppression": "Compte supprimé",
     "compte.mot_de_passe": "Mot de passe changé",
     "role.ajout": "Rôle créé", "role.modif": "Rôle modifié", "role.suppression": "Rôle supprimé",
@@ -172,7 +174,7 @@
 
   function row(x) {
     const label = ACTIONS[x.action] || x.action;
-    const cls = /suppression|echec|retrait|annulee|remise_a_zero/.test(x.action) ? " warn" : "";
+    const cls = /suppression|echec|retrait|annulee|annulation|reouverture|remise_a_zero/.test(x.action) ? " warn" : "";
     return `<tr class="${cls}"><td>${when(x.at)}</td>
       <td>${escapeHtml(x.qui)} <small class="src src-${escapeHtml(x.source)}">${SOURCE[x.source] || escapeHtml(x.source)}</small></td>
       <td>${escapeHtml(label)}</td><td>${escapeHtml(x.objet)}</td><td>${escapeHtml(x.details)}</td></tr>`;

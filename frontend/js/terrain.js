@@ -598,7 +598,7 @@
           <small>${label(d.address_id)} · ${escapeHtml(d.personne_nom)}${d.tx_code ? ` · ${escapeHtml(d.tx_code)}` : ""}</small></span>
         ${editable ? `<span class="don-line-actions">
           ${d.statut === "attente" ? `<button type="button" class="btn small" data-act="ok">Payé</button><button type="button" class="btn small" data-act="echec">Non payé</button>` : ""}
-          <button type="button" class="icon-btn danger" data-act="delete" aria-label="Supprimer ce don">✕</button></span>` : ""}
+          <button type="button" class="icon-btn danger" data-act="delete" aria-label="Annuler ce don">✕</button></span>` : ""}
       </div>`;
     let html = "";
     if (tr.full) {
@@ -1246,6 +1246,7 @@
     $("don-save").hidden = sumup && !donCtx.manual;
     $("don-manual-toggle").hidden = !sumup || donCtx.manual;
     $("don-cb-manual").hidden = !(cb && manual);
+    $("don-cheque-box").hidden = selectedMode() !== "cheque";
     const standalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
     $("don-ios-hint").hidden = !(sumup && !donCtx.manual && IS_IOS && standalone);
   }
@@ -1255,7 +1256,7 @@
     $("don-existing").innerHTML = list.map((d) => `<div class="don-line" data-id="${d.id}">
         <span><b>${d.montant !== undefined ? euros(d.montant) : "Don"}</b> ${MODE_LABEL[d.mode]} ${d.pending ? "📴 à envoyer" : d.statut === "ok" ? "✓" : d.statut === "attente" ? "⏳ en attente" : "✕ échoué"}<small>${escapeHtml(d.personne_nom)}</small></span>
         ${T.tr.full || d.mine ? `<span class="don-line-actions">${d.statut === "attente" ? `<button type="button" class="btn small" data-act="ok">Payé</button><button type="button" class="btn small" data-act="echec">Non payé</button>` : ""}
-          <button type="button" class="icon-btn danger" data-act="delete" aria-label="Supprimer ce don">✕</button></span>` : ""}
+          <button type="button" class="icon-btn danger" data-act="delete" aria-label="Annuler ce don">✕</button></span>` : ""}
       </div>`).join("");
   }
 
@@ -1264,6 +1265,7 @@
     $("don-address").textContent = a.label;
     $("don-montant").value = "";
     $("don-tx").value = "";
+    $("don-cheque").value = "";
     $("don-error").hidden = true;
     donDialog.querySelector('input[name="mode"][value="especes"]').checked = true;
     renderExistingDons();
@@ -1282,7 +1284,9 @@
   }
 
   function donBody(sumup) {
-    return { slug: T.cur.slug, address_id: donCtx.a.id, montant: readAmount(), mode: selectedMode(), sumup, tx_code: $("don-tx").value.trim(), client_id: uid() };
+    // référence : n° du chèque, ou n° de transaction SumUp saisi à la main
+    const ref = selectedMode() === "cheque" ? $("don-cheque").value : selectedMode() === "cb" ? $("don-tx").value : "";
+    return { slug: T.cur.slug, address_id: donCtx.a.id, montant: readAmount(), mode: selectedMode(), sumup, tx_code: ref.trim(), client_id: uid() };
   }
 
   function postDon(body) {
@@ -1326,7 +1330,8 @@
       const don = await postDon(body);
       donDialog.close();
       snack(`Don de ${euros(don.montant)} enregistré`, async () => {
-        await fetchJSON(`/api/equipe/dons/${don.id}`, { method: "DELETE" }).catch((err) => showToast(err.message, true));
+        await fetchJSON(`/api/equipe/dons/${don.id}?motif=${encodeURIComponent("annulé juste après la saisie")}`, { method: "DELETE" })
+          .catch((err) => showToast(err.message, true));
         await reload();
       });
       await afterDon(a);
@@ -1380,8 +1385,10 @@
     }
     if (T.offline) throw new Error("Pas de réseau : réessayez quand le réseau sera revenu.");
     if (act === "delete") {
-      if (!confirm("Supprimer ce don ?")) return;
-      await fetchJSON(`/api/equipe/dons/${id}`, { method: "DELETE" });
+      // le don n'est jamais effacé : il reste dans le registre, marqué annulé, avec le motif
+      const motif = prompt("Annuler ce don ? Il restera dans le registre, marqué « annulé ».\nMotif :", "Erreur de saisie");
+      if (motif === null) return;
+      await fetchJSON(`/api/equipe/dons/${id}?motif=${encodeURIComponent(motif || "sans motif")}`, { method: "DELETE" });
     } else {
       const tx = act === "ok" ? (prompt("N° de transaction SumUp (facultatif) :") || "") : "";
       await fetchJSON(`/api/equipe/dons/${id}/statut`, {

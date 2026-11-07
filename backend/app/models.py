@@ -126,6 +126,15 @@ class SettingsIn(BaseModel):
     whatsapp_bot_url: str | None = Field(default=None, max_length=300)
     whatsapp_bot_key: str | None = Field(default=None, max_length=200)
     whatsapp_message: str | None = Field(default=None, max_length=1500)
+    # en-tête du dossier comptable
+    asso_nom: str | None = Field(default=None, max_length=150)
+    asso_adresse: str | None = Field(default=None, max_length=300)
+    asso_siret: str | None = Field(default=None, max_length=60)
+
+    @field_validator("asso_nom", "asso_adresse", "asso_siret")
+    @classmethod
+    def clean_asso(cls, v: str | None) -> str | None:
+        return " ".join(v.split()) if v is not None else v
 
     @field_validator("whatsapp_bot_url")
     @classmethod
@@ -350,3 +359,27 @@ class EnvoiAccesIn(BaseModel):
     # adresse du site telle que l'admin la voit (pour le lien personnel du message)
     origin: str = Field(max_length=200, pattern=r"^https?://[A-Za-z0-9.\-:\[\]]+$")
     modele: str | None = Field(default=None, max_length=1500)  # aperçu d'un modèle pas encore enregistré
+
+
+class DepotIn(BaseModel):
+    """Dépôt en banque des espèces et chèques (bordereau de remise)."""
+    date_depot: date
+    especes: float = Field(ge=0, le=1000000)
+    cheques: float = Field(ge=0, le=1000000)
+    nb_cheques: int = Field(default=0, ge=0, le=5000)
+    reference: str = Field(default="", max_length=80)
+    note: str = Field(default="", max_length=300)
+    annee: int | None = Field(default=None, ge=2000, le=2100)
+
+    @field_validator("reference", "note")
+    @classmethod
+    def strip_text(cls, v: str) -> str:
+        return " ".join(v.split())
+
+
+class ClotureIn(BaseModel):
+    annee: int = Field(ge=2000, le=2100)
+
+
+class ReouvertureIn(BaseModel):
+    motif: str = Field(min_length=5, max_length=300)

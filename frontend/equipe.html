@@ -189,6 +189,9 @@
         <label><input type="radio" name="mode" value="cheque" /><span>Chèque</span></label>
         <label><input type="radio" name="mode" value="cb" /><span>Carte</span></label>
       </div>
+      <div id="don-cheque-box" class="don-cb-manual" hidden>
+        <input id="don-cheque" type="text" maxlength="64" autocomplete="off" inputmode="numeric" placeholder="N° du chèque (facultatif, utile pour la comptabilité)" aria-label="Numéro du chèque" />
+      </div>
       <div id="don-cb-manual" class="don-cb-manual" hidden>
         <input id="don-tx" type="text" maxlength="64" autocomplete="off" placeholder="N° de transaction SumUp (facultatif)" aria-label="Numéro de transaction" />
       </div>

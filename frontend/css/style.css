@@ -1924,3 +1924,38 @@ body.terrain .toast { bottom: calc(80px + env(safe-area-inset-bottom)); }
 .cpt-form .field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; flex: 1; }
 .cpt-form .field input, .cpt-form .field select { padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; font: inherit; font-weight: 400; font-size: 14px; background: #fff; }
 .cpt-form .field-row { display: flex; gap: 10px; }
+
+/* ---- Dossier comptable ---- */
+.fx-tools { max-width: 210mm; margin: 12px auto 0; display: flex; flex-direction: column; gap: 8px; padding: 0 8px; }
+.fx-panel { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
+.fx-panel summary { cursor: pointer; font-weight: 700; }
+.fx-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; align-items: end; margin-top: 8px; }
+.fx-form .field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; font-weight: 600; }
+.fx-form input { padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 14px; font-weight: 400; }
+.fx-hist { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
+.fx-hist li { margin-bottom: 6px; }
+.fx-status { margin-top: 10px; }
+.fx-badge { padding: 8px 12px; border-radius: 10px; font-size: 12px; line-height: 1.5; }
+.fx-badge span { display: block; }
+.fx-badge code { font-size: 10px; word-break: break-all; }
+.fx-badge.closed { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; }
+.fx-badge.open { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+.fx-explain { font-size: 11px; margin: 4px 0 6px; color: var(--muted); }
+.fx-warn { color: #b45309; }
+.report-table td.fx-diff, .report-table tr.fx-diff td { color: #b91c1c; font-weight: 700; }
+.report-table tr.reste td { border-top: 2px solid var(--border-strong); }
+.report-table tr.sub td:first-child { padding-left: 16px; color: var(--muted); }
+.report-table tr.cancelled td { color: var(--muted); text-decoration: line-through; }
+.report-table tr.cancelled td:last-child { text-decoration: none; }
+.report-table tfoot tr.total td { border-top: 2px solid var(--border-strong); border-bottom: none; font-weight: 700; }
+.report-table.fx-small { font-size: 9.5px; }
+.report-table.fx-small td { padding: 3px 4px; }
+.fiscal .report-kpis { grid-template-columns: repeat(5, 1fr); }
+.fx-registre { break-inside: auto; }
+@media (max-width: 720px) { .fiscal .report-kpis { grid-template-columns: repeat(2, 1fr); } }
+@media print {
+  .fx-registre, .fx-registre .report-table tr { break-inside: auto; }
+  .report-table thead { display: table-header-group; }
+}
+.fiscal #fx-secteurs td:nth-child(n+4), .fiscal #fx-secteurs th:nth-child(n+4) { white-space: nowrap; }
+.fiscal #fx-registre td:nth-child(-n+2), .fiscal #fx-registre td:nth-child(n+5) { white-space: nowrap; }

@@ -103,6 +103,33 @@ sur Courzieu et Brussieu (69690).
   - **Bilan** : maisons faites, dons et totaux (espèces / chèques / carte) par
     secteur et au total, export de tous les dons (Excel). Les dons sont classés
     par année de tournée.
+  - **🧾 Dossier comptable** (`/fiscal.html`, bouton dans « Suivi & dons », droit
+    *Dons et caisse*) — de quoi répondre à un contrôle :
+    - **registre des dons inaltérable** : chaque don reçoit un **numéro d'ordre**
+      par année (sans trou ni doublon), horodaté, avec le secteur, l'adresse, le
+      moyen de paiement, la référence (**n° de chèque**, saisi sur le terrain, ou
+      n° de transaction SumUp) et la personne qui l'a saisi. **Plus rien n'est
+      effacé** : une erreur de saisie est *annulée* avec son motif (qui, quand,
+      pourquoi) et reste au registre ; idem pour les remises et les dépôts ;
+    - synthèse (total, espèces, chèques, carte, don moyen, maisons faites),
+      **journal de caisse jour par jour** avec cumul et graphique, détail par
+      secteur et par personne ;
+    - **suivi des espèces et chèques** du terrain à la banque : encaissé → remis
+      au trésorier (confirmé ou non) → **déposé en banque** (dépôts saisis par le
+      trésorier, avec le n° de bordereau) → ce qui reste dehors, en rouge ; la
+      carte à rapprocher du relevé SumUp ;
+    - remises, dépôts, dons annulés et paiements refusés, registre complet ;
+      en-tête avec le nom, l'adresse et le n° RNA/SIRET de l'association ;
+    - **exports Excel** du registre et du journal de caisse, impression / PDF ;
+    - **clôture de l'année** (une fois la tournée et la caisse terminées) : les
+      dons, remises et dépôts de l'année sont **figés**, le registre est archivé
+      sur le serveur (`data/db/sauvegardes/clotures/`) avec son **empreinte
+      SHA-256** (preuve qu'il n'a pas changé depuis ; vérifiable avec
+      `sha256sum`) et une sauvegarde de la base est faite. Refusée tant qu'un
+      paiement carte est en attente. Réouverture possible avec un motif (droit
+      *Comptes*), gardée dans l'historique et le journal.
+    Le site ne délivre pas de reçus fiscaux et ne remplace pas l'avis du
+    trésorier ou du comptable : il fournit les pièces et les chiffres.
   - **🖨 Bilan de l'année** (`/bilan.html`, pour l'assemblée générale) : une page
     A4 à imprimer ou enregistrer en PDF, avec les chiffres clés (total, maisons
     faites, don moyen, moyenne par maison, absents et refus) **comparés à

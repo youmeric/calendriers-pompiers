@@ -121,6 +121,35 @@ def init_db() -> None:
                 statut TEXT NOT NULL DEFAULT 'a_faire',
                 note TEXT NOT NULL DEFAULT ''
             );
+            -- dépôts en banque des espèces et chèques par le trésorier
+            CREATE TABLE IF NOT EXISTS depots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                annee INTEGER NOT NULL,
+                date_depot TEXT NOT NULL,
+                especes_cents INTEGER NOT NULL,
+                cheques_cents INTEGER NOT NULL,
+                nb_cheques INTEGER NOT NULL,
+                reference TEXT NOT NULL DEFAULT '',
+                note TEXT NOT NULL DEFAULT '',
+                par TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                annule_le TEXT,
+                annule_par TEXT
+            );
+            -- clôture d'une année : montants figés, archive du registre et son empreinte
+            CREATE TABLE IF NOT EXISTS clotures (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                annee INTEGER NOT NULL,
+                cloture_le TEXT NOT NULL,
+                par TEXT NOT NULL,
+                nb_dons INTEGER NOT NULL,
+                total_cents INTEGER NOT NULL,
+                sha256 TEXT NOT NULL,
+                fichier TEXT NOT NULL,
+                rouvert_le TEXT,
+                rouvert_par TEXT,
+                motif_reouverture TEXT NOT NULL DEFAULT ''
+            );
             -- comptes de la console d'administration (en plus du compte principal ADMIN_PASSWORD)
             CREATE TABLE IF NOT EXISTS roles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -217,6 +246,19 @@ def init_db() -> None:
         if "client_id" not in dcols:
             conn.execute("ALTER TABLE dons ADD COLUMN client_id TEXT")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS dons_client_id ON dons (client_id) WHERE client_id IS NOT NULL")
+        # registre : numéro d'ordre par année, annulation tracée au lieu d'une suppression
+        for col, decl in (("numero", "INTEGER"), ("annule_le", "TEXT"), ("annule_par", "TEXT"), ("motif", "TEXT NOT NULL DEFAULT ''")):
+            if col not in dcols:
+                conn.execute(f"ALTER TABLE dons ADD COLUMN {col} {decl}")
+        for annee, in conn.execute("SELECT DISTINCT annee FROM dons WHERE numero IS NULL").fetchall():
+            start = conn.execute("SELECT COALESCE(MAX(numero), 0) FROM dons WHERE annee = ?", (annee,)).fetchone()[0]
+            ids = [r[0] for r in conn.execute("SELECT id FROM dons WHERE annee = ? AND numero IS NULL ORDER BY id", (annee,))]
+            conn.executemany("UPDATE dons SET numero = ? WHERE id = ?", [(start + i + 1, did) for i, did in enumerate(ids)])
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS dons_numero ON dons (annee, numero)")
+        rcols = {row[1] for row in conn.execute("PRAGMA table_info(remises)")}
+        for col in ("annule_le", "annule_par"):
+            if col not in rcols:
+                conn.execute(f"ALTER TABLE remises ADD COLUMN {col} TEXT")
         # code d'accès personnel des équipes (ajouté après coup : on complète les anciennes fiches)
         pcols = {row[1] for row in conn.execute("PRAGMA table_info(personnes)")}
         if "code" not in pcols:
@@ -490,7 +532,7 @@ def previous_year(commune_slug: str, annee: int) -> dict[str, dict]:
             out[aid] = {"annee": last, "status": status, "montant_cents": 0, "nb_dons": 0}
         for aid, total, nb in conn.execute(
                 "SELECT address_id, SUM(montant_cents), COUNT(*) FROM dons WHERE commune_slug = ? AND annee = ? "
-                "AND statut = 'ok' GROUP BY address_id", (commune_slug, last)):
+                "AND statut = 'ok' AND annule_le IS NULL GROUP BY address_id", (commune_slug, last)):
             item = out.setdefault(aid, {"annee": last, "status": "fait", "montant_cents": 0, "nb_dons": 0})
             item["montant_cents"], item["nb_dons"] = total, nb
     return out
@@ -762,7 +804,8 @@ def list_annees() -> list[int]:
 MODES = ("especes", "cheque", "cb")
 DON_STATUTS = ("ok", "attente", "echec")
 _DON_COLS = ("id", "annee", "commune_slug", "address_id", "sector_id", "montant_cents", "mode", "statut",
-             "foreign_id", "tx_code", "note", "personne_id", "personne_nom", "created_at", "updated_at")
+             "foreign_id", "tx_code", "note", "personne_id", "personne_nom", "created_at", "updated_at",
+             "numero", "annule_le", "annule_par", "motif")
 
 
 def _don(row) -> dict:
@@ -777,13 +820,15 @@ def add_don(d: dict) -> tuple[dict, bool]:
             r = conn.execute("SELECT id FROM dons WHERE client_id = ?", (d["client_id"],)).fetchone()
             if r:
                 return get_don(r[0]), False
+        # numéro d'ordre suivant de l'année, pris dans la même écriture (pas de trou, pas de doublon)
+        conn.execute("BEGIN IMMEDIATE")
         did = conn.execute(
             "INSERT INTO dons (annee, commune_slug, address_id, sector_id, montant_cents, mode, statut, foreign_id, "
-            "tx_code, note, personne_id, personne_nom, created_at, updated_at, client_id) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "tx_code, note, personne_id, personne_nom, created_at, updated_at, client_id, numero) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, (SELECT COALESCE(MAX(numero), 0) + 1 FROM dons WHERE annee = ?))",
             (d["annee"], d["commune_slug"], d["address_id"], d["sector_id"], d["montant_cents"], d["mode"],
              d["statut"], d.get("foreign_id"), d.get("tx_code", ""), d.get("note", ""), d.get("personne_id"),
-             d.get("personne_nom", ""), now, now, d.get("client_id")),
+             d.get("personne_nom", ""), now, now, d.get("client_id"), d["annee"]),
         ).lastrowid
         conn.commit()
     return get_don(did), True
@@ -801,8 +846,11 @@ def get_don_by_foreign(foreign_id: str) -> dict | None:
     return _don(r) if r else None
 
 
-def list_dons(annee: int, sector_id: int | None = None) -> list[dict]:
+def list_dons(annee: int, sector_id: int | None = None, avec_annules: bool = False) -> list[dict]:
+    """Dons de l'année (sans les dons annulés, sauf pour le registre)."""
     sql = f"SELECT {', '.join(_DON_COLS)} FROM dons WHERE annee = ?"
+    if not avec_annules:
+        sql += " AND annule_le IS NULL"
     args: list = [annee]
     if sector_id is not None:
         sql += " AND sector_id = ?"
@@ -823,16 +871,20 @@ def set_don_statut(don_id: int, statut: str, tx_code: str | None = None) -> dict
     return get_don(don_id)
 
 
-def delete_don(don_id: int) -> None:
+def cancel_don(don_id: int, par: str, motif: str) -> dict | None:
+    """Annule un don : il ne compte plus, mais reste dans le registre (qui, quand, pourquoi)."""
     with get_conn() as conn:
-        conn.execute("DELETE FROM dons WHERE id = ?", (don_id,))
+        conn.execute("UPDATE dons SET annule_le = ?, annule_par = ?, motif = ?, updated_at = ? WHERE id = ? AND annule_le IS NULL",
+                     (_now(), par, motif, _now(), don_id))
         conn.commit()
+    return get_don(don_id)
 
 
 # ---- Remises de caisse ------------------------------------------------------------
 
 _REMISE_COLS = ("id", "annee", "sector_id", "especes_cents", "cheques_cents", "nb_cheques", "attendu_especes_cents",
-                "attendu_cheques_cents", "remis_par", "recu_par", "note", "created_at", "confirme_le")
+                "attendu_cheques_cents", "remis_par", "recu_par", "note", "created_at", "confirme_le",
+                "annule_le", "annule_par")
 
 
 def add_remise(r: dict) -> dict:
@@ -851,8 +903,10 @@ def get_remise(remise_id: int) -> dict | None:
     return dict(zip(_REMISE_COLS, r)) if r else None
 
 
-def list_remises(annee: int, sector_id: int | None = None) -> list[dict]:
+def list_remises(annee: int, sector_id: int | None = None, avec_annulees: bool = False) -> list[dict]:
     sql = f"SELECT {', '.join(_REMISE_COLS)} FROM remises WHERE annee = ?"
+    if not avec_annulees:
+        sql += " AND annule_le IS NULL"
     args: list = [annee]
     if sector_id is not None:
         sql += " AND sector_id = ?"
@@ -869,9 +923,82 @@ def confirm_remise(remise_id: int, confirmed: bool) -> dict | None:
     return get_remise(remise_id)
 
 
-def delete_remise(remise_id: int) -> None:
+def cancel_remise(remise_id: int, par: str) -> None:
+    """Remise saisie par erreur : elle ne compte plus mais reste visible dans le dossier comptable."""
     with get_conn() as conn:
-        conn.execute("DELETE FROM remises WHERE id = ?", (remise_id,))
+        conn.execute("UPDATE remises SET annule_le = ?, annule_par = ? WHERE id = ? AND annule_le IS NULL", (_now(), par, remise_id))
+        conn.commit()
+
+
+# ---- Dépôts en banque --------------------------------------------------------------
+
+_DEPOT_COLS = ("id", "annee", "date_depot", "especes_cents", "cheques_cents", "nb_cheques", "reference", "note", "par",
+               "created_at", "annule_le", "annule_par")
+
+
+def add_depot(d: dict) -> dict:
+    with get_conn() as conn:
+        did = conn.execute(
+            "INSERT INTO depots (annee, date_depot, especes_cents, cheques_cents, nb_cheques, reference, note, par, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (d["annee"], d["date_depot"], d["especes_cents"], d["cheques_cents"], d["nb_cheques"], d["reference"], d["note"],
+             d["par"], _now()),
+        ).lastrowid
+        conn.commit()
+    return get_depot(did)
+
+
+def get_depot(depot_id: int) -> dict | None:
+    with get_conn() as conn:
+        r = conn.execute(f"SELECT {', '.join(_DEPOT_COLS)} FROM depots WHERE id = ?", (depot_id,)).fetchone()
+    return dict(zip(_DEPOT_COLS, r)) if r else None
+
+
+def list_depots(annee: int, avec_annules: bool = False) -> list[dict]:
+    sql = f"SELECT {', '.join(_DEPOT_COLS)} FROM depots WHERE annee = ?" + ("" if avec_annules else " AND annule_le IS NULL")
+    with get_conn() as conn:
+        rows = conn.execute(sql + " ORDER BY date_depot, id", (annee,)).fetchall()
+    return [dict(zip(_DEPOT_COLS, r)) for r in rows]
+
+
+def cancel_depot(depot_id: int, par: str) -> None:
+    with get_conn() as conn:
+        conn.execute("UPDATE depots SET annule_le = ?, annule_par = ? WHERE id = ? AND annule_le IS NULL", (_now(), par, depot_id))
+        conn.commit()
+
+
+# ---- Clôture d'une année --------------------------------------------------------------
+
+_CLOT_COLS = ("id", "annee", "cloture_le", "par", "nb_dons", "total_cents", "sha256", "fichier", "rouvert_le",
+              "rouvert_par", "motif_reouverture")
+
+
+def list_clotures(annee: int | None = None) -> list[dict]:
+    sql = f"SELECT {', '.join(_CLOT_COLS)} FROM clotures" + (" WHERE annee = ?" if annee else "")
+    with get_conn() as conn:
+        rows = conn.execute(sql + " ORDER BY id DESC", (annee,) if annee else ()).fetchall()
+    return [dict(zip(_CLOT_COLS, r)) for r in rows]
+
+
+def active_cloture(annee: int) -> dict | None:
+    """Clôture en vigueur pour l'année (None si l'année est ouverte)."""
+    return next((c for c in list_clotures(annee) if not c["rouvert_le"]), None)
+
+
+def add_cloture(c: dict) -> dict:
+    with get_conn() as conn:
+        cid = conn.execute(
+            "INSERT INTO clotures (annee, cloture_le, par, nb_dons, total_cents, sha256, fichier) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (c["annee"], _now(), c["par"], c["nb_dons"], c["total_cents"], c["sha256"], c["fichier"]),
+        ).lastrowid
+        conn.commit()
+    return next(x for x in list_clotures(c["annee"]) if x["id"] == cid)
+
+
+def reopen_cloture(cloture_id: int, par: str, motif: str) -> None:
+    with get_conn() as conn:
+        conn.execute("UPDATE clotures SET rouvert_le = ?, rouvert_par = ?, motif_reouverture = ? WHERE id = ?",
+                     (_now(), par, motif, cloture_id))
         conn.commit()
 
 

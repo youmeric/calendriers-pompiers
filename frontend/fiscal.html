@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>Dossier comptable — Sapeurs-pompiers de Courzieu</title>
+<link rel="preload" href="/vendor/inter/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="icon" type="image/png" href="/icons/favicon-64.png" />
+<link rel="stylesheet" href="/css/style.css?v=__V__" />
+<style>@page { size: A4 portrait; margin: 12mm; }</style>
+</head>
+<body class="plan report fiscal">
+  <div class="plan-toolbar no-print">
+    <div class="plan-toolbar-main">
+      <label class="plan-choice">
+        <span>Tournée</span>
+        <select id="fx-annee" aria-label="Année de la tournée"></select>
+      </label>
+      <button id="fx-print" class="btn primary" type="button">🖨 Imprimer / PDF</button>
+      <a id="fx-csv" class="btn" href="#">⬇ Registre des dons (Excel)</a>
+      <a id="fx-caisse-csv" class="btn" href="#">⬇ Journal de caisse (Excel)</a>
+      <a class="btn" href="/admin#bilan">← Admin</a>
+    </div>
+  </div>
+
+  <p id="fx-msg" class="report-msg no-print" hidden></p>
+
+  <div id="fx-tools" class="fx-tools no-print" hidden>
+    <details class="fx-panel" id="fx-asso-panel">
+      <summary>Association (en-tête du dossier)</summary>
+      <form id="fx-asso" class="fx-form">
+        <label class="field">Nom<input id="fx-asso-nom" maxlength="150" placeholder="Amicale des sapeurs-pompiers de Courzieu" /></label>
+        <label class="field">Adresse<input id="fx-asso-adresse" maxlength="300" placeholder="Caserne, 69690 Courzieu" /></label>
+        <label class="field">N° RNA / SIRET<input id="fx-asso-siret" maxlength="60" placeholder="W691000000" /></label>
+        <button type="submit" class="btn small primary">Enregistrer</button>
+      </form>
+    </details>
+    <details class="fx-panel" id="fx-depot-panel">
+      <summary>Ajouter un dépôt en banque</summary>
+      <form id="fx-depot" class="fx-form">
+        <label class="field">Date du dépôt<input id="fx-d-date" type="date" required /></label>
+        <label class="field">Espèces (€)<input id="fx-d-esp" inputmode="decimal" placeholder="0" /></label>
+        <label class="field">Chèques (€)<input id="fx-d-chq" inputmode="decimal" placeholder="0" /></label>
+        <label class="field">Nombre de chèques<input id="fx-d-nb" type="number" min="0" step="1" placeholder="0" /></label>
+        <label class="field">N° de bordereau<input id="fx-d-ref" maxlength="80" /></label>
+        <label class="field">Remarque<input id="fx-d-note" maxlength="300" /></label>
+        <button type="submit" class="btn small primary">Enregistrer le dépôt</button>
+      </form>
+    </details>
+    <details class="fx-panel" id="fx-cloture-panel">
+      <summary id="fx-cloture-sum">Clôture de l'année</summary>
+      <div id="fx-cloture"></div>
+    </details>
+  </div>
+
+  <article id="fx-sheet" class="report-sheet" hidden>
+    <header class="report-head">
+      <img src="/img/logo-courzieu.png" alt="" width="58" height="80" />
+      <div>
+        <p id="fx-asso-line" class="report-kicker"></p>
+        <h1 id="fx-title">Dossier comptable</h1>
+        <p id="fx-sub" class="hint"></p>
+      </div>
+    </header>
+    <div id="fx-status" class="fx-status"></div>
+
+    <section class="report-block"><h2>1. Synthèse des encaissements</h2><div id="fx-kpis" class="report-kpis"></div><div id="fx-hors"></div></section>
+    <section class="report-block"><h2>2. Encaissements jour par jour</h2><div id="fx-chart" class="report-chart"></div><div class="report-table-wrap"><table id="fx-jours" class="report-table"></table></div></section>
+    <section class="report-block"><h2>3. Suivi des espèces et des chèques</h2><p class="hint fx-explain">Du terrain jusqu'à la banque : ce qui a été encaissé, remis au trésorier, puis déposé. Les paiements par carte arrivent directement sur le compte SumUp.</p><div class="report-table-wrap"><table id="fx-chaine" class="report-table"></table></div><p id="fx-carte" class="fx-explain"></p></section>
+    <section class="report-block"><h2>4. Par secteur</h2><div class="report-table-wrap"><table id="fx-secteurs" class="report-table"></table></div></section>
+    <section class="report-block"><h2>5. Par personne ayant saisi les dons</h2><div class="report-table-wrap"><table id="fx-collecteurs" class="report-table"></table></div></section>
+    <section class="report-block"><h2>6. Remises de caisse au trésorier</h2><div class="report-table-wrap"><table id="fx-remises" class="report-table"></table></div></section>
+    <section class="report-block"><h2>7. Dépôts en banque</h2><div class="report-table-wrap"><table id="fx-depots" class="report-table"></table></div></section>
+    <section class="report-block"><h2>8. Dons annulés et paiements refusés</h2><p class="hint fx-explain">Aucun don n'est jamais effacé : une erreur de saisie est annulée avec son motif et reste au registre. Ces lignes ne comptent pas dans les totaux.</p><div class="report-table-wrap"><table id="fx-annules" class="report-table"></table></div></section>
+    <section class="report-block fx-registre"><h2>9. Registre détaillé des dons</h2><p class="hint fx-explain">Chaque don reçoit un numéro d'ordre à sa saisie (sans trou ni doublon), avec l'heure, le secteur, l'adresse, le moyen de paiement et la personne qui l'a saisi.</p><div class="report-table-wrap"><table id="fx-registre" class="report-table fx-small"></table></div></section>
+    <footer id="fx-foot" class="report-foot"></footer>
+  </article>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/js/common.js?v=__V__"></script>
+  <script src="/js/fiscal.js?v=__V__"></script>
+</body>
+</html>
