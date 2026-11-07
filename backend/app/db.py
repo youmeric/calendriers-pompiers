@@ -129,6 +129,14 @@ def init_db() -> None:
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY (commune_slug, address_id)
             );
+            -- nom de chaque logement (n° d'appartement, étage…), gardé d'une année sur l'autre
+            CREATE TABLE IF NOT EXISTS unit_labels (
+                commune_slug TEXT NOT NULL,
+                address_id TEXT NOT NULL,
+                logement INTEGER NOT NULL,
+                libelle TEXT NOT NULL,
+                PRIMARY KEY (commune_slug, address_id, logement)
+            );
             -- statut de chaque logement d'un immeuble, par année
             CREATE TABLE IF NOT EXISTS unit_status (
                 commune_slug TEXT NOT NULL,
@@ -548,6 +556,27 @@ def set_units(commune_slug: str, address_id: str, logements: int) -> None:
             "ON CONFLICT(commune_slug, address_id) DO UPDATE SET logements = excluded.logements, updated_at = excluded.updated_at",
             (commune_slug, address_id, logements, _now()),
         )
+        conn.commit()
+
+
+def get_unit_labels(commune_slug: str) -> dict[str, dict[int, str]]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT address_id, logement, libelle FROM unit_labels WHERE commune_slug = ?", (commune_slug,)).fetchall()
+    out: dict[str, dict[int, str]] = {}
+    for aid, lg, lib in rows:
+        out.setdefault(aid, {})[lg] = lib
+    return out
+
+
+def set_unit_label(commune_slug: str, address_id: str, logement: int, libelle: str) -> None:
+    with get_conn() as conn:
+        if libelle:
+            conn.execute("INSERT INTO unit_labels (commune_slug, address_id, logement, libelle) VALUES (?, ?, ?, ?) "
+                         "ON CONFLICT(commune_slug, address_id, logement) DO UPDATE SET libelle = excluded.libelle",
+                         (commune_slug, address_id, logement, libelle))
+        else:
+            conn.execute("DELETE FROM unit_labels WHERE commune_slug = ? AND address_id = ? AND logement = ?",
+                         (commune_slug, address_id, logement))
         conn.commit()
 
 

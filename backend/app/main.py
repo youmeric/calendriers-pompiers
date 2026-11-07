@@ -287,7 +287,7 @@ def update_status(slug: str, address_id: str, payload: StatusUpdate, request: Re
     where = f"{_sector_label(sector_id)} · {_addr_label(slug, address_id)}"
     if n > 1 and payload.logement:
         if unit_before != payload.status:
-            _log(request, "statut", f"{where} · logement {payload.logement}",
+            _log(request, "statut", f"{where} · {_unit_name(slug, address_id, payload.logement)}",
                  f"{STATUS_FR.get(unit_before, unit_before)} → {STATUS_FR.get(payload.status, payload.status)}"
                  f" (immeuble : {STATUS_FR.get(result['status'], result['status'])})")
     elif before != payload.status or n > 1:
@@ -485,8 +485,15 @@ def _logements(slug: str, ids: set[str]) -> dict:
     """Immeubles du secteur : nombre de logements et statut de chacun (cette année)."""
     units = db.get_units(slug)
     statuses = db.get_unit_statuses(slug)
-    return {aid: {"n": n, "units": {str(k): v for k, v in statuses.get(aid, {}).items() if k <= n}}
+    labels = db.get_unit_labels(slug)
+    return {aid: {"n": n, "units": {str(k): v for k, v in statuses.get(aid, {}).items() if k <= n},
+                  "libelles": {str(k): v for k, v in labels.get(aid, {}).items() if k <= n}}
             for aid, n in units.items() if aid in ids}
+
+
+def _unit_name(slug: str, address_id: str, logement: int) -> str:
+    lib = db.get_unit_labels(slug).get(address_id, {}).get(logement)
+    return f"logement {logement}" + (f" ({lib})" if lib else "")
 
 
 @app.post("/api/equipe/logements")
@@ -496,18 +503,24 @@ def team_set_units(payload: LogementsIn, request: Request):
     _require_role(request, sector_id)
     before = db.get_units(payload.slug).get(payload.address_id, 1)
     db.set_units(payload.slug, payload.address_id, payload.logements)
+    old_labels = db.get_unit_labels(payload.slug).get(payload.address_id, {})
+    renamed = []
+    for lg, lib in payload.libelles.items():
+        if lg <= payload.logements and old_labels.get(lg, "") != lib:
+            db.set_unit_label(payload.slug, payload.address_id, lg, lib)
+            renamed.append(f"logement {lg} : {old_labels.get(lg) or '—'} → {lib or '—'}")
     par = _actor(request)[0]
     if payload.logements > 1:
         # l'immeuble reprend le statut calculé d'après ses logements (une adresse marquée « faite »
         # d'un seul coup redevient « à faire » tant que tous les logements ne sont pas passés)
         units = db.get_unit_statuses(payload.slug).get(payload.address_id, {})
         db.set_status(payload.slug, payload.address_id, db.building_status(payload.logements, units), None, par)
-    if before != payload.logements:
+    if before != payload.logements or renamed:
         _log(request, "immeuble", f"{_sector_label(sector_id)} · {_addr_label(payload.slug, payload.address_id)}",
-             f"{before} → {payload.logements} logement(s)")
+             " · ".join(([f"{before} → {payload.logements} logement(s)"] if before != payload.logements else []) + renamed))
     status = (db.get_statuses(payload.slug).get(payload.address_id) or {}).get("status")
     return {"address_id": payload.address_id, "status": status,
-            "logements": _logements(payload.slug, {payload.address_id}).get(payload.address_id, {"n": 1, "units": {}})}
+            "logements": _logements(payload.slug, {payload.address_id}).get(payload.address_id, {"n": 1, "units": {}, "libelles": {}})}
 
 
 @app.post("/api/equipe/dons")
@@ -536,7 +549,7 @@ def team_add_don(payload: DonIn, request: Request):
     })
     if created:
         _log(request, "don.ajout", f"{_sector_label(sector_id)} · {_addr_label(payload.slug, payload.address_id)}"
-             + (f" · logement {logement}" if logement else ""),
+             + (f" · {_unit_name(payload.slug, payload.address_id, logement)}" if logement else ""),
              f"{_euros(don['montant_cents'])} {MODE_FR[don['mode']]}{' (SumUp, en attente)' if use_sumup else ''}")
     # un don reçu veut dire que la maison est faite (paiement carte : une fois confirmé)
     if created and don["statut"] == "ok":
@@ -1432,6 +1445,7 @@ def _registre(annee: int) -> list[dict]:
     labels = _sector_labels()
     addr: dict[str, str] = {}
     communes: dict[str, str] = {}
+    unit_labels = {slug: db.get_unit_labels(slug) for slug in db.sector_communes()}
     for slug in db.sector_communes():
         data = _load_commune(slug)
         communes[slug] = data["commune"]["nom"]
@@ -1444,7 +1458,9 @@ def _registre(annee: int) -> list[dict]:
             "secteur": labels.get(d["sector_id"], f"secteur {d['sector_id']} (supprimé)"),
             "commune": communes.get(d["commune_slug"], d["commune_slug"]),
             "adresse": addr.get(f"{d['commune_slug']}/{d['address_id']}", d["address_id"])
-            + (f" · logement {d['logement']}" if d.get("logement") else ""),
+            + (f" · logement {d['logement']}" if d.get("logement") else "")
+            + (f" ({unit_labels.get(d['commune_slug'], {}).get(d['address_id'], {}).get(d['logement'])})"
+               if d.get("logement") and unit_labels.get(d["commune_slug"], {}).get(d["address_id"], {}).get(d["logement"]) else ""),
             "mode": d["mode"], "montant": d["montant_cents"] / 100, "reference": d["tx_code"],
             "statut": "annule" if d["annule_le"] else d["statut"], "saisi_par": d["personne_nom"],
             "annule_le": d["annule_le"], "annule_par": d["annule_par"], "motif": d["motif"], "note": d["note"],

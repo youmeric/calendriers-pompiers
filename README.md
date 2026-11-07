@@ -205,7 +205,11 @@ sur Courzieu et Brussieu (69690).
     registre du dossier comptable.
   - **Immeubles** : dans la fiche d'une adresse, « 🏢 C'est un immeuble ? »
     permet d'indiquer son nombre de logements (gardé d'une année sur l'autre).
-    Chaque logement se coche alors séparément (✓ ⏳ ✕ €, avec l'heure), et
+    Chaque logement peut être **renommé** (✏️ : n° d'appartement, étage, nom sur
+    la boîte… ; l'adresse de l'immeuble, elle, ne change pas) et on peut en
+    **ajouter** (« + Ajouter un logement »). Les noms sont gardés d'une année
+    sur l'autre et repris dans les dons et le registre (« logement 1 (Apt 12) »).
+    Chaque logement se coche séparément (✓ ⏳ ✕ €, avec l'heure), et
     l'immeuble ne passe « fait » que quand **tous** ses logements sont passés
     (« absent » s'il en reste un à repasser) : plus de « fait » affiché alors
     que ce n'est pas fini. Un don se rattache à son logement et ne marque que

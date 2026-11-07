@@ -19,6 +19,21 @@ class LogementsIn(BaseModel):
     slug: str = Field(max_length=80)
     address_id: str = Field(max_length=120)
     logements: int = Field(ge=1, le=500)  # 1 = maison individuelle
+    # noms des logements à changer, ex. {"3": "Apt 12"} ; vide = « Logement 3 »
+    libelles: dict[int, str] = Field(default_factory=dict, max_length=500)
+
+    @field_validator("libelles")
+    @classmethod
+    def clean_labels(cls, v: dict[int, str]) -> dict[int, str]:
+        out = {}
+        for k, lib in v.items():
+            if not 1 <= k <= 500:
+                raise ValueError("numéro de logement invalide")
+            lib = " ".join(str(lib).split())
+            if len(lib) > 40:
+                raise ValueError("nom de logement trop long (40 caractères au plus)")
+            out[k] = lib
+        return out
 
 
 class LoginIn(BaseModel):

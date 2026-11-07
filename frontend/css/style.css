@@ -1997,3 +1997,5 @@ body.terrain .toast { bottom: calc(80px + env(safe-area-inset-bottom)); }
 .tt-bld small { font-weight: 500; opacity: 0.9; }
 .r-last { margin: 0 0 4px; font-size: 13px; color: var(--muted); text-align: center; }
 .r-last b { color: var(--text); }
+.unit-edit { border: none; background: none; padding: 0 2px; font-size: 13px; cursor: pointer; vertical-align: middle; }
+.unit-add { align-self: flex-start; margin-top: 4px; }

@@ -419,6 +419,15 @@
     return sts.includes("fait") ? "fait" : "refus";
   }
 
+  /** Nom d'un logement : celui donné par l'équipe (« Apt 12 », « 2e gauche »…) ou « Logement 3 ». */
+  function unitName(lg, l) {
+    return (lg && lg.libelles && lg.libelles[String(l)]) || `Logement ${l}`;
+  }
+
+  function unitNameOf(addressId, l) {
+    return unitName(T.tr && T.tr.logements && T.tr.logements[addressId], l);
+  }
+
   function unitsDone(lg) {
     return Array.from({ length: lg.n }, (_, i) => lg.units[String(i + 1)]).filter((u) => u && u.status).length;
   }
@@ -612,7 +621,7 @@
     let best = null;
     for (const a of T.cur.sector.addresses) {
       const lg = unitsOf(a);
-      const items = lg ? Object.entries(lg.units).map(([l, u]) => ({ at: u.updated_at, by: u.par, st: u.status, what: `${a.label} · logement ${l}` }))
+      const items = lg ? Object.entries(lg.units).map(([l, u]) => ({ at: u.updated_at, by: u.par, st: u.status, what: `${a.label} · ${unitName(lg, l)}` }))
         : a.status && a.validAt ? [{ at: a.validAt, by: a.validBy, st: a.status, what: a.label }] : [];
       for (const it of items) if (it.at && it.st && (!best || it.at > best.at)) best = it;
     }
@@ -699,7 +708,7 @@
     const label = (id) => escapeHtml((T.addr.get(id) || {}).label || id);
     const donLine = (d, editable) => `<div class="don-line" data-id="${d.id}">
         <span><b>${d.montant !== undefined ? euros(d.montant) : "Don"}</b> ${MODE_LABEL[d.mode]} ${d.pending ? "📴 à envoyer" : d.statut === "ok" ? "✓" : d.statut === "attente" ? "⏳ en attente" : "✕ échoué"}
-          <small>${label(d.address_id)}${d.logement ? ` · logt ${d.logement}` : ""} · ${escapeHtml(d.personne_nom)} · ${escapeHtml(whenValid(d.created_at))}${d.tx_code ? ` · ${escapeHtml(d.tx_code)}` : ""}</small></span>
+          <small>${label(d.address_id)}${d.logement ? ` · ${escapeHtml(unitNameOf(d.address_id, d.logement))}` : ""} · ${escapeHtml(d.personne_nom)} · ${escapeHtml(whenValid(d.created_at))}${d.tx_code ? ` · ${escapeHtml(d.tx_code)}` : ""}</small></span>
         ${editable ? `<span class="don-line-actions">
           ${d.statut === "attente" ? `<button type="button" class="btn small" data-act="ok">Payé</button><button type="button" class="btn small" data-act="echec">Non payé</button>` : ""}
           <button type="button" class="icon-btn danger" data-act="delete" aria-label="Annuler ce don">✕</button></span>` : ""}
@@ -1069,7 +1078,7 @@
     a.status = buildingStatus(lg.n, lg.units);
     refreshAfterChange(a);
     if (undo) {
-      snack(`${a.label} · logement ${l} : ${status ? `${STATUS[status].label.toLowerCase()} à ${whenValid(at)}` : "à faire"}`, () => {
+      snack(`${a.label} · ${unitName(lg, l)} : ${status ? `${STATUS[status].label.toLowerCase()} à ${whenValid(at)}` : "à faire"}`, () => {
         setUnitStatus(a, l, prev, { undo: false });
       });
     }
@@ -1092,6 +1101,45 @@
     }
   }
 
+  /** Envoie le nombre de logements et, si besoin, des noms ; met à jour l'écran. */
+  async function saveUnits(a, n, libelles = {}) {
+    const r = await postJSON("/api/equipe/logements", { slug: T.cur.slug, address_id: a.id, logements: n, libelles });
+    T.tr.logements[a.id] = r.logements;
+    a.status = r.status || null;
+    patchRaw((t) => {
+      t.logements = t.logements || {};
+      t.logements[a.id] = r.logements;
+      if (r.status) t.statuses[a.id] = { ...(t.statuses[a.id] || {}), status: r.status }; else delete t.statuses[a.id];
+    });
+    refreshAfterChange(a);
+    drawMap();
+    return r;
+  }
+
+  async function renameUnit(a, l) {
+    if (T.offline) { showToast("Pas de réseau : réessayez quand le réseau sera revenu.", true); return; }
+    const lg = unitsOf(a);
+    const cur = (lg.libelles || {})[String(l)] || "";
+    const name = prompt(`Nom du logement ${l} (n° d'appartement, étage, nom sur la boîte…) :\nLaisser vide pour « Logement ${l} ».`, cur);
+    if (name === null) return;
+    try {
+      await saveUnits(a, lg.n, { [l]: name.trim().slice(0, 40) });
+      showToast(name.trim() ? `Logement ${l} : « ${name.trim().slice(0, 40)} »` : `Logement ${l}`);
+    } catch (err) { showToast(err.status === 422 ? "Nom trop long (40 caractères au plus)." : err.message, true); }
+  }
+
+  async function addUnit(a) {
+    if (T.offline) { showToast("Pas de réseau : réessayez quand le réseau sera revenu.", true); return; }
+    const lg = unitsOf(a);
+    const n = lg.n + 1;
+    const name = prompt(`Nouveau logement (le ${n}e) : son nom ou n° d'appartement (facultatif)`, "");
+    if (name === null) return;
+    try {
+      await saveUnits(a, n, name.trim() ? { [n]: name.trim().slice(0, 40) } : {});
+      showToast(`Logement ajouté : ${n} logements.`);
+    } catch (err) { showToast(err.status === 422 ? "Nom trop long (40 caractères au plus)." : err.message, true); }
+  }
+
   /** Nombre de logements à l'adresse (1 = maison individuelle). */
   async function setUnits(a) {
     if (T.offline) { showToast("Pas de réseau : réessayez quand le réseau sera revenu.", true); return; }
@@ -1101,16 +1149,7 @@
     const n = Number(String(raw).trim());
     if (!Number.isInteger(n) || n < 1 || n > 500) { showToast("Indiquez un nombre entre 1 et 500.", true); return; }
     try {
-      const r = await postJSON("/api/equipe/logements", { slug: T.cur.slug, address_id: a.id, logements: n });
-      T.tr.logements[a.id] = r.logements;
-      a.status = r.status || null;
-      patchRaw((t) => {
-        t.logements = t.logements || {};
-        t.logements[a.id] = r.logements;
-        if (r.status) t.statuses[a.id] = { ...(t.statuses[a.id] || {}), status: r.status }; else delete t.statuses[a.id];
-      });
-      refreshAfterChange(a);
-      drawMap();
+      await saveUnits(a, n);
       showToast(n > 1 ? `Immeuble de ${n} logements : cochez chaque logement.` : "Maison individuelle.");
     } catch (err) { showToast(err.message, true); }
   }
@@ -1158,11 +1197,11 @@
     $("tf-units").innerHTML = lg ? Array.from({ length: lg.n }, (_, i) => {
       const u = lg.units[String(i + 1)] || {};
       return `<div class="unit-row${u.status ? ` st-${u.status}` : ""}" data-unit="${i + 1}">
-        <span class="unit-name">Logement ${i + 1}<small>${u.status ? `${STATUS[u.status].label} ${escapeHtml(whenValid(u.updated_at))}${u.par ? ` · ${escapeHtml(u.par)}` : ""}${u.pending ? " · 📴" : ""}` : "à faire"}</small></span>
-        ${canEdit() ? `${Object.entries(STATUS).map(([k, v]) => `<button type="button" class="t-st ${k}${u.status === k ? " active" : ""}" data-unit-status="${k}" aria-label="${v.label} : logement ${i + 1}">${v.icon}</button>`).join("")}
-        ${T.tr.donsActive ? `<button type="button" class="t-st don" data-unit-don aria-label="Don : logement ${i + 1}">€</button>` : ""}` : ""}
+        <span class="unit-name"><span>${escapeHtml(unitName(lg, i + 1))}${canEdit() ? ` <button type="button" class="unit-edit" data-unit-rename aria-label="Renommer ${escapeHtml(unitName(lg, i + 1))}" title="Renommer (n° d'appartement, étage…)">✏️</button>` : ""}</span><small>${u.status ? `${STATUS[u.status].label} ${escapeHtml(whenValid(u.updated_at))}${u.par ? ` · ${escapeHtml(u.par)}` : ""}${u.pending ? " · 📴" : ""}` : "à faire"}</small></span>
+        ${canEdit() ? `${Object.entries(STATUS).map(([k, v]) => `<button type="button" class="t-st ${k}${u.status === k ? " active" : ""}" data-unit-status="${k}" aria-label="${v.label} : ${escapeHtml(unitName(lg, i + 1))}">${v.icon}</button>`).join("")}
+        ${T.tr.donsActive ? `<button type="button" class="t-st don" data-unit-don aria-label="Don : ${escapeHtml(unitName(lg, i + 1))}">€</button>` : ""}` : ""}
       </div>`;
-    }).join("") : "";
+    }).join("") + (canEdit() ? `<button type="button" class="btn small unit-add" data-unit-add>+ Ajouter un logement</button>` : "") : "";
     $("tf-bld").hidden = !canEdit();
     $("tf-bld").textContent = lg ? `🏢 Modifier le nombre de logements (${lg.n})` : "🏢 C'est un immeuble ? Indiquer le nombre de logements";
     $("tf-note-box").hidden = !canEdit();
@@ -1196,6 +1235,8 @@
   $("tf-close").addEventListener("click", () => $("t-fiche").close());
   $("tf-bld").addEventListener("click", () => setUnits(ficheAddr));
   $("tf-units").addEventListener("click", (e) => {
+    if (e.target.closest("[data-unit-add]")) { addUnit(ficheAddr); return; }
+    if (e.target.closest("[data-unit-rename]")) { renameUnit(ficheAddr, Number(e.target.closest("[data-unit]").dataset.unit)); return; }
     const row = e.target.closest("[data-unit]");
     if (!row) return;
     const l = Number(row.dataset.unit);
@@ -1462,7 +1503,7 @@
   function renderExistingDons() {
     const list = T.tr.dons.get(donCtx.a.id) || [];
     $("don-existing").innerHTML = list.map((d) => `<div class="don-line" data-id="${d.id}">
-        <span><b>${d.montant !== undefined ? euros(d.montant) : "Don"}</b> ${MODE_LABEL[d.mode]} ${d.pending ? "📴 à envoyer" : d.statut === "ok" ? "✓" : d.statut === "attente" ? "⏳ en attente" : "✕ échoué"}<small>${d.logement ? `logement ${d.logement} · ` : ""}${escapeHtml(d.personne_nom)} · ${escapeHtml(whenValid(d.created_at))}</small></span>
+        <span><b>${d.montant !== undefined ? euros(d.montant) : "Don"}</b> ${MODE_LABEL[d.mode]} ${d.pending ? "📴 à envoyer" : d.statut === "ok" ? "✓" : d.statut === "attente" ? "⏳ en attente" : "✕ échoué"}<small>${d.logement ? `${escapeHtml(unitNameOf(d.address_id, d.logement))} · ` : ""}${escapeHtml(d.personne_nom)} · ${escapeHtml(whenValid(d.created_at))}</small></span>
         ${T.tr.full || d.mine ? `<span class="don-line-actions">${d.statut === "attente" ? `<button type="button" class="btn small" data-act="ok">Payé</button><button type="button" class="btn small" data-act="echec">Non payé</button>` : ""}
           <button type="button" class="icon-btn danger" data-act="delete" aria-label="Annuler ce don">✕</button></span>` : ""}
       </div>`).join("");
@@ -1470,7 +1511,7 @@
 
   function openDon(a, logement = null) {
     donCtx = { a, manual: false, logement };
-    $("don-address").textContent = logement ? `${a.label} · logement ${logement}` : a.label;
+    $("don-address").textContent = logement ? `${a.label} · ${unitNameOf(a.id, logement)}` : a.label;
     $("don-montant").value = "";
     $("don-tx").value = "";
     $("don-cheque").value = "";
