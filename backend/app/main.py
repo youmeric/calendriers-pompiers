@@ -27,7 +27,7 @@ from .models import (AvancementIn, CodeIn, ConfirmIn, DonIn, DonStatutIn, Equipe
                      PersonnesIn, RemiseIn, RenfortIn, SectorsIn, SettingsIn, StatusUpdate, SumupRetourIn,
                      NoteIn, SignalementIn, SignalementActionIn, EnvoiAccesIn, RoleIn, CompteIn,
                      CompteUpdateIn, MotDePasseIn, DepotIn, ClotureIn, ReouvertureIn,
-                     SuperviseurIn)
+                     SuperviseurIn, LogementsIn)
 from .resume import build_resume, commune_voie_counts
 
 DATA_DIR = Path(os.environ.get("SECTORS_DATA_DIR") or (Path(__file__).resolve().parent / "data"))
@@ -278,12 +278,44 @@ def update_status(slug: str, address_id: str, payload: StatusUpdate, request: Re
         raise HTTPException(status_code=403, detail="Le suivi des adresses est désactivé")
     sector_id = _sector_of_address(slug, address_id)
     _require_role(request, sector_id)
+    n = db.get_units(slug).get(address_id, 1)
+    if payload.logement and payload.logement > n:
+        raise HTTPException(status_code=422, detail=f"Cet immeuble a {n} logement(s)")
     before = (db.get_statuses(slug).get(address_id) or {}).get("status")
-    result = db.set_status(slug, address_id, payload.status, payload.note)
-    if before != payload.status:
-        _log(request, "statut", f"{_sector_label(sector_id)} · {_addr_label(slug, address_id)}",
-             f"{STATUS_FR.get(before, before)} → {STATUS_FR.get(payload.status, payload.status)}")
+    unit_before = (db.get_unit_statuses(slug).get(address_id, {}).get(payload.logement) or {}).get("status") if payload.logement else None
+    result = _mark(slug, address_id, payload.status, _actor(request)[0], payload.logement, payload.note)
+    where = f"{_sector_label(sector_id)} · {_addr_label(slug, address_id)}"
+    if n > 1 and payload.logement:
+        if unit_before != payload.status:
+            _log(request, "statut", f"{where} · logement {payload.logement}",
+                 f"{STATUS_FR.get(unit_before, unit_before)} → {STATUS_FR.get(payload.status, payload.status)}"
+                 f" (immeuble : {STATUS_FR.get(result['status'], result['status'])})")
+    elif before != payload.status or n > 1:
+        _log(request, "statut", where, f"{STATUS_FR.get(before, before)} → {STATUS_FR.get(payload.status, payload.status)}"
+             + (f" (les {n} logements)" if n > 1 else ""))
     return result
+
+
+def _mark(slug: str, address_id: str, status: str | None, par: str, logement: int | None = None, note: str | None = None) -> dict:
+    """Pose un statut. Pour un immeuble, sur un logement (ou tous si aucun n'est précisé) ;
+    l'adresse n'est « faite » que lorsque tous ses logements sont passés."""
+    n = db.get_units(slug).get(address_id, 1)
+    if n <= 1:
+        return db.set_status(slug, address_id, status, note, par)
+    for lg in ([logement] if logement else range(1, n + 1)):
+        db.set_unit_status(slug, address_id, lg, status, par)
+    units = db.get_unit_statuses(slug).get(address_id, {})
+    result = db.set_status(slug, address_id, db.building_status(n, units), note, par)
+    result["logements"] = {"n": n, "units": {str(k): v for k, v in units.items() if k <= n}}
+    return result
+
+
+def _don_marks_done(don: dict, par: str) -> None:
+    """Un don payé veut dire que la maison est faite ; dans un immeuble, seulement son logement."""
+    n = db.get_units(don["commune_slug"]).get(don["address_id"], 1)
+    if n > 1 and not don.get("logement"):
+        return  # logement inconnu : on ne marque pas tout l'immeuble « fait » à tort
+    _mark(don["commune_slug"], don["address_id"], "fait", par, don.get("logement") if n > 1 else None)
 
 
 # ---- Accès des équipes (code personnel) --------------------------------------------
@@ -395,7 +427,7 @@ def team_me(request: Request):
 
 def _don_view(d: dict, full: bool, me: int | None) -> dict:
     mine = me is not None and d["personne_id"] == me
-    view = {k: d[k] for k in ("id", "address_id", "mode", "statut", "note", "personne_nom", "created_at")}
+    view = {k: d[k] for k in ("id", "address_id", "mode", "statut", "note", "personne_nom", "created_at", "logement")}
     view["mine"] = mine
     if full or mine:
         view["montant"] = d["montant_cents"] / 100
@@ -433,6 +465,7 @@ def team_sector_tracking(sector_id: int, request: Request):
     out = {"slug": slug, "role": role, "statuses": statuses, "dons": None, "totaux": None, "precedent": {},
            "equipe": _team_view(sector_id),
            "notes": {aid: n for aid, n in db.get_notes(slug).items() if aid in ids},
+           "logements": _logements(slug, ids),
            "signalements": [_sig_view(x) for x in db.list_signalements(sector_id, open_only=True)]}
     for aid, prev in db.previous_year(slug, _annee()).items():
         if aid in ids:
@@ -448,6 +481,35 @@ def team_sector_tracking(sector_id: int, request: Request):
     return out
 
 
+def _logements(slug: str, ids: set[str]) -> dict:
+    """Immeubles du secteur : nombre de logements et statut de chacun (cette année)."""
+    units = db.get_units(slug)
+    statuses = db.get_unit_statuses(slug)
+    return {aid: {"n": n, "units": {str(k): v for k, v in statuses.get(aid, {}).items() if k <= n}}
+            for aid, n in units.items() if aid in ids}
+
+
+@app.post("/api/equipe/logements")
+def team_set_units(payload: LogementsIn, request: Request):
+    """Indique qu'une adresse est un immeuble de N logements (1 = maison individuelle)."""
+    sector_id = _sector_of_address(payload.slug, payload.address_id)
+    _require_role(request, sector_id)
+    before = db.get_units(payload.slug).get(payload.address_id, 1)
+    db.set_units(payload.slug, payload.address_id, payload.logements)
+    par = _actor(request)[0]
+    if payload.logements > 1:
+        # l'immeuble reprend le statut calculé d'après ses logements (une adresse marquée « faite »
+        # d'un seul coup redevient « à faire » tant que tous les logements ne sont pas passés)
+        units = db.get_unit_statuses(payload.slug).get(payload.address_id, {})
+        db.set_status(payload.slug, payload.address_id, db.building_status(payload.logements, units), None, par)
+    if before != payload.logements:
+        _log(request, "immeuble", f"{_sector_label(sector_id)} · {_addr_label(payload.slug, payload.address_id)}",
+             f"{before} → {payload.logements} logement(s)")
+    status = (db.get_statuses(payload.slug).get(payload.address_id) or {}).get("status")
+    return {"address_id": payload.address_id, "status": status,
+            "logements": _logements(payload.slug, {payload.address_id}).get(payload.address_id, {"n": 1, "units": {}})}
+
+
 @app.post("/api/equipe/dons")
 def team_add_don(payload: DonIn, request: Request):
     if not (_suivi_enabled() and _flag("dons_actifs", False)):
@@ -459,6 +521,10 @@ def team_add_don(payload: DonIn, request: Request):
     use_sumup = payload.mode == "cb" and payload.sumup
     if use_sumup and not _sumup_config():
         raise HTTPException(status_code=409, detail="Le paiement SumUp n'est pas configuré")
+    n = db.get_units(payload.slug).get(payload.address_id, 1)
+    logement = payload.logement if n > 1 else None
+    if logement and logement > n:
+        raise HTTPException(status_code=422, detail=f"Cet immeuble a {n} logement(s)")
     don, created = db.add_don({
         "annee": _annee(), "commune_slug": payload.slug, "address_id": payload.address_id, "sector_id": sector_id,
         "montant_cents": round(payload.montant * 100), "mode": payload.mode,
@@ -466,14 +532,15 @@ def team_add_don(payload: DonIn, request: Request):
         "foreign_id": f"cal-{secrets.token_hex(12)}" if use_sumup else None,
         "tx_code": payload.tx_code, "note": payload.note,
         "personne_id": person["id"] if person else None, "personne_nom": person["nom"] if person else _actor(request)[0],
-        "client_id": payload.client_id,
+        "client_id": payload.client_id, "logement": logement,
     })
     if created:
-        _log(request, "don.ajout", f"{_sector_label(sector_id)} · {_addr_label(payload.slug, payload.address_id)}",
+        _log(request, "don.ajout", f"{_sector_label(sector_id)} · {_addr_label(payload.slug, payload.address_id)}"
+             + (f" · logement {logement}" if logement else ""),
              f"{_euros(don['montant_cents'])} {MODE_FR[don['mode']]}{' (SumUp, en attente)' if use_sumup else ''}")
     # un don reçu veut dire que la maison est faite (paiement carte : une fois confirmé)
     if created and don["statut"] == "ok":
-        db.set_status(payload.slug, payload.address_id, "fait", None)
+        _don_marks_done(don, _actor(request)[0])
     view = _don_view(don, True, None)
     view["foreign_id"] = don["foreign_id"]
     return view
@@ -496,7 +563,7 @@ def team_don_statut(don_id: int, payload: DonStatutIn, request: Request):
     don = _don_for_edit(request, don_id)
     updated = db.set_don_statut(don["id"], payload.statut, payload.tx_code or None)
     if updated["statut"] == "ok":
-        db.set_status(updated["commune_slug"], updated["address_id"], "fait", None)
+        _don_marks_done(updated, _actor(request)[0])
     _log(request, "don.statut", f"{_sector_label(don['sector_id'])} · {_addr_label(don['commune_slug'], don['address_id'])}",
          f"{_euros(don['montant_cents'])} {MODE_FR[don['mode']]} : {'payé' if payload.statut == 'ok' else 'non payé'}"
          f"{' · n° ' + payload.tx_code if payload.tx_code else ''} (saisi par {don['personne_nom']})")
@@ -826,7 +893,7 @@ def sumup_return(payload: SumupRetourIn):
         statut = "ok" if payload.status.lower() == "success" else "echec"
         don = db.set_don_statut(don["id"], statut, payload.tx_code or None)
         if statut == "ok":
-            db.set_status(don["commune_slug"], don["address_id"], "fait", None)
+            _don_marks_done(don, don["personne_nom"] or "SumUp")
         db.log("SumUp", "système", "don.statut", f"{_sector_label(don['sector_id'])} · {_addr_label(don['commune_slug'], don['address_id'])}",
                f"{_euros(don['montant_cents'])} carte : {'payé' if statut == 'ok' else 'refusé'}"
                f"{' · n° ' + payload.tx_code if payload.tx_code else ''} (saisi par {don['personne_nom']})")
@@ -1376,7 +1443,8 @@ def _registre(annee: int) -> list[dict]:
             "numero": d["numero"], "id": d["id"], "created_at": d["created_at"], "sector_id": d["sector_id"],
             "secteur": labels.get(d["sector_id"], f"secteur {d['sector_id']} (supprimé)"),
             "commune": communes.get(d["commune_slug"], d["commune_slug"]),
-            "adresse": addr.get(f"{d['commune_slug']}/{d['address_id']}", d["address_id"]),
+            "adresse": addr.get(f"{d['commune_slug']}/{d['address_id']}", d["address_id"])
+            + (f" · logement {d['logement']}" if d.get("logement") else ""),
             "mode": d["mode"], "montant": d["montant_cents"] / 100, "reference": d["tx_code"],
             "statut": "annule" if d["annule_le"] else d["statut"], "saisi_par": d["personne_nom"],
             "annule_le": d["annule_le"], "annule_par": d["annule_par"], "motif": d["motif"], "note": d["note"],

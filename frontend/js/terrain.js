@@ -202,23 +202,41 @@
   function applyTracking(s) {
     const t = T.me.suivi ? T.raw.suivi[s.id] : null;
     if (!t) {
-      T.tr = { readOnly: true, role: T.cur.role, lead: T.cur.role !== "equipier", full: T.cur.role !== "equipier", donsActive: false, dons: new Map(), allDons: [], precedent: {}, notes: {}, signalements: [], equipe: T.raw.equipe[s.id] || s.equipe || null };
+      T.tr = { readOnly: true, role: T.cur.role, lead: T.cur.role !== "equipier", full: T.cur.role !== "equipier", donsActive: false, dons: new Map(), allDons: [], precedent: {}, notes: {}, signalements: [], logements: {}, equipe: T.raw.equipe[s.id] || s.equipe || null };
       return;
     }
     const queue = readQueue().filter((q) => q.slug === T.cur.slug);
     const ids = new Set(s.addresses.map((a) => a.id));
     // les modifications pas encore envoyées (hors réseau) restent prioritaires
-    const pending = new Map(queue.filter((q) => q.kind === "status").map((q) => [q.addressId, q.status]));
+    const pending = new Map(queue.filter((q) => q.kind === "status" && !q.logement).map((q) => [q.addressId, q]));
+    const logements = JSON.parse(JSON.stringify(t.logements || {}));
+    for (const q of queue) {
+      if (q.kind !== "status" || !q.logement || !logements[q.addressId]) continue;
+      if (q.status) logements[q.addressId].units[String(q.logement)] = { status: q.status, updated_at: q.at, par: myName(), pending: true };
+      else delete logements[q.addressId].units[String(q.logement)];
+    }
     for (const a of s.addresses) {
-      a.status = pending.has(a.id) ? pending.get(a.id) : (t.statuses[a.id] || {}).status || null;
+      const st = t.statuses[a.id] || {};
+      const p = pending.get(a.id);
+      a.status = p ? p.status : st.status || null;
+      a.validAt = p ? p.at : st.updated_at || null;
+      a.validBy = p ? myName() : st.par || "";
     }
     const allDons = [...(t.dons || [])];
     for (const q of queue) {
       if (q.kind !== "don" || !ids.has(q.address_id)) continue;
       allDons.push({ id: `q-${q.client_id}`, address_id: q.address_id, montant: q.montant, mode: q.mode, statut: "ok", mine: true, pending: true,
-        personne_nom: T.me.personne ? T.me.personne.nom : "Admin", tx_code: q.tx_code || "", created_at: q.at });
+        personne_nom: T.me.personne ? T.me.personne.nom : "Admin", tx_code: q.tx_code || "", created_at: q.at, logement: q.logement || null });
       const a = T.addr.get(q.address_id);
-      if (a && !pending.has(a.id)) a.status = "fait";
+      const lg = logements[q.address_id];
+      if (lg && lg.n > 1) {
+        if (q.logement && !lg.units[String(q.logement)]) lg.units[String(q.logement)] = { status: "fait", updated_at: q.at, par: myName(), pending: true };
+      } else if (a && !pending.has(a.id)) { a.status = "fait"; a.validAt = q.at; a.validBy = myName(); }
+    }
+    // immeubles : l'adresse suit ses logements
+    for (const [aid, lg] of Object.entries(logements)) {
+      const a = T.addr.get(aid);
+      if (a && lg.n > 1) a.status = buildingStatus(lg.n, lg.units);
     }
     const dons = new Map();
     for (const d of allDons) {
@@ -236,7 +254,7 @@
     T.tr = {
       readOnly: false, role: t.role, lead, full: lead, donsActive: t.dons !== null, dons, allDons,
       totaux: t.totaux, precedent: t.precedent || {}, equipe: t.equipe, caisse: T.raw.caisse[s.id] || null,
-      notes, signalements,
+      notes, signalements, logements,
     };
   }
 
@@ -373,6 +391,42 @@
       : p.nb_dons ? (p.montant !== undefined ? `don de ${euros(p.montant)}` : "a donné") : "fait";
     const cls = p.status === "refus" ? "refus" : p.status === "absent" ? "absent" : "ok";
     return `<span class="prev-year prev-${cls}">${p.annee} : ${what}</span>`;
+  }
+
+  const myName = () => (T.me && T.me.personne ? T.me.personne.nom : "Admin");
+
+  /** Heure de validation : « 14:32:05 » aujourd'hui, sinon « sam. 7 nov. 14:32:05 ». */
+  function whenValid(iso, { long = false } = {}) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const time = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const today = d.toDateString() === new Date().toDateString();
+    if (long) return `${today ? "aujourd'hui" : `le ${d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })}`} à ${time}`;
+    return today ? time : `${d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} ${time}`;
+  }
+
+  /** Immeuble : {n, units} si l'adresse a plusieurs logements, sinon null. */
+  function unitsOf(a) {
+    const lg = T.tr && T.tr.logements && T.tr.logements[a.id];
+    return lg && lg.n > 1 ? lg : null;
+  }
+
+  /** Même règle que le serveur : « à faire » tant qu'un logement n'est pas passé. */
+  function buildingStatus(n, units) {
+    const sts = Array.from({ length: n }, (_, i) => (units[String(i + 1)] || {}).status || null);
+    if (sts.some((x) => !x)) return null;
+    if (sts.includes("absent")) return "absent";
+    return sts.includes("fait") ? "fait" : "refus";
+  }
+
+  function unitsDone(lg) {
+    return Array.from({ length: lg.n }, (_, i) => lg.units[String(i + 1)]).filter((u) => u && u.status).length;
+  }
+
+  function validChip(a) {
+    const lg = unitsOf(a);
+    if (lg) return `<span class="bld-chip">🏢 ${unitsDone(lg)}/${lg.n} logements</span>`;
+    return a.status && a.validAt ? `<span class="time-chip st-${a.status}">${STATUS[a.status].icon} ${escapeHtml(whenValid(a.validAt))}</span>` : "";
   }
 
   function noteOf(a) {
@@ -514,6 +568,7 @@
               <button type="button" class="r-chip refus" data-filter="refus">✕ ${c.refus}</button>
             </div></div>
         </div>
+        ${lastValidation()}
         <button type="button" class="btn primary r-cta" data-action="tour">▶ ${c.todo === c.total ? "Commencer" : c.todo ? "Continuer" : "Revoir"} la tournée</button>
         ${c.absent ? `<button type="button" class="btn r-cta2" data-filter="absent">⏳ ${c.absent} absent${c.absent > 1 ? "s" : ""} à repasser</button>` : ""}`;
 
@@ -550,6 +605,20 @@
     }
     html = html.replace('<div class="r-card r-when">', `${overviewCard()}<div class="r-card r-when">`);
     $("v-accueil").innerHTML = html;
+  }
+
+  /** Récap : la dernière maison (ou le dernier logement) validée, avec l'heure exacte. */
+  function lastValidation() {
+    let best = null;
+    for (const a of T.cur.sector.addresses) {
+      const lg = unitsOf(a);
+      const items = lg ? Object.entries(lg.units).map(([l, u]) => ({ at: u.updated_at, by: u.par, st: u.status, what: `${a.label} · logement ${l}` }))
+        : a.status && a.validAt ? [{ at: a.validAt, by: a.validBy, st: a.status, what: a.label }] : [];
+      for (const it of items) if (it.at && it.st && (!best || it.at > best.at)) best = it;
+    }
+    if (!best) return "";
+    return `<p class="r-last">Dernière validation : <b>${escapeHtml(best.what)}</b> (${STATUS[best.st].label.toLowerCase()})
+      ${escapeHtml(whenValid(best.at, { long: true }))}${best.by ? ` · ${escapeHtml(best.by)}` : ""}</p>`;
   }
 
   /** Superviseur (ou admin) : toutes les tournées d'un coup d'œil, un appui ouvre le secteur. */
@@ -607,13 +676,16 @@
         group = a.groupe;
         html += `<h3 class="t-group">${escapeHtml(group)}</h3>`;
       }
-      const btns = canEdit() ? `<div class="t-row-btns">
+      const lg = unitsOf(a);
+      // immeuble : pas de bouton « fait » pour toute l'adresse, on passe logement par logement dans la fiche
+      const btns = !canEdit() ? "" : lg ? `<div class="t-row-btns"><button type="button" class="t-st bld" data-open aria-label="Logements de ${escapeHtml(a.label)}">🏢 ${unitsDone(lg)}/${lg.n}</button></div>`
+        : `<div class="t-row-btns">
           ${Object.entries(STATUS).map(([k, v]) => `<button type="button" class="t-st ${k}${a.status === k ? " active" : ""}" data-status="${k}" aria-label="${v.label} : ${escapeHtml(a.label)}">${v.icon}</button>`).join("")}
           ${T.tr.donsActive ? `<button type="button" class="t-st don" data-don aria-label="Don : ${escapeHtml(a.label)}">€</button>` : ""}
-        </div>` : "";
+        </div>`;
       html += `<div class="t-row${a.status ? ` st-${a.status}` : ""}" data-id="${escapeHtml(a.id)}">
         <button type="button" class="t-row-main" data-open><span class="t-row-label">${escapeHtml(a.label)}</span>
-          <span class="t-row-chips">${noteChip(a)}${sigChip(a)}${prevChip(a)}${donBadges(a.id)}</span></button>
+          <span class="t-row-chips">${validChip(a)}${noteChip(a)}${sigChip(a)}${prevChip(a)}${donBadges(a.id)}</span></button>
         ${btns}
       </div>`;
     }
@@ -627,7 +699,7 @@
     const label = (id) => escapeHtml((T.addr.get(id) || {}).label || id);
     const donLine = (d, editable) => `<div class="don-line" data-id="${d.id}">
         <span><b>${d.montant !== undefined ? euros(d.montant) : "Don"}</b> ${MODE_LABEL[d.mode]} ${d.pending ? "📴 à envoyer" : d.statut === "ok" ? "✓" : d.statut === "attente" ? "⏳ en attente" : "✕ échoué"}
-          <small>${label(d.address_id)} · ${escapeHtml(d.personne_nom)}${d.tx_code ? ` · ${escapeHtml(d.tx_code)}` : ""}</small></span>
+          <small>${label(d.address_id)}${d.logement ? ` · logt ${d.logement}` : ""} · ${escapeHtml(d.personne_nom)} · ${escapeHtml(whenValid(d.created_at))}${d.tx_code ? ` · ${escapeHtml(d.tx_code)}` : ""}</small></span>
         ${editable ? `<span class="don-line-actions">
           ${d.statut === "attente" ? `<button type="button" class="btn small" data-act="ok">Payé</button><button type="button" class="btn small" data-act="echec">Non payé</button>` : ""}
           <button type="button" class="icon-btn danger" data-act="delete" aria-label="Annuler ce don">✕</button></span>` : ""}
@@ -833,7 +905,9 @@
     holeRings(polys).forEach((h) => L.polygon(h, mask).addTo(T.layer));
     T.outline = L.polygon(polys, { color: T.cur.sector.couleur, weight: 4, fill: false, interactive: false }).addTo(T.layer);
     for (const a of T.cur.sector.addresses) {
-      const m = L.circleMarker([a.lat, a.lon], { radius: 7, color: "#fff", weight: 2, fillColor: statusColor(a.status), fillOpacity: 1 });
+      const lgm = unitsOf(a);
+      const partial = lgm && !a.status && unitsDone(lgm) > 0;
+      const m = L.circleMarker([a.lat, a.lon], { radius: lgm ? 9 : 7, color: partial ? STATUS.fait.color : "#fff", weight: partial ? 3 : 2, fillColor: statusColor(a.status), fillOpacity: 1 });
       m.addressId = a.id;
       m.on("click", (e) => {
         L.DomEvent.stop(e);
@@ -901,9 +975,9 @@
     renderTop();
   }
 
-  function sendStatus(slug, addressId, status) {
+  function sendStatus(slug, addressId, status, logement) {
     return fetchJSON(`/api/communes/${slug}/addresses/${encodeURIComponent(addressId)}/status`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(logement ? { status, logement } : { status }),
     });
   }
 
@@ -912,11 +986,12 @@
   });
 
   function sendQueued(item) {
-    if (item.kind === "status") return sendStatus(item.slug, item.addressId, item.status);
+    if (item.kind === "status") return sendStatus(item.slug, item.addressId, item.status, item.logement);
     if (item.kind === "note") return postJSON("/api/equipe/notes", { slug: item.slug, address_id: item.address_id, note: item.note });
     if (item.kind === "sig") return postJSON("/api/equipe/signalements", item.body);
     return postJSON("/api/equipe/dons", {
       slug: item.slug, address_id: item.address_id, montant: item.montant, mode: item.mode, tx_code: item.tx_code || "", client_id: item.client_id,
+      ...(item.logement ? { logement: item.logement } : {}),
     });
   }
 
@@ -956,25 +1031,88 @@
   async function setStatus(a, status, { undo = true } = {}) {
     const prev = a.status || null;
     if (prev === status) return;
+    const prevAt = [a.validAt, a.validBy];
     a.status = status;
+    a.validAt = new Date().toISOString();
+    a.validBy = myName();
     refreshAfterChange(a);
     if (undo) {
-      snack(`${a.label} : ${status ? STATUS[status].label.toLowerCase() : "à faire"}`, () => {
-        setStatus(a, prev, { undo: false });
+      snack(`${a.label} : ${status ? STATUS[status].label.toLowerCase() : "à faire"}${status ? ` à ${whenValid(a.validAt)}` : ""}`, () => {
+        setStatus(a, prev, { undo: false }).then(() => { [a.validAt, a.validBy] = prevAt; refreshAfterChange(a); });
         if (T.tour.active) { T.tour.current = a; renderTour(); }
       });
     }
     const slug = T.cur.slug;
-    const keep = () => enqueue({ kind: "status", slug, addressId: a.id, status }, (x) => x.kind === "status" && x.slug === slug && x.addressId === a.id);
+    const keep = () => enqueue({ kind: "status", slug, addressId: a.id, status, at: a.validAt }, (x) => x.kind === "status" && x.slug === slug && x.addressId === a.id && !x.logement);
     if (T.offline) { keep(); return; }
     try {
-      await sendStatus(slug, a.id, status);
-      patchRaw((t) => { if (status) t.statuses[a.id] = { status }; else delete t.statuses[a.id]; });
+      const r = await sendStatus(slug, a.id, status);
+      if (r.updated_at) a.validAt = r.updated_at; // heure du serveur
+      patchRaw((t) => { if (status) t.statuses[a.id] = { status, updated_at: r.updated_at, par: r.par }; else delete t.statuses[a.id]; });
     } catch (err) {
       if (!isNetErr(err) && err.status < 500) { showToast(err.message, true); return; }
       keep();
       goOffline();
     }
+  }
+
+  /** Statut d'un logement d'un immeuble (avec « Annuler » et la file hors réseau). */
+  async function setUnitStatus(a, l, status, { undo = true } = {}) {
+    const lg = unitsOf(a);
+    if (!lg) return;
+    const key = String(l);
+    const prevUnit = lg.units[key] ? { ...lg.units[key] } : null;
+    const prev = prevUnit ? prevUnit.status : null;
+    if (prev === status) return;
+    const at = new Date().toISOString();
+    if (status) lg.units[key] = { status, updated_at: at, par: myName() }; else delete lg.units[key];
+    a.status = buildingStatus(lg.n, lg.units);
+    refreshAfterChange(a);
+    if (undo) {
+      snack(`${a.label} · logement ${l} : ${status ? `${STATUS[status].label.toLowerCase()} à ${whenValid(at)}` : "à faire"}`, () => {
+        setUnitStatus(a, l, prev, { undo: false });
+      });
+    }
+    const slug = T.cur.slug;
+    const keep = () => enqueue({ kind: "status", slug, addressId: a.id, logement: l, status, at },
+      (x) => x.kind === "status" && x.slug === slug && x.addressId === a.id && x.logement === l);
+    if (T.offline) { keep(); return; }
+    try {
+      const r = await sendStatus(slug, a.id, status, l);
+      if (r.logements) { lg.units = r.logements.units; a.status = r.status; refreshAfterChange(a); }
+      patchRaw((t) => {
+        t.logements = t.logements || {};
+        if (r.logements) t.logements[a.id] = r.logements;
+        if (r.status) t.statuses[a.id] = { status: r.status, updated_at: r.updated_at, par: r.par }; else delete t.statuses[a.id];
+      });
+    } catch (err) {
+      if (!isNetErr(err) && err.status < 500) { showToast(err.message, true); return; }
+      keep();
+      goOffline();
+    }
+  }
+
+  /** Nombre de logements à l'adresse (1 = maison individuelle). */
+  async function setUnits(a) {
+    if (T.offline) { showToast("Pas de réseau : réessayez quand le réseau sera revenu.", true); return; }
+    const lg = unitsOf(a);
+    const raw = prompt("Nombre de logements à cette adresse ?\n(1 = maison individuelle ; un immeuble n'est « fait » que quand tous ses logements sont passés)", lg ? lg.n : 2);
+    if (raw === null) return;
+    const n = Number(String(raw).trim());
+    if (!Number.isInteger(n) || n < 1 || n > 500) { showToast("Indiquez un nombre entre 1 et 500.", true); return; }
+    try {
+      const r = await postJSON("/api/equipe/logements", { slug: T.cur.slug, address_id: a.id, logements: n });
+      T.tr.logements[a.id] = r.logements;
+      a.status = r.status || null;
+      patchRaw((t) => {
+        t.logements = t.logements || {};
+        t.logements[a.id] = r.logements;
+        if (r.status) t.statuses[a.id] = { ...(t.statuses[a.id] || {}), status: r.status }; else delete t.statuses[a.id];
+      });
+      refreshAfterChange(a);
+      drawMap();
+      showToast(n > 1 ? `Immeuble de ${n} logements : cochez chaque logement.` : "Maison individuelle.");
+    } catch (err) { showToast(err.message, true); }
   }
 
   function refreshAfterChange(a) {
@@ -1011,6 +1149,22 @@
     $("tf-title").textContent = a.label;
     $("tf-sub").textContent = `${a.groupe} · ${T.cur.communeNom}`;
     $("tf-info").innerHTML = `${sigChip(a)}${prevChip(a)}${donBadges(a.id)}`;
+    const lg = unitsOf(a);
+    $("tf-when").hidden = !(lg || (a.status && a.validAt));
+    $("tf-when").innerHTML = lg
+      ? `🏢 <b>Immeuble de ${lg.n} logements</b> · ${unitsDone(lg)} passé${unitsDone(lg) > 1 ? "s" : ""}${a.status ? ` — terminé` : " — pas encore terminé"}`
+      : a.status && a.validAt ? `${STATUS[a.status].icon} <b>${STATUS[a.status].label}</b> ${escapeHtml(whenValid(a.validAt, { long: true }))}${a.validBy ? ` · par ${escapeHtml(a.validBy)}` : ""}` : "";
+    $("tf-units").hidden = !lg;
+    $("tf-units").innerHTML = lg ? Array.from({ length: lg.n }, (_, i) => {
+      const u = lg.units[String(i + 1)] || {};
+      return `<div class="unit-row${u.status ? ` st-${u.status}` : ""}" data-unit="${i + 1}">
+        <span class="unit-name">Logement ${i + 1}<small>${u.status ? `${STATUS[u.status].label} ${escapeHtml(whenValid(u.updated_at))}${u.par ? ` · ${escapeHtml(u.par)}` : ""}${u.pending ? " · 📴" : ""}` : "à faire"}</small></span>
+        ${canEdit() ? `${Object.entries(STATUS).map(([k, v]) => `<button type="button" class="t-st ${k}${u.status === k ? " active" : ""}" data-unit-status="${k}" aria-label="${v.label} : logement ${i + 1}">${v.icon}</button>`).join("")}
+        ${T.tr.donsActive ? `<button type="button" class="t-st don" data-unit-don aria-label="Don : logement ${i + 1}">€</button>` : ""}` : ""}
+      </div>`;
+    }).join("") : "";
+    $("tf-bld").hidden = !canEdit();
+    $("tf-bld").textContent = lg ? `🏢 Modifier le nombre de logements (${lg.n})` : "🏢 C'est un immeuble ? Indiquer le nombre de logements";
     $("tf-note-box").hidden = !canEdit();
     $("tf-note").value = noteOf(a);
     $("tf-note-save").hidden = true;
@@ -1020,8 +1174,8 @@
       b.classList.toggle("active", a.status === b.dataset.status);
       b.disabled = !canEdit();
     });
-    document.querySelector("#t-fiche .tf-status").hidden = !canEdit();
-    $("tf-don").hidden = !(T.tr && T.tr.donsActive);
+    document.querySelector("#t-fiche .tf-status").hidden = !canEdit() || !!lg;
+    $("tf-don").hidden = !(T.tr && T.tr.donsActive) || !!lg;
     const nav = navLinks(a.lat, a.lon, a.label);
     $("tf-go").href = nav.main;
     if (nav.main.startsWith("geo:")) $("tf-go").removeAttribute("target"); else $("tf-go").target = "_blank";
@@ -1040,6 +1194,25 @@
     $("t-fiche").close();
   }));
   $("tf-close").addEventListener("click", () => $("t-fiche").close());
+  $("tf-bld").addEventListener("click", () => setUnits(ficheAddr));
+  $("tf-units").addEventListener("click", (e) => {
+    const row = e.target.closest("[data-unit]");
+    if (!row) return;
+    const l = Number(row.dataset.unit);
+    const st = e.target.closest("[data-unit-status]");
+    if (st) {
+      const u = unitsOf(ficheAddr).units[String(l)] || {};
+      setUnitStatus(ficheAddr, l, u.status === st.dataset.unitStatus ? null : st.dataset.unitStatus);
+      return;
+    }
+    if (e.target.closest("[data-unit-don]")) { $("t-fiche").close(); openDon(ficheAddr, l); }
+  });
+  // en tournée : l'immeuble terminé, on passe à la maison suivante
+  $("t-fiche").addEventListener("close", () => {
+    const a = T.tour.current;
+    if (!T.tour.active || !a || ficheAddr !== a || !unitsOf(a)) return;
+    if (a.status) { T.tour.last = [a.lat, a.lon]; nextHouse(); } else renderTour();
+  });
 
   // note de la maison : raccourcis, enregistrement (ou mise en file sans réseau)
   $("tf-note-chips").innerHTML = NOTE_CHIPS.map((c) => `<button type="button" class="note-quick">${c}</button>`).join("");
@@ -1231,14 +1404,16 @@
       actions.forEach((x) => { x.hidden = true; });
       return;
     }
-    actions.forEach((x) => { x.hidden = false; });
+    const lg = unitsOf(a);
+    actions.forEach((x) => { x.hidden = !!lg && !x.classList.contains("secondary"); });
     $("tt-card").innerHTML = `<span class="tt-group">${escapeHtml(a.groupe)}</span>
       <h2 class="tt-label">${escapeHtml(a.label)}</h2>
       <span class="tt-dist"></span>
+      ${lg ? `<button type="button" class="btn primary tt-bld" data-tour-units>🏢 Immeuble : ${unitsDone(lg)}/${lg.n} logements passés<small>Ouvrir les logements</small></button>` : ""}
       ${noteOf(a) ? `<p class="tt-note">📝 ${escapeHtml(noteOf(a))}</p>` : ""}
       <div class="tt-chips">${sigChip(a)}${prevChip(a)}${donBadges(a.id)}</div>`;
     renderTourDistance();
-    $("tt-don").hidden = !(T.tr && T.tr.donsActive);
+    $("tt-don").hidden = !(T.tr && T.tr.donsActive) || !!lg;
     const nav = navLinks(a.lat, a.lon, a.label);
     $("tt-go").href = nav.main;
     if (nav.main.startsWith("geo:")) $("tt-go").removeAttribute("target"); else $("tt-go").target = "_blank";
@@ -1258,6 +1433,7 @@
     nextHouse();
   });
   $("tt-don").addEventListener("click", () => { if (T.tour.current) openDon(T.tour.current); });
+  $("tt-card").addEventListener("click", (e) => { if (e.target.closest("[data-tour-units]") && T.tour.current) openFiche(T.tour.current); });
   $("tt-quit").addEventListener("click", stopTour);
 
   // ---------------------------------------------------------------------------------------
@@ -1286,15 +1462,15 @@
   function renderExistingDons() {
     const list = T.tr.dons.get(donCtx.a.id) || [];
     $("don-existing").innerHTML = list.map((d) => `<div class="don-line" data-id="${d.id}">
-        <span><b>${d.montant !== undefined ? euros(d.montant) : "Don"}</b> ${MODE_LABEL[d.mode]} ${d.pending ? "📴 à envoyer" : d.statut === "ok" ? "✓" : d.statut === "attente" ? "⏳ en attente" : "✕ échoué"}<small>${escapeHtml(d.personne_nom)}</small></span>
+        <span><b>${d.montant !== undefined ? euros(d.montant) : "Don"}</b> ${MODE_LABEL[d.mode]} ${d.pending ? "📴 à envoyer" : d.statut === "ok" ? "✓" : d.statut === "attente" ? "⏳ en attente" : "✕ échoué"}<small>${d.logement ? `logement ${d.logement} · ` : ""}${escapeHtml(d.personne_nom)} · ${escapeHtml(whenValid(d.created_at))}</small></span>
         ${T.tr.full || d.mine ? `<span class="don-line-actions">${d.statut === "attente" ? `<button type="button" class="btn small" data-act="ok">Payé</button><button type="button" class="btn small" data-act="echec">Non payé</button>` : ""}
           <button type="button" class="icon-btn danger" data-act="delete" aria-label="Annuler ce don">✕</button></span>` : ""}
       </div>`).join("");
   }
 
-  function openDon(a) {
-    donCtx = { a, manual: false };
-    $("don-address").textContent = a.label;
+  function openDon(a, logement = null) {
+    donCtx = { a, manual: false, logement };
+    $("don-address").textContent = logement ? `${a.label} · logement ${logement}` : a.label;
     $("don-montant").value = "";
     $("don-tx").value = "";
     $("don-cheque").value = "";
@@ -1318,7 +1494,8 @@
   function donBody(sumup) {
     // référence : n° du chèque, ou n° de transaction SumUp saisi à la main
     const ref = selectedMode() === "cheque" ? $("don-cheque").value : selectedMode() === "cb" ? $("don-tx").value : "";
-    return { slug: T.cur.slug, address_id: donCtx.a.id, montant: readAmount(), mode: selectedMode(), sumup, tx_code: ref.trim(), client_id: uid() };
+    return { slug: T.cur.slug, address_id: donCtx.a.id, montant: readAmount(), mode: selectedMode(), sumup, tx_code: ref.trim(), client_id: uid(),
+      ...(donCtx.logement ? { logement: donCtx.logement } : {}) };
   }
 
   function postDon(body) {
@@ -1344,7 +1521,11 @@
 
   async function afterDon(a) {
     if (!T.offline) await reload();
-    if (T.tour.active && T.tour.current === a) { T.tour.last = [a.lat, a.lon]; nextHouse(); }
+    if (T.tour.active && T.tour.current === a) {
+      if (unitsOf(a) && !a.status) { renderTour(); return; } // immeuble pas fini : on reste dessus
+      T.tour.last = [a.lat, a.lon];
+      nextHouse();
+    }
   }
 
   $("don-form").addEventListener("submit", async (e) => {

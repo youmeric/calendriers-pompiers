@@ -12,6 +12,13 @@ from .geo import normalize_polys
 class StatusUpdate(BaseModel):
     status: Literal["fait", "absent", "refus", None] = None
     note: str | None = Field(default=None, max_length=500)
+    logement: int | None = Field(default=None, ge=1, le=500)  # immeuble : un seul logement
+
+
+class LogementsIn(BaseModel):
+    slug: str = Field(max_length=80)
+    address_id: str = Field(max_length=120)
+    logements: int = Field(ge=1, le=500)  # 1 = maison individuelle
 
 
 class LoginIn(BaseModel):
@@ -246,6 +253,7 @@ class DonIn(BaseModel):
     sumup: bool = False  # paiement CB lancé dans l'appli SumUp (en attente de son retour)
     # identifiant donné par le téléphone : un don saisi hors réseau et renvoyé deux fois n'est compté qu'une fois
     client_id: str | None = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    logement: int | None = Field(default=None, ge=1, le=500)  # immeuble : logement qui a donné
 
     @field_validator("note", "tx_code")
     @classmethod

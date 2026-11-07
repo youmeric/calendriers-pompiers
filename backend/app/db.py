@@ -121,6 +121,25 @@ def init_db() -> None:
                 statut TEXT NOT NULL DEFAULT 'a_faire',
                 note TEXT NOT NULL DEFAULT ''
             );
+            -- immeubles : nombre de logements d'une adresse (gardé d'une année sur l'autre)
+            CREATE TABLE IF NOT EXISTS address_units (
+                commune_slug TEXT NOT NULL,
+                address_id TEXT NOT NULL,
+                logements INTEGER NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (commune_slug, address_id)
+            );
+            -- statut de chaque logement d'un immeuble, par année
+            CREATE TABLE IF NOT EXISTS unit_status (
+                commune_slug TEXT NOT NULL,
+                address_id TEXT NOT NULL,
+                annee INTEGER NOT NULL,
+                logement INTEGER NOT NULL,
+                status TEXT,
+                updated_at TEXT NOT NULL,
+                par TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (commune_slug, address_id, annee, logement)
+            );
             -- dépôts en banque des espèces et chèques par le trésorier
             CREATE TABLE IF NOT EXISTS depots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -255,6 +274,11 @@ def init_db() -> None:
             ids = [r[0] for r in conn.execute("SELECT id FROM dons WHERE annee = ? AND numero IS NULL ORDER BY id", (annee,))]
             conn.executemany("UPDATE dons SET numero = ? WHERE id = ?", [(start + i + 1, did) for i, did in enumerate(ids)])
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS dons_numero ON dons (annee, numero)")
+        if "logement" not in dcols:  # don fait dans un logement d'un immeuble
+            conn.execute("ALTER TABLE dons ADD COLUMN logement INTEGER")
+        scols = {row[1] for row in conn.execute("PRAGMA table_info(address_status)")}
+        if "par" not in scols:  # qui a validé la maison
+            conn.execute("ALTER TABLE address_status ADD COLUMN par TEXT NOT NULL DEFAULT ''")
         rcols = {row[1] for row in conn.execute("PRAGMA table_info(remises)")}
         for col in ("annule_le", "annule_par"):
             if col not in rcols:
@@ -482,13 +506,13 @@ def get_statuses(commune_slug: str, annee: int | None = None) -> dict[str, dict]
     annee = annee or current_annee()
     with get_conn() as conn:
         cur = conn.execute(
-            "SELECT address_id, status, note, updated_at FROM address_status WHERE commune_slug = ? AND annee = ?",
+            "SELECT address_id, status, note, updated_at, par FROM address_status WHERE commune_slug = ? AND annee = ?",
             (commune_slug, annee),
         )
-        return {row[0]: {"status": row[1], "note": row[2], "updated_at": row[3]} for row in cur.fetchall()}
+        return {row[0]: {"status": row[1], "note": row[2], "updated_at": row[3], "par": row[4]} for row in cur.fetchall()}
 
 
-def set_status(commune_slug: str, address_id: str, status: str | None, note: str | None) -> dict:
+def set_status(commune_slug: str, address_id: str, status: str | None, note: str | None, par: str = "") -> dict:
     if status is not None and status not in VALID_STATUSES:
         raise ValueError(f"statut invalide: {status}")
     now = _now()
@@ -496,15 +520,70 @@ def set_status(commune_slug: str, address_id: str, status: str | None, note: str
     with get_conn() as conn:
         conn.execute(
             """
-            INSERT INTO address_status (commune_slug, address_id, annee, status, note, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO address_status (commune_slug, address_id, annee, status, note, updated_at, par)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(commune_slug, address_id, annee)
-            DO UPDATE SET status = excluded.status, note = excluded.note, updated_at = excluded.updated_at
+            DO UPDATE SET status = excluded.status, note = excluded.note, updated_at = excluded.updated_at, par = excluded.par
             """,
-            (commune_slug, address_id, annee, status, note, now),
+            (commune_slug, address_id, annee, status, note, now, par),
         )
         conn.commit()
-    return {"address_id": address_id, "status": status, "note": note, "updated_at": now}
+    return {"address_id": address_id, "status": status, "note": note, "updated_at": now, "par": par}
+
+
+# ---- Immeubles : plusieurs logements à une même adresse ---------------------------
+
+def get_units(commune_slug: str) -> dict[str, int]:
+    """{address_id: nombre de logements} pour les adresses qui en ont plus d'un."""
+    with get_conn() as conn:
+        rows = conn.execute("SELECT address_id, logements FROM address_units WHERE commune_slug = ? AND logements > 1",
+                            (commune_slug,)).fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
+def set_units(commune_slug: str, address_id: str, logements: int) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO address_units (commune_slug, address_id, logements, updated_at) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(commune_slug, address_id) DO UPDATE SET logements = excluded.logements, updated_at = excluded.updated_at",
+            (commune_slug, address_id, logements, _now()),
+        )
+        conn.commit()
+
+
+def get_unit_statuses(commune_slug: str, annee: int | None = None) -> dict[str, dict[int, dict]]:
+    annee = annee or current_annee()
+    with get_conn() as conn:
+        rows = conn.execute("SELECT address_id, logement, status, updated_at, par FROM unit_status "
+                            "WHERE commune_slug = ? AND annee = ? AND status IS NOT NULL", (commune_slug, annee)).fetchall()
+    out: dict[str, dict[int, dict]] = {}
+    for aid, lg, st, at, par in rows:
+        out.setdefault(aid, {})[lg] = {"status": st, "updated_at": at, "par": par}
+    return out
+
+
+def set_unit_status(commune_slug: str, address_id: str, logement: int, status: str | None, par: str) -> None:
+    if status is not None and status not in VALID_STATUSES:
+        raise ValueError(f"statut invalide: {status}")
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO unit_status (commune_slug, address_id, annee, logement, status, updated_at, par) VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(commune_slug, address_id, annee, logement) DO UPDATE SET status = excluded.status, "
+            "updated_at = excluded.updated_at, par = excluded.par",
+            (commune_slug, address_id, current_annee(), logement, status, _now(), par),
+        )
+        conn.commit()
+
+
+def building_status(logements: int, units: dict[int, dict]) -> str | None:
+    """Statut de l'immeuble : « à faire » tant qu'un logement n'est pas passé ; ensuite absent s'il reste
+    un absent (à repasser), fait si au moins un logement est fait, sinon refus."""
+    sts = [(units.get(i) or {}).get("status") for i in range(1, logements + 1)]
+    if any(s is None for s in sts):
+        return None
+    if "absent" in sts:
+        return "absent"
+    return "fait" if "fait" in sts else "refus"
 
 
 def reset_statuses(commune_slug: str) -> None:
@@ -512,6 +591,7 @@ def reset_statuses(commune_slug: str) -> None:
     with get_conn() as conn:
         conn.execute("DELETE FROM address_status WHERE commune_slug = ? AND annee = ?",
                      (commune_slug, current_annee()))
+        conn.execute("DELETE FROM unit_status WHERE commune_slug = ? AND annee = ?", (commune_slug, current_annee()))
         conn.commit()
 
 
@@ -814,7 +894,7 @@ MODES = ("especes", "cheque", "cb")
 DON_STATUTS = ("ok", "attente", "echec")
 _DON_COLS = ("id", "annee", "commune_slug", "address_id", "sector_id", "montant_cents", "mode", "statut",
              "foreign_id", "tx_code", "note", "personne_id", "personne_nom", "created_at", "updated_at",
-             "numero", "annule_le", "annule_par", "motif")
+             "numero", "annule_le", "annule_par", "motif", "logement")
 
 
 def _don(row) -> dict:
@@ -833,11 +913,11 @@ def add_don(d: dict) -> tuple[dict, bool]:
         conn.execute("BEGIN IMMEDIATE")
         did = conn.execute(
             "INSERT INTO dons (annee, commune_slug, address_id, sector_id, montant_cents, mode, statut, foreign_id, "
-            "tx_code, note, personne_id, personne_nom, created_at, updated_at, client_id, numero) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, (SELECT COALESCE(MAX(numero), 0) + 1 FROM dons WHERE annee = ?))",
+            "tx_code, note, personne_id, personne_nom, created_at, updated_at, client_id, logement, numero) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, (SELECT COALESCE(MAX(numero), 0) + 1 FROM dons WHERE annee = ?))",
             (d["annee"], d["commune_slug"], d["address_id"], d["sector_id"], d["montant_cents"], d["mode"],
              d["statut"], d.get("foreign_id"), d.get("tx_code", ""), d.get("note", ""), d.get("personne_id"),
-             d.get("personne_nom", ""), now, now, d.get("client_id"), d["annee"]),
+             d.get("personne_nom", ""), now, now, d.get("client_id"), d.get("logement"), d["annee"]),
         ).lastrowid
         conn.commit()
     return get_don(did), True

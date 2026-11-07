@@ -11,6 +11,8 @@
   const paris = { timeZone: "Europe/Paris" };
   const dateFr = (iso) => (iso ? new Date(iso).toLocaleDateString("fr-FR", paris) : "");
   const dateTimeFr = (iso) => (iso ? new Date(iso).toLocaleString("fr-FR", { ...paris, dateStyle: "short", timeStyle: "short" }) : "");
+  // registre : l'heure exacte de la saisie, à la seconde
+  const exactFr = (iso) => (iso ? new Date(iso).toLocaleString("fr-FR", { ...paris, dateStyle: "short", timeStyle: "medium" }) : "");
   const dayFr = (ymd) => new Date(`${ymd}T12:00:00`).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
   const COLOR = "#2a78d6"; // une seule série : le total encaissé du jour
 
@@ -160,8 +162,8 @@
         <td>${eur(r.montant)} <small>${MODE[r.mode]}</small></td><td>${escapeHtml(r.saisi_par)}</td><td>${STATUT[r.statut]}</td>
         <td>${r.annule_le ? `${escapeHtml(r.annule_par || "")}, ${dateTimeFr(r.annule_le)}<small>${escapeHtml(r.motif || "")}</small>` : "—"}</td></tr>`));
 
-    table("fx-registre", ["N°", "Date", "Secteur", "Adresse", "Moyen", "Montant", "Référence", "Saisi par", "Statut"],
-      f.registre.map((r) => `<tr class="${r.statut === "ok" ? "" : "cancelled"}"><td>${r.numero}</td><td>${dateTimeFr(r.created_at)}</td>
+    table("fx-registre", ["N°", "Date et heure", "Secteur", "Adresse", "Moyen", "Montant", "Référence", "Saisi par", "Statut"],
+      f.registre.map((r) => `<tr class="${r.statut === "ok" ? "" : "cancelled"}"><td>${r.numero}</td><td>${exactFr(r.created_at)}</td>
         <td>${escapeHtml(r.secteur)}</td><td>${escapeHtml(r.adresse)}</td><td>${MODE[r.mode]}</td><td>${eur(r.montant)}</td>
         <td>${escapeHtml(r.reference || "")}</td><td>${escapeHtml(r.saisi_par)}</td><td>${STATUT[r.statut]}</td></tr>`));
 

@@ -198,6 +198,20 @@ sur Courzieu et Brussieu (69690).
     (et sur la carte en direct) : **« Ajouter la maison »** (elle entre dans
     le secteur, avec son hameau) ou **« Exclure l'adresse »** corrigent
     aussitôt les secteurs et les comptes.
+  - **Heure exacte de validation** : chaque maison (et chaque logement, chaque
+    don) garde l'heure à la seconde où elle a été validée dans l'appli et qui
+    l'a fait : « ✓ 14:32:05 » dans la liste, « Fait aujourd'hui à 14:32:05 ·
+    par Jean » dans la fiche, « Dernière validation… » sur l'accueil, et dans le
+    registre du dossier comptable.
+  - **Immeubles** : dans la fiche d'une adresse, « 🏢 C'est un immeuble ? »
+    permet d'indiquer son nombre de logements (gardé d'une année sur l'autre).
+    Chaque logement se coche alors séparément (✓ ⏳ ✕ €, avec l'heure), et
+    l'immeuble ne passe « fait » que quand **tous** ses logements sont passés
+    (« absent » s'il en reste un à repasser) : plus de « fait » affiché alors
+    que ce n'est pas fini. Un don se rattache à son logement et ne marque que
+    lui ; la liste affiche « 🏢 3/8 », la carte un rond plus gros (cerclé de
+    vert quand l'immeuble est entamé), et la tournée « maison suivante » ouvre
+    les logements et reste sur l'immeuble tant qu'il n'est pas terminé.
   - **Superviseur** (onglet Équipes → 🔑 d'une personne → case « 👁
     Superviseur ») : la personne voit **toutes les tournées** dans son espace
     équipe, avec les droits d'un responsable sur chacune (maisons, dons, caisse,

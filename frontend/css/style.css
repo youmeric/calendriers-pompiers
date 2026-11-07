@@ -1977,3 +1977,23 @@ body.terrain .toast { bottom: calc(80px + env(safe-area-inset-bottom)); }
 .access-super { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; font-size: 13px; line-height: 1.4; cursor: pointer; }
 .access-super input { margin-top: 3px; }
 .ov-row.current .ov-bar { background: #fff; }
+
+/* ---- Heure de validation, immeubles ---- */
+.time-chip { font-size: 11px; font-weight: 700; border-radius: 6px; padding: 1px 7px; font-variant-numeric: tabular-nums; background: var(--surface-2); color: var(--muted); }
+.time-chip.st-fait { background: #dcfce7; color: #166534; }
+.time-chip.st-absent { background: #fef3c7; color: #92400e; }
+.time-chip.st-refus { background: #fee2e2; color: #991b1b; }
+.bld-chip { font-size: 11px; font-weight: 700; border-radius: 6px; padding: 1px 7px; background: #e0e7ff; color: #3730a3; }
+.t-st.bld { width: auto; padding: 0 10px; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.tf-when { margin: 0; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); font-size: 14px; }
+.tf-units { display: flex; flex-direction: column; gap: 4px; max-height: 45vh; overflow-y: auto; }
+.unit-row { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 10px; }
+.unit-row.st-fait { background: #f0fdf4; }
+.unit-row.st-absent { background: #fffbeb; }
+.unit-row.st-refus { background: #fef2f2; }
+.unit-name { flex: 1; min-width: 0; display: flex; flex-direction: column; font-weight: 600; font-size: 14px; }
+.unit-name small { font-weight: 500; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tt-bld { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100%; padding: 12px; font-size: 16px; }
+.tt-bld small { font-weight: 500; opacity: 0.9; }
+.r-last { margin: 0 0 4px; font-size: 13px; color: var(--muted); text-align: center; }
+.r-last b { color: var(--text); }
