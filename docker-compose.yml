@@ -33,6 +33,9 @@ services:
     volumes:
       - ./data/db:/app/db
       - ./data/sectors:/app/sectors
+      # copie chiffrée vers un partage du NAS déjà monté sur le serveur (facultatif) :
+      # décommentez, puis indiquez /mnt/nas dans l'admin (Réglages → Copie chiffrée hors du serveur → Dossier)
+      # - /mnt/nas-sauvegardes:/mnt/nas
     # bot WhatsApp sur la même machine : joignable par http://host.docker.internal:3000
     # (à régler dans l'admin, onglet Équipes → « Envoyer les accès » → Bot WhatsApp)
     extra_hosts:

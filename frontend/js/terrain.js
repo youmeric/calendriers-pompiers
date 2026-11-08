@@ -20,7 +20,7 @@
   const SECTOR_KEY = "terrain-secteur";
   const SNAP_KEY = "terrain-copie"; // copie du secteur sur le téléphone, pour travailler sans réseau
   const MAP_KEY = "terrain-carte-prete";
-  const NOTE_CHIPS = ["🐕 Chien", "🔕 Ne pas sonner", "🌙 Repasser le soir", "👵 Personne âgée", "🚒 Donne à la caserne"];
+  const NOTE_CHIPS = ["🐕 Chien", "🔕 Ne pas sonner", "🌙 Repasser le soir", "🕰 Prendre le temps", "🚒 Donne à la caserne"];
   const SIG_LABEL = { manquante: "Maison manquante", vide: "Maison vide / pas une habitation", erreur: "Adresse fausse", autre: "Autre problème" };
   const WORLD = [[85, -180], [85, 180], [-85, 180], [-85, -180]];
   const TABS = ["accueil", "carte", "maisons", "caisse", "equipe"];
@@ -29,6 +29,33 @@
     get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch { /* indisponible */ } },
   };
+
+  // ---- affichage, propre à chaque téléphone : thème, gros texte, contraste, vibration, ordre de passage
+  const DISPLAY_KEY = "terrain-affichage";
+  const disp = { theme: "auto", big: false, contrast: false, vibrate: true, ordre: false };
+  try { Object.assign(disp, JSON.parse(storage.get(DISPLAY_KEY, "{}"))); } catch { /* réglages par défaut */ }
+  const darkQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+
+  function applyDisplay() {
+    const dark = disp.theme === "dark" || (disp.theme === "auto" && darkQuery && darkQuery.matches);
+    document.body.classList.toggle("theme-dark", !!dark);
+    document.body.classList.toggle("big", !!disp.big);
+    document.body.classList.toggle("contrast", !!disp.contrast);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = dark ? "#0b1220" : "#ffffff";
+  }
+  applyDisplay();
+  if (darkQuery && darkQuery.addEventListener) darkQuery.addEventListener("change", applyDisplay);
+
+  function saveDisplay() {
+    storage.set(DISPLAY_KEY, JSON.stringify(disp));
+    applyDisplay();
+  }
+
+  /** Petite vibration quand une maison est validée (si le téléphone et le réglage le permettent). */
+  function buzz() {
+    if (disp.vibrate && navigator.vibrate) { try { navigator.vibrate(35); } catch { /* non pris en charge */ } }
+  }
 
   const T = {
     me: null,
@@ -105,7 +132,7 @@
         s.code = sectorCode(d.commune.nom, i);
         T.allSectors.set(s.id, { code: s.code, nom: s.nom });
         if (T.me.admin || roles.has(s.id)) {
-          T.sectors.push({ slug: d.commune.slug, communeNom: d.commune.nom, sector: s, role: T.me.admin ? "admin" : roles.get(s.id) });
+          T.sectors.push({ slug: d.commune.slug, communeNom: d.commune.nom, mairie: d.commune.mairie || null, sector: s, role: T.me.admin ? "admin" : roles.get(s.id) });
         }
       });
     }
@@ -285,7 +312,7 @@
   function slimSector(x) {
     const { resume, limite, ...sector } = x.sector;
     sector.addresses = x.sector.addresses.map(({ status, ...a }) => a);
-    return { slug: x.slug, communeNom: x.communeNom, role: x.role, sector };
+    return { slug: x.slug, communeNom: x.communeNom, mairie: x.mairie || null, role: x.role, sector };
   }
 
   function saveSnapshot() {
@@ -467,8 +494,21 @@
   }
 
   function sortedAddresses() {
+    if (disp.ordre) return [...T.cur.sector.addresses].sort((a, b) => routeIndex(a) - routeIndex(b));
     const cmp = (x, y) => String(x || "").localeCompare(String(y || ""), "fr", { numeric: true });
     return [...T.cur.sector.addresses].sort((a, b) => cmp(a.groupe, b.groupe) || cmp(a.nom_voie, b.nom_voie) || cmp(a.numero, b.numero));
+  }
+
+  /** Ordre de passage conseillé (depuis la mairie), calculé une fois par secteur. */
+  let route = { key: "", index: new Map() };
+  function routeIndex(a) {
+    const s = T.cur.sector;
+    const key = `${s.id}:${s.addresses.length}`;
+    if (route.key !== key) {
+      const start = T.cur.mairie ? [T.cur.mairie.lat, T.cur.mairie.lon] : null;
+      route = { key, index: new Map(C.routeOrder(s.addresses, start).map((id, i) => [id, i])) };
+    }
+    return route.index.has(a.id) ? route.index.get(a.id) : 99999;
   }
 
   function distanceM(a, b) {
@@ -494,7 +534,10 @@
   function showTab(name) {
     if (name === "caisse" && !(T.tr && T.tr.donsActive)) name = "accueil";
     for (const v of document.querySelectorAll(".t-view")) v.hidden = v.dataset.view !== name;
-    for (const a of document.querySelectorAll(".t-tabs a")) a.classList.toggle("active", a.dataset.tab === name);
+    for (const a of document.querySelectorAll(".t-tabs a")) {
+      a.classList.toggle("active", a.dataset.tab === name);
+      if (a.dataset.tab === name) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+    }
     document.body.dataset.tab = name;
     if (name === "carte") ensureMap();
     $("t-main").scrollTop = 0;
@@ -680,8 +723,9 @@
     }
     let html = "";
     let group = null;
+    if (disp.ordre) html += `<p class="hint ord-hint">Ordre de passage conseillé (à vol d'oiseau, depuis la mairie)</p>`;
     for (const a of list) {
-      if (a.groupe !== group) {
+      if (!disp.ordre && a.groupe !== group) {
         group = a.groupe;
         html += `<h3 class="t-group">${escapeHtml(group)}</h3>`;
       }
@@ -693,7 +737,7 @@
           ${T.tr.donsActive ? `<button type="button" class="t-st don" data-don aria-label="Don : ${escapeHtml(a.label)}">€</button>` : ""}
         </div>`;
       html += `<div class="t-row${a.status ? ` st-${a.status}` : ""}" data-id="${escapeHtml(a.id)}">
-        <button type="button" class="t-row-main" data-open><span class="t-row-label">${escapeHtml(a.label)}</span>
+        <button type="button" class="t-row-main" data-open><span class="t-row-label">${disp.ordre ? `<span class="ord-num" aria-label="étape ${routeIndex(a) + 1}">${routeIndex(a) + 1}</span>` : ""}${escapeHtml(a.label)}</span>
           <span class="t-row-chips">${validChip(a)}${noteChip(a)}${sigChip(a)}${prevChip(a)}${donBadges(a.id)}</span></button>
         ${btns}
       </div>`;
@@ -711,7 +755,7 @@
           <small>${label(d.address_id)}${d.logement ? ` · ${escapeHtml(unitNameOf(d.address_id, d.logement))}` : ""} · ${escapeHtml(d.personne_nom)} · ${escapeHtml(whenValid(d.created_at))}${d.tx_code ? ` · ${escapeHtml(d.tx_code)}` : ""}</small></span>
         ${editable ? `<span class="don-line-actions">
           ${d.statut === "attente" ? `<button type="button" class="btn small" data-act="ok">Payé</button><button type="button" class="btn small" data-act="echec">Non payé</button>` : ""}
-          <button type="button" class="icon-btn danger" data-act="delete" aria-label="Annuler ce don">✕</button></span>` : ""}
+          ${receiptBtn(d)}<button type="button" class="icon-btn danger" data-act="delete" aria-label="Annuler ce don">✕</button></span>` : ""}
       </div>`;
     let html = "";
     if (tr.full) {
@@ -768,6 +812,7 @@
       html += `<div class="r-card"><span class="r-label">L'équipe</span>${people.join("") || `<p class="hint">Équipe pas encore constituée.</p>`}
         ${canChange ? `<button type="button" class="btn eq-add" data-action="add-member">+ Ajouter un équipier</button>` : ""}</div>`;
     }
+    html += displayCard();
     html += offlineCard();
     html += `<div class="eq-links">
         <a class="btn" href="/plan.html#/${encodeURIComponent(T.cur.slug)}/${s.id}" target="_blank" rel="noopener">🖨 Plan du secteur à imprimer</a>
@@ -777,6 +822,19 @@
       </div>
       <p class="hint eq-me">Connecté(e) : ${escapeHtml(T.me.personne ? T.me.personne.nom : "administrateur")} · ${escapeHtml(tourneeTitle(T.annee))}</p>`;
     $("v-equipe").innerHTML = html;
+  }
+
+  function displayCard() {
+    const tog = (k, label, sub) => `<label class="disp-row"><input type="checkbox" data-disp="${k}" ${disp[k] ? "checked" : ""} />
+      <span><b>${label}</b>${sub ? `<small>${sub}</small>` : ""}</span></label>`;
+    return `<div class="r-card disp-card"><span class="r-label">Affichage sur ce téléphone</span>
+      <div class="seg" role="radiogroup" aria-label="Thème">${[["auto", "Auto"], ["light", "Clair"], ["dark", "Sombre"]].map(([k, v]) =>
+        `<button type="button" class="seg-btn${disp.theme === k ? " active" : ""}" data-disp-theme="${k}" role="radio" aria-checked="${disp.theme === k}">${v}</button>`).join("")}</div>
+      ${tog("big", "Gros texte et gros boutons", "Plus lisible dehors, avec des gants")}
+      ${tog("contrast", "Contraste renforcé", "Textes plus foncés, bords plus marqués")}
+      ${tog("vibrate", "Vibrer à chaque validation", navigator.vibrate ? "" : "Ce téléphone ne vibre pas (iPhone)")}
+      ${tog("ordre", "Ordre de passage conseillé", "Maisons numérotées dans un parcours logique ; la tournée suit cet ordre")}
+    </div>`;
   }
 
   function mapPrepared() {
@@ -877,6 +935,10 @@
         },
       });
       T.map.addControl(new Locate());
+      // numéros de l'ordre de passage : seulement quand on zoome assez pour les lire
+      const zoomClass = () => $("t-map").classList.toggle("zoom-low", T.map.getZoom() < 16);
+      T.map.on("zoomend", zoomClass);
+      zoomClass();
       T.map.on("click", (e) => {
         if (T.placing) { placeMissing(e.latlng); return; }
         const m = nearestMarker(e.latlng, 26);
@@ -918,6 +980,7 @@
       const partial = lgm && !a.status && unitsDone(lgm) > 0;
       const m = L.circleMarker([a.lat, a.lon], { radius: lgm ? 9 : 7, color: partial ? STATUS.fait.color : "#fff", weight: partial ? 3 : 2, fillColor: statusColor(a.status), fillOpacity: 1 });
       m.addressId = a.id;
+      if (disp.ordre) m.bindTooltip(String(routeIndex(a) + 1), { permanent: true, direction: "center", className: "ord-tip", interactive: false });
       m.on("click", (e) => {
         L.DomEvent.stop(e);
         if (T.placing) placeMissing(e.latlng); else openFiche(a);
@@ -1044,6 +1107,7 @@
     a.status = status;
     a.validAt = new Date().toISOString();
     a.validBy = myName();
+    if (status) buzz();
     refreshAfterChange(a);
     if (undo) {
       snack(`${a.label} : ${status ? STATUS[status].label.toLowerCase() : "à faire"}${status ? ` à ${whenValid(a.validAt)}` : ""}`, () => {
@@ -1074,7 +1138,7 @@
     const prev = prevUnit ? prevUnit.status : null;
     if (prev === status) return;
     const at = new Date().toISOString();
-    if (status) lg.units[key] = { status, updated_at: at, par: myName() }; else delete lg.units[key];
+    if (status) { lg.units[key] = { status, updated_at: at, par: myName() }; buzz(); } else delete lg.units[key];
     a.status = buildingStatus(lg.n, lg.units);
     refreshAfterChange(a);
     if (undo) {
@@ -1163,14 +1227,22 @@
 
   let snackTimer = null;
   let snackUndo = null;
-  function snack(text, undoFn) {
+  let snackRecu = null;
+  function snack(text, undoFn, recuFn = null) {
     $("t-snack-text").textContent = text;
     $("t-snack").hidden = false;
     $("t-snack-undo").hidden = !undoFn;
+    $("t-snack-recu").hidden = !recuFn;
+    snackRecu = recuFn;
     snackUndo = undoFn;
     clearTimeout(snackTimer);
     snackTimer = setTimeout(() => { $("t-snack").hidden = true; snackUndo = null; }, 5000);
   }
+  $("t-snack-recu").addEventListener("click", () => {
+    const fn = snackRecu;
+    $("t-snack").hidden = true;
+    if (fn) fn();
+  });
   $("t-snack-undo").addEventListener("click", () => {
     const fn = snackUndo;
     $("t-snack").hidden = true;
@@ -1423,6 +1495,7 @@
     const ref = T.myPos || T.tour.last;
     T.tour.noGps = !T.myPos;
     if (!todo.length) T.tour.current = null;
+    else if (disp.ordre) T.tour.current = todo.reduce((best, a) => (routeIndex(a) < routeIndex(best) ? a : best));
     else if (ref) T.tour.current = todo.reduce((best, a) => (distanceM(ref, [a.lat, a.lon]) < distanceM(ref, [best.lat, best.lon]) ? a : best));
     else T.tour.current = sortedAddresses().find((a) => todo.includes(a));
     renderTour();
@@ -1505,7 +1578,7 @@
     $("don-existing").innerHTML = list.map((d) => `<div class="don-line" data-id="${d.id}">
         <span><b>${d.montant !== undefined ? euros(d.montant) : "Don"}</b> ${MODE_LABEL[d.mode]} ${d.pending ? "📴 à envoyer" : d.statut === "ok" ? "✓" : d.statut === "attente" ? "⏳ en attente" : "✕ échoué"}<small>${d.logement ? `${escapeHtml(unitNameOf(d.address_id, d.logement))} · ` : ""}${escapeHtml(d.personne_nom)} · ${escapeHtml(whenValid(d.created_at))}</small></span>
         ${T.tr.full || d.mine ? `<span class="don-line-actions">${d.statut === "attente" ? `<button type="button" class="btn small" data-act="ok">Payé</button><button type="button" class="btn small" data-act="echec">Non payé</button>` : ""}
-          <button type="button" class="icon-btn danger" data-act="delete" aria-label="Annuler ce don">✕</button></span>` : ""}
+          ${receiptBtn(d)}<button type="button" class="icon-btn danger" data-act="delete" aria-label="Annuler ce don">✕</button></span>` : ""}
       </div>`).join("");
   }
 
@@ -1582,12 +1655,13 @@
     }
     try {
       const don = await postDon(body);
+      buzz();
       donDialog.close();
       snack(`Don de ${euros(don.montant)} enregistré`, async () => {
         await fetchJSON(`/api/equipe/dons/${don.id}?motif=${encodeURIComponent("annulé juste après la saisie")}`, { method: "DELETE" })
           .catch((err) => showToast(err.message, true));
         await reload();
-      });
+      }, T.me.recus !== false && don.statut === "ok" ? () => openReceipt(don.id, don.montant) : null);
       await afterDon(a);
     } catch (err) {
       if (!isNetErr(err) && err.status < 500) { donError(err); return; }
@@ -1629,7 +1703,37 @@
     }
   });
 
+  const receiptBtn = (d) => (T.me.recus !== false && d.statut === "ok" && !d.pending
+    ? `<button type="button" class="icon-btn" data-act="recu" aria-label="Reçu de ce don" title="Reçu de paiement">🧾</button>` : "");
+
+  /** Reçu de paiement : QR code à montrer à l'habitant, ou lien à lui envoyer. */
+  async function openReceipt(id, montant) {
+    if (T.offline) { showToast("Pas de réseau : le reçu se fait quand le réseau est revenu.", true); return; }
+    try {
+      const r = await postJSON(`/api/equipe/dons/${id}/recu`, {});
+      const url = `${location.origin}${r.url}`;
+      $("recu-info").textContent = montant !== undefined ? `Don de ${euros(montant)}` : "";
+      if (typeof qrcode === "function") {
+        const qr = qrcode(0, "M");
+        qr.addData(url);
+        qr.make();
+        $("recu-qr").innerHTML = qr.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
+      }
+      const text = `Reçu de votre paiement aux sapeurs-pompiers : ${url}`;
+      $("recu-sms").href = `sms:?&body=${encodeURIComponent(text)}`;
+      $("recu-open").href = url;
+      $("recu-share").hidden = !navigator.share;
+      $("recu-share").onclick = () => navigator.share({ title: "Reçu de paiement", text, url }).catch(() => {});
+      $("recu-dialog").showModal();
+    } catch (err) { showToast(err.message, true); }
+  }
+
   async function donAction(id, act) {
+    if (act === "recu") {
+      const d = (T.tr.allDons || []).find((x) => String(x.id) === String(id));
+      await openReceipt(id, d && d.montant);
+      return;
+    }
     if (String(id).startsWith("q-")) { // don pas encore envoyé : on le retire de la file
       if (act !== "delete" || !confirm("Supprimer ce don pas encore envoyé ?")) return;
       writeQueue(readQueue().filter((x) => `q-${x.client_id}` !== id));
@@ -1861,6 +1965,8 @@
     }
     const gotoTab = e.target.closest("[data-goto]");
     if (gotoTab) goTab(gotoTab.dataset.goto);
+    const th = e.target.closest("[data-disp-theme]");
+    if (th) { disp.theme = th.dataset.dispTheme; saveDisplay(); renderEquipe(); return; }
     const av = e.target.closest("[data-avancement]");
     if (av) {
       try {
@@ -1882,6 +1988,15 @@
     renderMaisons();
   });
   $("t-search").addEventListener("input", () => { T.query = $("t-search").value; renderMaisons(); });
+
+  document.body.addEventListener("change", (e) => {
+    const box = e.target.closest("[data-disp]");
+    if (!box) return;
+    disp[box.dataset.disp] = box.checked;
+    saveDisplay();
+    if (box.dataset.disp === "ordre") { renderMaisons(); drawMap(); }
+    if (box.dataset.disp === "vibrate" && box.checked) buzz();
+  });
 
   $("t-list").addEventListener("click", (e) => {
     const row = e.target.closest(".t-row");

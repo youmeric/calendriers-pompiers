@@ -28,6 +28,7 @@
       <button class="btn primary" type="submit">Se connecter</button>
       <p class="hint">Le code personnel vous a été envoyé par le chef de tournée.</p>
       <a class="t-link" href="/">Voir le plan des secteurs</a>
+      <a class="legal-link" href="/mentions">Mentions légales et confidentialité</a>
     </form>
   </section>
 
@@ -108,6 +109,7 @@
         <label for="tf-note">📝 Note pour l'équipe <small>(gardée pour les prochaines années)</small></label>
         <textarea id="tf-note" rows="2" maxlength="300" placeholder="Chien, ne pas sonner, repasser le soir…"></textarea>
         <div id="tf-note-chips" class="note-chips"></div>
+        <p class="note-rgpd">Notes pratiques seulement : pas d'information de santé, d'âge ou de jugement sur les personnes (effacées automatiquement après quelques années).</p>
         <button id="tf-note-save" type="button" class="btn small primary" hidden>Enregistrer la note</button>
       </div>
       <div class="tf-more">
@@ -118,6 +120,22 @@
       <button type="button" class="link-btn tf-sig" id="tf-bld">🏢 C'est un immeuble ? Indiquer le nombre de logements</button>
       <button type="button" class="link-btn tf-sig" id="tf-sig">⚠ Signaler un problème avec cette adresse</button>
     </div>
+  </dialog>
+
+  <!-- Reçu de paiement : QR code à montrer, ou lien à envoyer -->
+  <dialog id="recu-dialog" class="app-dialog recu-dialog" aria-labelledby="recu-title">
+    <form method="dialog">
+      <h3 id="recu-title">Reçu de paiement</h3>
+      <p id="recu-info" class="hint"></p>
+      <div id="recu-qr" class="recu-qr" aria-label="QR code du reçu"></div>
+      <p class="hint">L'habitant scanne ce code avec l'appareil photo de son téléphone. Reçu simple, <b>pas un reçu fiscal</b>.</p>
+      <div class="recu-actions">
+        <button type="button" class="btn" id="recu-share">Partager…</button>
+        <a class="btn" id="recu-sms">SMS</a>
+        <a class="btn" id="recu-open" target="_blank" rel="noopener">Voir</a>
+      </div>
+      <div class="dialog-actions"><button class="btn primary" type="submit">Fermer</button></div>
+    </form>
   </dialog>
 
   <!-- Signalement d'un problème d'adresse -->
@@ -240,10 +258,11 @@
     </form>
   </dialog>
 
-  <div id="t-snack" class="t-snack" hidden><span id="t-snack-text"></span><button id="t-snack-undo" type="button">Annuler</button></div>
-  <div id="toast" class="toast" hidden></div>
+  <div id="t-snack" class="t-snack" hidden role="status" aria-live="polite"><span id="t-snack-text"></span><button id="t-snack-recu" type="button" hidden>🧾 Reçu</button><button id="t-snack-undo" type="button">Annuler</button></div>
+  <div id="toast" class="toast" hidden role="status" aria-live="polite"></div>
 
   <script src="/vendor/leaflet/leaflet.js"></script>
+  <script src="/vendor/qrcode/qrcode.js"></script>
   <script src="/js/common.js?v=__V__"></script>
   <script src="/js/terrain.js?v=__V__"></script>
 </body>

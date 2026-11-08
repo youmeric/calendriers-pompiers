@@ -334,6 +334,62 @@ window.Common = (() => {
     return Number(String(v).replace(",", ".").replace(/[^0-9.]/g, "")) || 0;
   }
 
+  /**
+   * Ordre de passage conseillé : un parcours qui enchaîne les maisons proches (plus proche voisin,
+   * puis amélioré en décroisant les trajets, « 2-opt »). À vol d'oiseau : un conseil, pas un GPS.
+   * points = [{id, lat, lon}], start = [lat, lon] (mairie, caserne…) ou null. Renvoie les id dans l'ordre.
+   */
+  function routeOrder(points, start) {
+    const n = points.length;
+    if (n < 3) return points.map((p) => p.id);
+    const lat0 = points.reduce((a, p) => a + p.lat, 0) / n;
+    const kx = 111320 * Math.cos((lat0 * Math.PI) / 180);
+    const xy = points.map((p) => [p.lon * kx, p.lat * 110540]);
+    const d = (i, j) => Math.hypot(xy[i][0] - xy[j][0], xy[i][1] - xy[j][1]);
+    // départ : la maison la plus proche du point de départ (sinon la plus à l'ouest)
+    let first = 0;
+    if (start) {
+      const s = [start[1] * kx, start[0] * 110540];
+      let best = Infinity;
+      xy.forEach((q, i) => { const v = Math.hypot(q[0] - s[0], q[1] - s[1]); if (v < best) { best = v; first = i; } });
+    } else {
+      xy.forEach((q, i) => { if (q[0] < xy[first][0]) first = i; });
+    }
+    const used = new Uint8Array(n);
+    const tour = [first];
+    used[first] = 1;
+    for (let k = 1; k < n; k++) {
+      const last = tour[tour.length - 1];
+      let best = -1;
+      let bd = Infinity;
+      for (let j = 0; j < n; j++) if (!used[j]) { const v = d(last, j); if (v < bd) { bd = v; best = j; } }
+      tour.push(best);
+      used[best] = 1;
+    }
+    // 2-opt sur un trajet ouvert (le départ reste en tête)
+    let improved = true;
+    let passes = 0;
+    while (improved && passes < 30) {
+      improved = false;
+      passes++;
+      for (let i = 1; i < n - 1; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const a = tour[i - 1];
+          const b = tour[i];
+          const c = tour[j];
+          const e = j + 1 < n ? tour[j + 1] : null;
+          const before = d(a, b) + (e === null ? 0 : d(c, e));
+          const after = d(a, c) + (e === null ? 0 : d(b, e));
+          if (after < before - 0.5) {
+            for (let x = i, y = j; x < y; x++, y--) [tour[x], tour[y]] = [tour[y], tour[x]];
+            improved = true;
+          }
+        }
+      }
+    }
+    return tour.map((i) => points[i].id);
+  }
+
   function tourneeTitle(annee) {
     return annee ? `Tournée des calendriers ${annee}` : "Tournée des calendriers";
   }
@@ -349,6 +405,6 @@ window.Common = (() => {
     toPolys, pointInPolys, outerRings, holeRings, OFF_ROAD,
     addBaseLayers, sectorCode, labelHtml, compactLabelsBelow, distanceToEdge, normalizeText,
     tourneeTitle, IS_IOS, IS_ANDROID, navLinks, euros, parseEuros, STATUT_LABEL, personAvatar, formatDay, telHref, hasTeam, statutPill, teamLine, renderEquipe,
-    IGN_PLAN_URL,
+    IGN_PLAN_URL, routeOrder,
   };
 })();

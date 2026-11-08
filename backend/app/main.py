@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from . import auth, db
 from .geo import point_in_polys
 from .limits import RoadIndex, describe_limit_polys
-from . import whatsapp
+from . import offsite, whatsapp
 from .models import (AvancementIn, CodeIn, ConfirmIn, DonIn, DonStatutIn, EquipeIn, ExclusionIn, LoginIn, PersonneIn,
                      PersonnesIn, RemiseIn, RenfortIn, SectorsIn, SettingsIn, StatusUpdate, SumupRetourIn,
                      NoteIn, SignalementIn, SignalementActionIn, EnvoiAccesIn, RoleIn, CompteIn,
@@ -60,8 +60,16 @@ async def _daily_backups() -> None:
             if not await asyncio.to_thread(db.backup_done_today):
                 name = await asyncio.to_thread(db.make_backup)
                 log.info("Sauvegarde créée : %s", name)
+                await asyncio.to_thread(_offsite_copy, name)
         except Exception:  # une sauvegarde ratée ne doit jamais arrêter le site
             log.exception("Sauvegarde automatique impossible")
+        try:
+            today = dt.date.today().isoformat()
+            if db.get_setting("purge_jour", "") != today:
+                await asyncio.to_thread(_purge, "Nettoyage automatique")
+                db.set_setting("purge_jour", today)
+        except Exception:
+            log.exception("Nettoyage des données impossible")
         await asyncio.sleep(3600)
 
 
@@ -391,6 +399,7 @@ def team_login(payload: CodeIn, request: Request, response: Response):
         auth.record_failure(ip)
         time.sleep(1)  # ralentit les essais en série
         raise HTTPException(status_code=401, detail="Code inconnu")
+    db.touch_personnes([person["id"]])
     response.set_cookie(
         auth.TEAM_COOKIE, auth.make_team_token(person["id"], person["code"]), max_age=auth.TEAM_SECONDS,
         httponly=True, samesite="strict", secure=auth.COOKIE_SECURE, path="/",
@@ -422,6 +431,7 @@ def team_me(request: Request):
         "suivi": _suivi_enabled(),
         "dons": _suivi_enabled() and _flag("dons_actifs", False),
         "sumup": _sumup_config(),
+        "recus": _flag("recus_actifs", True),
     }
 
 
@@ -627,6 +637,52 @@ def team_overview(request: Request):
     return {"secteurs": out, "suivi": _suivi_enabled()}
 
 
+# ---- Reçus de paiement (non fiscaux) ------------------------------------------------------
+
+@app.post("/api/equipe/dons/{don_id}/recu")
+def team_receipt(don_id: int, request: Request):
+    """Lien du reçu de paiement d'un don, à montrer en QR code ou à envoyer à l'habitant."""
+    if not _flag("recus_actifs", True):
+        raise HTTPException(status_code=403, detail="Les reçus sont désactivés")
+    don = db.get_don(don_id)
+    if not don:
+        raise HTTPException(status_code=404, detail="Don inconnu")
+    role = _require_role(request, don["sector_id"])
+    person = auth.team_member(request)
+    if role == "equipier" and not (person and don["personne_id"] == person["id"]):
+        raise HTTPException(status_code=403, detail="Seul le responsable du secteur ou la personne qui a saisi le don peut faire le reçu")
+    token = db.don_receipt_token(don_id)
+    return {"token": token, "url": f"/recu/{token}"}
+
+
+@app.get("/api/recu/{token}")
+def public_receipt(token: str):
+    """Reçu de paiement (public, par son lien secret) : sans adresse ni nom de l'habitant."""
+    don = db.get_don_by_receipt(token) if re.fullmatch(r"[A-Za-z0-9_-]{16,40}", token) else None
+    if not don:
+        raise HTTPException(status_code=404, detail="Reçu introuvable")
+    asso = {k: db.get_setting(f"asso_{k}", "") or "" for k in ("nom", "adresse", "siret")}
+    return {
+        "association": asso, "annee": don["annee"], "numero": don["numero"], "date": don["created_at"],
+        "montant": don["montant_cents"] / 100, "mode": MODE_FR[don["mode"]],
+        "statut": "annule" if don["annule_le"] else don["statut"],
+        "collecteur": (don["personne_nom"] or "").split(" ")[0],
+        "reference": don["tx_code"] if don["mode"] == "cb" else "",
+    }
+
+
+@app.get("/api/public/mentions")
+def public_legal():
+    """Éditeur, hébergeur, contact et durées de conservation, pour la page des mentions légales."""
+    return {
+        "association": {k: db.get_setting(f"asso_{k}", "") or "" for k in ("nom", "adresse", "siret")},
+        **{k: db.get_setting(k, "") or "" for k in ("editeur", "contact_email", "contact_tel", "hebergeur")},
+        "conservation": {k: float(db.get_setting(k, "") or d) for k, d in RETENTION_DEFAULTS.items()},
+        "suivi": _suivi_enabled(), "dons": _suivi_enabled() and _flag("dons_actifs", False),
+        "telephones_public": _flag("telephones_public", False), "equipes_public": _flag("equipes_public", True),
+    }
+
+
 # ---- Notes et signalements des équipes ------------------------------------------------
 
 def _person_name(request: Request) -> str:
@@ -799,6 +855,7 @@ def team_add_member(sector_id: int, payload: RenfortIn, request: Request):
         pid = payload.personne_id
     if not db.add_member(sector_id, pid, "equipier"):
         raise HTTPException(status_code=409, detail="Cette personne fait déjà partie de l'équipe")
+    db.touch_personnes([pid])
     _log(request, "equipe.renfort", _sector_label(sector_id),
          f"{db.get_personne(pid)['nom']} ajouté(e) en équipier{' (nouvelle personne)' if payload.personne else ''}")
     return _team_view(sector_id)
@@ -1044,7 +1101,18 @@ def admin_get_settings(request: Request):
             "whatsapp_message": db.get_setting("whatsapp_message", "") or whatsapp.DEFAULT_MESSAGE,
             "whatsapp_message_defaut": whatsapp.DEFAULT_MESSAGE,
             "asso_nom": db.get_setting("asso_nom", "") or "", "asso_adresse": db.get_setting("asso_adresse", "") or "",
-            "asso_siret": db.get_setting("asso_siret", "") or ""}
+            "asso_siret": db.get_setting("asso_siret", "") or "",
+            **{k: db.get_setting(k, "") or "" for k in ("editeur", "contact_email", "contact_tel", "hebergeur")},
+            **{k: float(db.get_setting(k, "") or d) for k, d in RETENTION_DEFAULTS.items()},
+            "recus_actifs": _flag("recus_actifs", True),
+            "purge_derniere": json.loads(db.get_setting("purge_derniere", "") or "null"),
+            # copie hors du serveur : les mots de passe ne sont jamais renvoyés
+            "offsite_mode": db.get_setting("offsite_mode", "") or "", "offsite_url": db.get_setting("offsite_url", "") or "",
+            "offsite_user": db.get_setting("offsite_user", "") or "", "offsite_dossier": db.get_setting("offsite_dossier", "") or "",
+            "offsite_garder": int(db.get_setting("offsite_garder", "") or 30),
+            "offsite_password_set": bool(db.get_setting("offsite_password", "")),
+            "offsite_passphrase_set": bool(db.get_setting("offsite_passphrase", "")),
+            "offsite_dernier": json.loads(db.get_setting("offsite_dernier", "") or "null")}
     if auth.has_perm(request, "reglages"):
         return full
     out = {k: full[k] for k in PUBLIC_SETTINGS}
@@ -1066,14 +1134,20 @@ def admin_save_settings(payload: SettingsIn, request: Request):
         db.set_setting("suivi_adresses", "1" if payload.suivi_adresses else "0")
     if payload.annee is not None:
         db.set_setting("annee", str(payload.annee))
-    for key in ("equipes_public", "telephones_public", "dons_actifs", "sumup_actif"):
+    for key in ("equipes_public", "telephones_public", "dons_actifs", "sumup_actif", "recus_actifs"):
         value = getattr(payload, key)
         if value is not None:
             db.set_setting(key, "1" if value else "0")
-    for key in ("sumup_affiliate_key", "sumup_app_id", "whatsapp_bot_url", "whatsapp_bot_key", "asso_nom", "asso_adresse", "asso_siret"):
+    for key in ("sumup_affiliate_key", "sumup_app_id", "whatsapp_bot_url", "whatsapp_bot_key", "asso_nom", "asso_adresse", "asso_siret",
+                "editeur", "contact_email", "contact_tel", "hebergeur", "offsite_mode", "offsite_url", "offsite_user",
+                "offsite_password", "offsite_dossier", "offsite_passphrase"):
         value = getattr(payload, key)
         if value is not None:
             db.set_setting(key, value)
+    for key in (*RETENTION_DEFAULTS, "offsite_garder"):
+        value = getattr(payload, key)
+        if value is not None:
+            db.set_setting(key, str(value))
     if payload.whatsapp_message is not None:
         msg = payload.whatsapp_message.strip()
         db.set_setting("whatsapp_message", "" if msg == whatsapp.DEFAULT_MESSAGE.strip() else msg)
@@ -1081,13 +1155,75 @@ def admin_save_settings(payload: SettingsIn, request: Request):
     shown = lambda v: "oui" if v is True else "non" if v is False else str(v)  # noqa: E731
     changes = []
     for key in sent:
-        if key in ("whatsapp_bot_key", "sumup_affiliate_key", "whatsapp_message"):
+        if key in ("whatsapp_bot_key", "sumup_affiliate_key", "whatsapp_message", "offsite_password", "offsite_passphrase"):
             changes.append(f"{key} modifié")
         elif before.get(key) != after.get(key):
             changes.append(f"{key} : {shown(before.get(key))} → {shown(after.get(key))}")
     if changes:
         _log(request, "reglages", "réglages", " · ".join(changes))
     return after
+
+
+RETENTION_DEFAULTS = {"retention_tel_ans": 3.0, "retention_notes_ans": 3.0, "retention_connexions_mois": 12.0,
+                      "retention_journal_ans": 6.0}
+
+
+def _purge(qui: str) -> dict:
+    vals = {k: float(db.get_setting(k, "") or d) for k, d in RETENTION_DEFAULTS.items()}
+    out = db.purge_personal_data(vals["retention_tel_ans"], vals["retention_notes_ans"],
+                                 vals["retention_connexions_mois"], vals["retention_journal_ans"])
+    report = {"at": db._now(), "par": qui, **out}
+    db.set_setting("purge_derniere", json.dumps(report))
+    if any(out.values()):
+        db.log(qui, "système" if qui.startswith("Nettoyage") else "console", "rgpd.nettoyage", "données personnelles",
+               f"{out['telephones']} téléphone(s), {out['notes']} note(s), {out['connexions']} connexion(s), "
+               f"{out['journal']} ancienne(s) ligne(s) du journal effacé(s)")
+    return report
+
+
+@app.post("/api/admin/rgpd/nettoyer", dependencies=[Depends(auth.require("reglages"))])
+def admin_purge_now(request: Request):
+    return _purge(_actor(request)[0])
+
+
+def _offsite_cfg() -> dict | None:
+    mode = db.get_setting("offsite_mode", "") or ""
+    if not mode:
+        return None
+    return {"mode": mode, "url": db.get_setting("offsite_url", "") or "", "user": db.get_setting("offsite_user", "") or "",
+            "password": db.get_setting("offsite_password", "") or "", "dossier": db.get_setting("offsite_dossier", "") or "",
+            "garder": int(db.get_setting("offsite_garder", "") or 30), "passphrase": db.get_setting("offsite_passphrase", "") or ""}
+
+
+def _offsite_copy(name: str) -> dict | None:
+    """Chiffre la sauvegarde `name` et l'envoie hors du serveur ; garde le compte rendu."""
+    cfg = _offsite_cfg()
+    if not cfg:
+        return None
+    status = {"at": db._now(), "fichier": f"{name}.chiffre"}
+    try:
+        if not cfg["passphrase"]:
+            raise offsite.OffsiteError("phrase secrète de chiffrement non réglée")
+        with open(os.path.join(db.backup_dir(), name), "rb") as fh:
+            blob = offsite.encrypt(fh.read(), cfg["passphrase"])
+        offsite.push(cfg, f"{name}.chiffre", blob)
+        status.update(ok=True, message=f"copie envoyée ({len(blob) // 1024} Ko, chiffrée)")
+    except (offsite.OffsiteError, OSError) as err:
+        status.update(ok=False, message=str(err))
+        db.log("Sauvegarde externe", "système", "sauvegarde.externe.echec", status["fichier"], str(err))
+    db.set_setting("offsite_dernier", json.dumps(status))
+    return status
+
+
+@app.post("/api/admin/sauvegarde-externe/test", dependencies=[Depends(auth.require("reglages"))])
+def admin_offsite_now(request: Request):
+    """Fait une sauvegarde maintenant et l'envoie hors du serveur (pour vérifier le réglage)."""
+    if not _offsite_cfg():
+        raise HTTPException(status_code=409, detail="Copie hors du serveur non réglée")
+    name = db.make_backup("manuelle")
+    status = _offsite_copy(name)
+    _log(request, "sauvegarde.externe", status["fichier"], status["message"])
+    return status
 
 
 # ---- Comptes et rôles de la console ------------------------------------------------
@@ -1730,6 +1866,7 @@ def admin_set_equipe(sector_id: int, payload: EquipeIn, request: Request):
     plan = payload.model_dump(exclude={"membres"})
     before = db.get_teams().get(sector_id) or {"date": "", "creneau": "", "statut": "a_faire", "note": "", "membres": []}
     db.set_team(sector_id, plan, [m.model_dump() for m in payload.membres])
+    db.touch_personnes([m.personne_id for m in payload.membres])
     after = db.get_teams().get(sector_id)
     names = {p["id"]: p["nom"] for p in db.list_personnes()}
     fmt = lambda t: {f"{names.get(m['personne_id'], '?')}{' ★' if m['role'] == 'responsable' else ''}" for m in t["membres"]}  # noqa: E731
@@ -1836,6 +1973,17 @@ def plan_page():
 @app.get("/bilan.html", include_in_schema=False)
 def year_report_page():
     return _page("bilan.html")
+
+
+@app.get("/mentions", include_in_schema=False)
+@app.get("/mentions.html", include_in_schema=False)
+def legal_page():
+    return _page("mentions.html")
+
+
+@app.get("/recu/{token}", include_in_schema=False)
+def receipt_page(token: str):
+    return _page("recu.html")
 
 
 @app.get("/fiscal.html", include_in_schema=False)

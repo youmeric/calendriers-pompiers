@@ -39,6 +39,7 @@
       <input id="password" type="password" autocomplete="current-password" required />
       <button type="submit" class="btn primary">Se connecter</button>
       <p id="login-error" class="error-text" hidden></p>
+      <a class="legal-link" href="/mentions">Mentions légales et confidentialité</a>
     </form>
   </section>
 
@@ -245,6 +246,10 @@
         </label>
         <p class="hint">Les équipiers enregistrent les dons ; seuls les <b>responsables du secteur</b> et l'admin voient les montants des autres et les totaux.</p>
         <label class="setting-row">
+          <input type="checkbox" id="recus-toggle" data-setting="recus_actifs" />
+          <span><b>Reçus de paiement</b> : après un don, l'équipe peut montrer un QR code ou envoyer un lien de reçu à l'habitant (reçu simple, <b>pas un reçu fiscal</b>)</span>
+        </label>
+        <label class="setting-row">
           <input type="checkbox" id="sumup-toggle" />
           <span><b>Paiement par carte avec SumUp</b> : le bouton ouvre l'appli SumUp avec le montant, puis revient ici</span>
         </label>
@@ -263,6 +268,51 @@
         <button id="backup-now" class="btn" type="button">Sauvegarder maintenant</button>
         <ul id="backup-list" class="backup-list"></ul>
         <p class="hint">Une sauvegarde est faite chaque jour automatiquement ; les 30 dernières sont gardées sur le serveur (dossier <code>data/db/sauvegardes</code>). Téléchargez-en une de temps en temps pour en avoir une copie ailleurs.</p>
+
+        <details class="set-group" id="offsite-group">
+          <summary>Copie chiffrée hors du serveur <span id="offsite-badge" class="set-badge"></span></summary>
+          <p class="hint">Chaque nuit, la sauvegarde est <b>chiffrée</b> avec votre phrase secrète puis copiée ailleurs : si le serveur tombe en panne, rien n'est perdu ; sans la phrase, le fichier est illisible.</p>
+          <label class="set-field">Destination
+            <select id="offsite-mode" data-setting="offsite_mode">
+              <option value="">Désactivée</option>
+              <option value="webdav">WebDAV (NAS Synology, Nextcloud…)</option>
+              <option value="dossier">Dossier monté sur le serveur (partage du NAS)</option>
+            </select>
+          </label>
+          <div id="offsite-webdav">
+            <label class="set-field">Adresse WebDAV du dossier<input data-setting="offsite_url" placeholder="https://nas.exemple.fr:5006/sauvegardes/calendriers/" autocomplete="off" spellcheck="false" /></label>
+            <label class="set-field">Identifiant<input data-setting="offsite_user" autocomplete="off" spellcheck="false" /></label>
+            <label class="set-field">Mot de passe<input type="password" data-setting="offsite_password" data-secret autocomplete="new-password" /></label>
+          </div>
+          <label class="set-field" id="offsite-dossier">Dossier (chemin vu depuis le serveur)<input data-setting="offsite_dossier" placeholder="/mnt/nas/sauvegardes-calendriers" autocomplete="off" spellcheck="false" /></label>
+          <label class="set-field">Phrase secrète de chiffrement (12 caractères au moins — <b>notez-la en lieu sûr</b>, elle est indispensable pour restaurer)<input type="password" data-setting="offsite_passphrase" data-secret autocomplete="new-password" /></label>
+          <label class="set-field">Copies gardées<input type="number" min="1" max="365" data-setting="offsite_garder" data-number /></label>
+          <button type="button" class="btn small" id="offsite-test">Sauvegarder et envoyer maintenant</button>
+          <p id="offsite-status" class="hint"></p>
+        </details>
+
+        <details class="set-group" id="rgpd-group">
+          <summary>Données personnelles (RGPD)</summary>
+          <p class="hint">Effacement automatique, chaque jour, de ce qui n'est plus utile. Le registre des dons et les pièces de caisse ne sont jamais effacés.</p>
+          <label class="set-field">Téléphone d'une personne qui ne participe plus, effacé après (ans)<input type="number" step="0.5" min="0.5" max="20" data-setting="retention_tel_ans" data-number /></label>
+          <label class="set-field">Notes sur les maisons, effacées après (ans sans modification)<input type="number" step="0.5" min="0.5" max="20" data-setting="retention_notes_ans" data-number /></label>
+          <label class="set-field">Journal des connexions, gardé (mois)<input type="number" min="1" max="120" data-setting="retention_connexions_mois" data-number /></label>
+          <label class="set-field">Journal des autres actions, gardé (ans)<input type="number" min="1" max="30" data-setting="retention_journal_ans" data-number /></label>
+          <button type="button" class="btn small" id="rgpd-now">Nettoyer maintenant</button>
+          <p id="rgpd-status" class="hint"></p>
+        </details>
+
+        <details class="set-group" id="legal-group">
+          <summary>Mentions légales</summary>
+          <p class="hint">Affichées sur la page <a href="/mentions" target="_blank" rel="noopener">Mentions légales et confidentialité</a> (lien en bas du plan public, de l'espace équipe et de la connexion).</p>
+          <label class="set-field">Association<input data-setting="asso_nom" placeholder="Amicale des sapeurs-pompiers de Courzieu" /></label>
+          <label class="set-field">Adresse<input data-setting="asso_adresse" placeholder="Caserne, 69690 Courzieu" /></label>
+          <label class="set-field">N° RNA / SIRET<input data-setting="asso_siret" /></label>
+          <label class="set-field">Directeur(rice) de la publication<input data-setting="editeur" placeholder="Le/la président(e) de l'amicale" /></label>
+          <label class="set-field">E-mail de contact<input type="email" data-setting="contact_email" /></label>
+          <label class="set-field">Téléphone de contact<input data-setting="contact_tel" /></label>
+          <label class="set-field">Hébergeur (nom, adresse)<input data-setting="hebergeur" placeholder="Serveur de l'amicale, … / ou nom de l'hébergeur" /></label>
+        </details>
       </section>
 
       <section class="bilan-main">

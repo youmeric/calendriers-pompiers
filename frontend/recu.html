@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>Reçu de paiement — Sapeurs-pompiers</title>
+<link rel="preload" href="/vendor/inter/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="icon" type="image/png" href="/icons/favicon-64.png" />
+<link rel="stylesheet" href="/css/style.css?v=__V__" />
+</head>
+<body class="legal receipt">
+  <main class="receipt-card" id="rc">
+    <img src="/img/logo-courzieu.png" alt="" width="58" height="80" />
+    <p id="rc-asso" class="report-kicker"></p>
+    <h1>Reçu de paiement</h1>
+    <p id="rc-msg" class="hint">Chargement…</p>
+    <dl id="rc-detail" hidden></dl>
+    <p class="receipt-note">Merci pour votre soutien aux sapeurs-pompiers ! Ce reçu atteste d'un paiement remis lors de la tournée des calendriers.
+      <b>Il ne constitue pas un reçu fiscal</b> et n'ouvre pas droit à une réduction d'impôt.</p>
+    <button type="button" class="btn no-print" id="rc-print" hidden>🖨 Imprimer / enregistrer en PDF</button>
+  </main>
+  <script src="/js/common.js?v=__V__"></script>
+  <script>
+  (async () => {
+    "use strict";
+    const { escapeHtml, fetchJSON } = window.Common;
+    const $ = (id) => document.getElementById(id);
+    const token = location.pathname.split("/").pop();
+    try {
+      const r = await fetchJSON(`/api/recu/${encodeURIComponent(token)}`);
+      const a = r.association;
+      $("rc-asso").textContent = [a.nom || "Sapeurs-pompiers de Courzieu", a.siret && `RNA / SIRET ${a.siret}`].filter(Boolean).join(" · ");
+      const d = new Date(r.date);
+      const eur = `${r.montant.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+      $("rc-msg").innerHTML = r.statut === "annule" ? `<b class="receipt-void">Paiement annulé</b>` : r.statut === "echec" ? `<b class="receipt-void">Paiement refusé</b>`
+        : r.statut === "attente" ? "Paiement par carte en cours de confirmation." : "";
+      $("rc-detail").innerHTML = `<dt>Montant</dt><dd class="receipt-amount">${eur}</dd>
+        <dt>Moyen de paiement</dt><dd>${escapeHtml(r.mode)}</dd>
+        <dt>Date</dt><dd>${d.toLocaleDateString("fr-FR", { dateStyle: "long" })} à ${d.toLocaleTimeString("fr-FR")}</dd>
+        <dt>N° de reçu</dt><dd>${r.annee}-${String(r.numero).padStart(4, "0")}</dd>
+        ${r.reference ? `<dt>Transaction</dt><dd>${escapeHtml(r.reference)}</dd>` : ""}
+        ${r.collecteur ? `<dt>Remis à</dt><dd>${escapeHtml(r.collecteur)}</dd>` : ""}
+        ${a.adresse ? `<dt>Association</dt><dd>${escapeHtml(a.adresse)}</dd>` : ""}`;
+      $("rc-detail").hidden = false;
+      $("rc-print").hidden = false;
+      document.title = `Reçu ${r.annee}-${r.numero} — ${eur}`;
+    } catch (err) {
+      $("rc-msg").textContent = err.status === 404 ? "Ce reçu n'existe pas (lien incomplet ?)." : `Impossible d'afficher le reçu : ${err.message}`;
+    }
+    $("rc-print").addEventListener("click", () => window.print());
+  })();
+  </script>
+</body>
+</html>

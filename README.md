@@ -216,6 +216,19 @@ sur Courzieu et Brussieu (69690).
     lui ; la liste affiche « 🏢 3/8 », la carte un rond plus gros (cerclé de
     vert quand l'immeuble est entamé), et la tournée « maison suivante » ouvre
     les logements et reste sur l'immeuble tant qu'il n'est pas terminé.
+  - **Affichage, propre à chaque téléphone** (onglet Équipe → « Affichage sur
+    ce téléphone ») : thème **Auto / Clair / Sombre** (pratique le soir, et
+    économe en batterie), **gros texte et gros boutons**, **contraste renforcé**,
+    **vibration** à chaque validation, et **ordre de passage conseillé** : les
+    maisons sont numérotées dans un parcours logique depuis la mairie (à vol
+    d'oiseau : un conseil, pas un GPS), la liste et la tournée « maison
+    suivante » suivent cet ordre et la carte affiche les numéros en zoomant.
+    Le plan imprimé a la même option (« Ordre de passage conseillé »).
+  - **Reçu de paiement** (réglage « Reçus de paiement » dans Suivi & dons) :
+    après un don, « 🧾 Reçu » affiche un **QR code** que l'habitant scanne avec
+    son téléphone, ou un lien à envoyer par SMS / partage. Le reçu (montant,
+    moyen, date et heure, n°, prénom du collecteur, association) ne contient ni
+    nom ni adresse et précise qu'il **n'est pas un reçu fiscal**.
   - **Superviseur** (onglet Équipes → 🔑 d'une personne → case « 👁
     Superviseur ») : la personne voit **toutes les tournées** dans son espace
     équipe, avec les droits d'un responsable sur chacune (maisons, dons, caisse,
@@ -399,6 +412,32 @@ docker compose restart backend
 Les secteurs dessinés sont conservés. Les nouvelles adresses y sont
 automatiquement rattachées, et la page admin signale celles qui tombent hors
 secteur.
+
+## Mentions légales, données personnelles, copie de sauvegarde
+
+- **Mentions légales et confidentialité** (`/mentions`, lien en bas du plan
+  public, de l'espace équipe et des connexions) : éditeur, directeur(rice) de la
+  publication, contact et hébergeur se renseignent dans l'admin (*Suivi & dons
+  → Réglages → Mentions légales*). La page explique quelles données sont
+  gardées, pourquoi, combien de temps, et comment exercer ses droits. Le site
+  n'a ni pistage ni cookie de mesure d'audience : pas de bandeau cookies.
+- **Durées de conservation** (*Réglages → Données personnelles*) : chaque jour,
+  le site efface les téléphones des personnes qui ne participent plus (3 ans par
+  défaut), les notes sur les maisons non modifiées depuis 3 ans, le journal des
+  connexions après 12 mois et le reste du journal après 6 ans. Le registre des
+  dons n'est jamais effacé. Bouton « Nettoyer maintenant » et compte rendu.
+  La zone de note rappelle de ne pas y mettre d'information de santé ou de
+  jugement sur les personnes.
+- **Copie chiffrée hors du serveur** (*Réglages → Copie chiffrée hors du
+  serveur*) : chaque nuit, la sauvegarde est chiffrée avec une phrase secrète
+  puis envoyée sur un partage **WebDAV** (NAS Synology : activer « WebDAV
+  Server » ; Nextcloud…) ou dans un **dossier monté** sur le serveur (partage du
+  NAS monté dans le conteneur, voir `docker-compose.yml`). Les N dernières
+  copies sont gardées ; l'état du dernier envoi s'affiche (✓ / ✕) et un échec est
+  noté au journal. **Notez la phrase secrète en lieu sûr** : sans elle, la copie
+  est illisible. Pour restaurer une copie : la mettre dans `data/db/`, puis
+  `docker compose exec backend python -m app.dechiffrer /app/db/<fichier>.db.chiffre`
+  (la phrase est demandée) et restaurer le `.db` obtenu comme ci-dessous.
 
 ## Sauvegarde
 

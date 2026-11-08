@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mentions légales et confidentialité — Tournée des calendriers</title>
+<link rel="preload" href="/vendor/inter/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="icon" type="image/png" href="/icons/favicon-64.png" />
+<link rel="stylesheet" href="/css/style.css?v=__V__" />
+</head>
+<body class="legal">
+  <main class="legal-page">
+    <a class="legal-back" href="/">← Retour au plan des secteurs</a>
+    <h1>Mentions légales et confidentialité</h1>
+
+    <section aria-labelledby="ml-editeur">
+      <h2 id="ml-editeur">Éditeur du site</h2>
+      <p id="ml-asso"></p>
+      <p id="ml-pub"></p>
+      <p id="ml-contact"></p>
+    </section>
+
+    <section aria-labelledby="ml-heberg">
+      <h2 id="ml-heberg">Hébergement</h2>
+      <p id="ml-hebergeur"></p>
+    </section>
+
+    <section aria-labelledby="ml-donnees">
+      <h2 id="ml-donnees">Vos données personnelles</h2>
+      <p>Ce site sert à organiser la tournée des calendriers des sapeurs-pompiers. Il ne contient <b>ni publicité, ni pistage, ni cookie de mesure d'audience</b> :
+        les seuls cookies servent à garder ouverte la session des membres de la caserne (espace équipe, administration). Aucun bandeau cookies n'est donc nécessaire.</p>
+      <h3>Pour les habitants</h3>
+      <ul>
+        <li>Le plan public montre les secteurs et les adresses issues de la <a href="https://adresse.data.gouv.fr/" rel="noopener">Base Adresse Nationale</a> (données publiques). Aucun nom d'habitant n'est enregistré.</li>
+        <li id="ml-suivi"></li>
+        <li>Si vous payez par carte, le paiement est traité par SumUp ; le site ne voit jamais les numéros de carte. Un <b>reçu de paiement</b> peut vous être remis par lien ou QR code : il ne contient ni votre nom ni votre adresse.</li>
+      </ul>
+      <h3>Pour les membres de la caserne</h3>
+      <ul>
+        <li>Nom, téléphone (facultatif) et secteur(s) de chaque personne qui participe, pour organiser les équipes ; code d'accès personnel.</li>
+        <li id="ml-tel-public"></li>
+        <li>La position GPS sert seulement à afficher « où suis-je » et la maison la plus proche : <b>elle ne quitte pas le téléphone</b> et n'est jamais enregistrée sur le serveur.</li>
+        <li>Les actions sur le site (maisons validées, dons, caisse, connexions) sont gardées dans un journal pour la bonne tenue des comptes.</li>
+      </ul>
+      <h3>Combien de temps</h3>
+      <ul id="ml-durees"></ul>
+      <h3>Vos droits</h3>
+      <p>Vous pouvez demander l'accès à vos données, leur correction ou leur effacement en contactant l'association (coordonnées ci-dessus).
+        Vous pouvez aussi adresser une réclamation à la <a href="https://www.cnil.fr/" rel="noopener">CNIL</a>.</p>
+    </section>
+
+    <section aria-labelledby="ml-sources">
+      <h2 id="ml-sources">Sources des cartes</h2>
+      <p>Fonds de carte © contributeurs <a href="https://www.openstreetmap.org/copyright" rel="noopener">OpenStreetMap</a> et © IGN – Géoplateforme ; adresses : Base Adresse Nationale (licence ouverte).</p>
+    </section>
+  </main>
+  <script src="/js/common.js?v=__V__"></script>
+  <script>
+  (async () => {
+    "use strict";
+    const { escapeHtml, fetchJSON } = window.Common;
+    const $ = (id) => document.getElementById(id);
+    const m = await fetchJSON("/api/public/mentions");
+    const a = m.association;
+    const missing = "<i>à compléter par l'administrateur (onglet Suivi &amp; dons → Mentions légales)</i>";
+    $("ml-asso").innerHTML = a.nom ? `<b>${escapeHtml(a.nom)}</b>${a.adresse ? `<br>${escapeHtml(a.adresse)}` : ""}${a.siret ? `<br>N° RNA / SIRET : ${escapeHtml(a.siret)}` : ""}` : missing;
+    $("ml-pub").innerHTML = `Directeur(rice) de la publication : ${m.editeur ? escapeHtml(m.editeur) : missing}`;
+    $("ml-contact").innerHTML = `Contact : ${[m.contact_email && `<a href="mailto:${escapeHtml(m.contact_email)}">${escapeHtml(m.contact_email)}</a>`, m.contact_tel && escapeHtml(m.contact_tel)].filter(Boolean).join(" · ") || missing}`;
+    $("ml-hebergeur").innerHTML = m.hebergeur ? escapeHtml(m.hebergeur) : missing;
+    $("ml-suivi").innerHTML = m.suivi
+      ? `Pendant la tournée, l'équipe note pour chaque adresse si elle est passée (fait, absent, refus)${m.dons ? ", le montant et le moyen de paiement du don" : ""}, et parfois une courte note pratique (« chien », « repasser le soir »). Ces informations ne sont visibles que par l'équipe du secteur et les responsables de la caserne.`
+      : "Le site sert uniquement de plan : rien n'est noté sur les adresses.";
+    $("ml-tel-public").innerHTML = m.telephones_public ? "Les téléphones des équipes sont affichés sur le plan public, avec leur accord." : "Les téléphones ne sont jamais affichés publiquement ; seuls les membres de la même équipe les voient.";
+    const c = m.conservation;
+    const ans = (v) => `${String(v).replace(".", ",").replace(/,0$/, "")} an${v >= 2 ? "s" : ""}`;
+    $("ml-durees").innerHTML = [
+      `Téléphone d'une personne qui ne participe plus : effacé au bout de ${ans(c.retention_tel_ans)}.`,
+      `Notes pratiques sur les maisons : effacées ${ans(c.retention_notes_ans)} après leur dernière modification.`,
+      `Journal des connexions : ${Math.round(c.retention_connexions_mois)} mois. Journal des autres actions : ${ans(c.retention_journal_ans)}.`,
+      "Registre des dons et pièces de caisse : le temps exigé pour la comptabilité de l'association.",
+    ].map((x) => `<li>${x}</li>`).join("");
+  })();
+  </script>
+</body>
+</html>

@@ -45,7 +45,53 @@
       $("sumup-appid").value = st.sumup_app_id;
     }
     $("sumup-fields").hidden = !st.sumup_actif;
+    $("recus-toggle").checked = st.recus_actifs !== false;
+    $("recus-toggle").disabled = !st.dons_actifs || !st.suivi_adresses;
+    // réglages simples (data-setting) : remplis au chargement, enregistrés à chaque changement
+    document.querySelectorAll("#bilan-view .set-group [data-setting]").forEach((el) => {
+      const k = el.dataset.setting;
+      if (el.hasAttribute("data-secret")) {
+        if (fields) el.value = "";
+        el.placeholder = st[`${k}_set`] ? "réglé (laisser vide pour le garder)" : "";
+      } else if (fields && st[k] !== undefined) el.value = st[k];
+    });
+    $("offsite-webdav").hidden = st.offsite_mode !== "webdav";
+    $("offsite-dossier").hidden = st.offsite_mode !== "dossier";
+    $("offsite-test").hidden = !st.offsite_mode;
+    const last = st.offsite_dernier;
+    $("offsite-badge").textContent = !st.offsite_mode ? "désactivée" : !last ? "jamais envoyée" : last.ok ? "✓ à jour" : "✕ échec";
+    $("offsite-badge").className = `set-badge${last && st.offsite_mode ? (last.ok ? " ok" : " ko") : ""}`;
+    $("offsite-status").textContent = st.offsite_mode && last
+      ? `Dernier envoi : ${new Date(last.at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })} — ${last.ok ? "" : "échec : "}${last.message}` : "";
+    const p = st.purge_derniere;
+    $("rgpd-status").textContent = p ? `Dernier nettoyage : ${new Date(p.at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })} — `
+      + `${p.telephones} téléphone(s), ${p.notes} note(s), ${p.connexions} connexion(s), ${p.journal} ligne(s) de journal effacé(s).` : "";
   }
+
+  document.querySelectorAll("#bilan-view .set-group [data-setting]").forEach((el) => el.addEventListener("change", () => {
+    const k = el.dataset.setting;
+    if (el.hasAttribute("data-secret") && !el.value) return;
+    const v = el.hasAttribute("data-number") ? Number(String(el.value).replace(",", ".")) : el.value;
+    saveSetting({ [k]: v });
+  }));
+  $("recus-toggle").addEventListener("change", () => saveSetting({ recus_actifs: $("recus-toggle").checked }));
+  $("offsite-test").addEventListener("click", async () => {
+    $("offsite-test").disabled = true;
+    $("offsite-status").textContent = "Envoi en cours…";
+    try {
+      const r = await api("/api/admin/sauvegarde-externe/test", { method: "POST" });
+      showToast(r.ok ? "Copie chiffrée envoyée ✓" : `Échec : ${r.message}`, !r.ok);
+      applySettings(await api("/api/admin/settings"), { fields: false });
+    } catch (err) { showToast(err.message, true); } finally { $("offsite-test").disabled = false; }
+  });
+  $("rgpd-now").addEventListener("click", async () => {
+    if (!confirm("Effacer maintenant les données arrivées au bout de leur durée de conservation ?")) return;
+    try {
+      await api("/api/admin/rgpd/nettoyer", { method: "POST" });
+      applySettings(await api("/api/admin/settings"), { fields: false });
+      showToast("Nettoyage fait ✓");
+    } catch (err) { showToast(err.message, true); }
+  });
 
   async function loadCodes() {
     const index = await fetchJSON("/api/communes");

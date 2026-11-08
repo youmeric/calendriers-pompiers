@@ -153,10 +153,48 @@ class SettingsIn(BaseModel):
     asso_adresse: str | None = Field(default=None, max_length=300)
     asso_siret: str | None = Field(default=None, max_length=60)
 
-    @field_validator("asso_nom", "asso_adresse", "asso_siret")
+    # mentions légales
+    editeur: str | None = Field(default=None, max_length=150)  # directeur(rice) de la publication
+    contact_email: str | None = Field(default=None, max_length=150)
+    contact_tel: str | None = Field(default=None, max_length=40)
+    hebergeur: str | None = Field(default=None, max_length=300)
+    # durées de conservation (RGPD)
+    retention_tel_ans: float | None = Field(default=None, ge=0.5, le=20)
+    retention_notes_ans: float | None = Field(default=None, ge=0.5, le=20)
+    retention_connexions_mois: float | None = Field(default=None, ge=1, le=120)
+    retention_journal_ans: float | None = Field(default=None, ge=1, le=30)
+    recus_actifs: bool | None = None
+    # copie chiffrée hors du serveur
+    offsite_mode: Literal["", "webdav", "dossier"] | None = None
+    offsite_url: str | None = Field(default=None, max_length=300)
+    offsite_user: str | None = Field(default=None, max_length=150)
+    offsite_password: str | None = Field(default=None, max_length=300)
+    offsite_dossier: str | None = Field(default=None, max_length=300)
+    offsite_passphrase: str | None = Field(default=None, max_length=300)
+    offsite_garder: int | None = Field(default=None, ge=1, le=365)
+
+    @field_validator("asso_nom", "asso_adresse", "asso_siret", "editeur", "contact_email", "contact_tel", "hebergeur",
+                     "offsite_user", "offsite_dossier")
     @classmethod
     def clean_asso(cls, v: str | None) -> str | None:
         return " ".join(v.split()) if v is not None else v
+
+    @field_validator("offsite_url")
+    @classmethod
+    def check_offsite_url(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if v and not re.fullmatch(r"https?://\S+", v):
+            raise ValueError("adresse WebDAV invalide (https://…)")
+        return v
+
+    @field_validator("offsite_passphrase")
+    @classmethod
+    def check_passphrase(cls, v: str | None) -> str | None:
+        if v and len(v) < 12:
+            raise ValueError("phrase secrète trop courte (12 caractères au moins)")
+        return v
 
     @field_validator("whatsapp_bot_url")
     @classmethod

@@ -284,6 +284,9 @@ def init_db() -> None:
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS dons_numero ON dons (annee, numero)")
         if "logement" not in dcols:  # don fait dans un logement d'un immeuble
             conn.execute("ALTER TABLE dons ADD COLUMN logement INTEGER")
+        if "recu_token" not in dcols:  # lien du reçu de paiement remis à l'habitant
+            conn.execute("ALTER TABLE dons ADD COLUMN recu_token TEXT")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS dons_recu ON dons (recu_token) WHERE recu_token IS NOT NULL")
         scols = {row[1] for row in conn.execute("PRAGMA table_info(address_status)")}
         if "par" not in scols:  # qui a validé la maison
             conn.execute("ALTER TABLE address_status ADD COLUMN par TEXT NOT NULL DEFAULT ''")
@@ -299,6 +302,9 @@ def init_db() -> None:
             conn.execute("ALTER TABLE personnes ADD COLUMN acces_envoye_le TEXT")
         if "superviseur" not in pcols:  # accès à toutes les tournées sans être dans une équipe
             conn.execute("ALTER TABLE personnes ADD COLUMN superviseur INTEGER NOT NULL DEFAULT 0")
+        if "derniere_activite" not in pcols:  # pour effacer les téléphones des personnes qui ne participent plus
+            conn.execute("ALTER TABLE personnes ADD COLUMN derniere_activite TEXT")
+            conn.execute("UPDATE personnes SET derniere_activite = ?", (_now(),))
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS personnes_code ON personnes (code)")
         for (pid,) in conn.execute("SELECT id FROM personnes WHERE code IS NULL OR code = ''").fetchall():
             conn.execute("UPDATE personnes SET code = ? WHERE id = ?", (_new_code(conn), pid))
@@ -717,8 +723,8 @@ def memberships(personne_id: int) -> dict[int, str]:
 def add_personnes(items: list[dict]) -> list[dict]:
     with get_conn() as conn:
         ids = [
-            conn.execute("INSERT INTO personnes (nom, telephone, code) VALUES (?, ?, ?)",
-                         (p["nom"], p.get("telephone") or "", _new_code(conn))).lastrowid
+            conn.execute("INSERT INTO personnes (nom, telephone, code, derniere_activite) VALUES (?, ?, ?, ?)",
+                         (p["nom"], p.get("telephone") or "", _new_code(conn), _now())).lastrowid
             for p in items
         ]
         conn.commit()
@@ -1309,3 +1315,53 @@ def list_journal(limit: int = 200, before: int | None = None, q: str = "", actio
 def journal_people() -> list[str]:
     with get_conn() as conn:
         return [r[0] for r in conn.execute("SELECT DISTINCT qui FROM journal ORDER BY qui COLLATE NOCASE").fetchall()]
+
+
+def touch_personnes(ids: list[int]) -> None:
+    """La personne participe (connexion, place dans une équipe) : ses données restent utiles."""
+    if not ids:
+        return
+    with get_conn() as conn:
+        conn.executemany("UPDATE personnes SET derniere_activite = ? WHERE id = ?", [(_now(), i) for i in ids])
+        conn.commit()
+
+
+# ---- Reçus de paiement ------------------------------------------------------------------
+
+def don_receipt_token(don_id: int) -> str:
+    with get_conn() as conn:
+        tok = conn.execute("SELECT recu_token FROM dons WHERE id = ?", (don_id,)).fetchone()[0]
+        if not tok:
+            tok = secrets.token_urlsafe(18)
+            conn.execute("UPDATE dons SET recu_token = ? WHERE id = ?", (tok, don_id))
+            conn.commit()
+    return tok
+
+
+def get_don_by_receipt(token: str) -> dict | None:
+    with get_conn() as conn:
+        r = conn.execute(f"SELECT {', '.join(_DON_COLS)} FROM dons WHERE recu_token = ?", (token,)).fetchone()
+    return _don(r) if r else None
+
+
+# ---- Durées de conservation (RGPD) -------------------------------------------------------
+
+def _ago(days: float) -> str:
+    from datetime import timedelta
+    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+
+def purge_personal_data(tel_ans: float, notes_ans: float, connexions_mois: float, journal_ans: float) -> dict:
+    """Efface ce qui n'est plus utile : téléphones des personnes qui ne participent plus,
+    vieilles notes sur les maisons, journal des connexions puis journal complet."""
+    out = {}
+    with get_conn() as conn:
+        out["telephones"] = conn.execute(
+            "UPDATE personnes SET telephone = '' WHERE telephone <> '' AND COALESCE(derniere_activite, '') < ? "
+            "AND id NOT IN (SELECT personne_id FROM sector_team)", (_ago(tel_ans * 365.25),)).rowcount
+        out["notes"] = conn.execute("DELETE FROM address_notes WHERE updated_at < ?", (_ago(notes_ans * 365.25),)).rowcount
+        out["connexions"] = conn.execute("DELETE FROM journal WHERE action LIKE 'connexion%' AND at < ?",
+                                         (_ago(connexions_mois * 30.44),)).rowcount
+        out["journal"] = conn.execute("DELETE FROM journal WHERE at < ?", (_ago(journal_ans * 365.25),)).rowcount
+        conn.commit()
+    return out

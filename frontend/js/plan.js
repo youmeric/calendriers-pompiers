@@ -9,7 +9,7 @@
   const OPTIONS_KEY = "plan-options";
   const DEFAULTS = {
     secteur: {
-      outside: "blanc", houses: true, others: false, contour: false,
+      outside: "blanc", houses: true, ordre: false, others: false, contour: false,
       equipe: true, limite: true, resume: true, adresses: false,
       pleinePage: false, entete: true, qr: true, pied: true, orientation: "portrait",
     },
@@ -113,10 +113,10 @@
 
   function createPanes() {
     // ordre fixe quelles que soient les options cochées
-    [["maskPane", 405], ["othersPane", 410], ["mainPane", 420], ["housesPane", 430]].forEach(([name, z]) => {
+    [["maskPane", 405], ["othersPane", 410], ["mainPane", 420], ["housesPane", 430], ["ordrePane", 440]].forEach(([name, z]) => {
       map.createPane(name).style.zIndex = z;
     });
-    ["contour", "mask", "others", "main", "houses", "labels"].forEach((k) => { groups[k] = L.layerGroup().addTo(map); });
+    ["contour", "mask", "others", "main", "houses", "labels", "ordre"].forEach((k) => { groups[k] = L.layerGroup().addTo(map); });
   }
 
   function show(group, visible) {
@@ -133,6 +133,7 @@
     const full = opts.pleinePage; // carte seule : rien d'autre sur la feuille
     show("contour", opts.contour);
     show("houses", opts.houses);
+    show("ordre", sector && opts.ordre);
     if (sector) {
       buildMask(groups.mask, ctx.polys, MASKS[opts.outside]);
       show("others", opts.others);
@@ -208,6 +209,15 @@
     const outline = L.polygon(polys, { color: sector.couleur, weight: 5, fill: false, interactive: false, pane: "mainPane" })
       .addTo(groups.main);
     sector.addresses.forEach((a) => houseMarker(a, "#3b4656").addTo(groups.houses));
+    // ordre de passage conseillé : un numéro par maison, depuis la mairie
+    const mairie = data.commune.mairie ? [data.commune.mairie.lat, data.commune.mairie.lon] : null;
+    window.Common.routeOrder(sector.addresses, mairie).forEach((id, i) => {
+      const a = sector.addresses.find((x) => x.id === id);
+      L.marker([a.lat, a.lon], {
+        interactive: false, pane: "ordrePane",
+        icon: L.divIcon({ className: "ordre-num-icon", html: `<span class="ordre-num">${i + 1}</span>`, iconSize: null }),
+      }).addTo(groups.ordre);
+    });
     fitTarget = outline.getBounds();
 
     ctx.hasEquipe = window.Common.hasTeam(sector.equipe);
