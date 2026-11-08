@@ -2092,3 +2092,33 @@ body.terrain.theme-dark .t-tournee { background: var(--bg); }
 body.terrain.big .t-tabs a.active .ico { width: 50px; }
 body.terrain.theme-dark .t-tabs a.active { color: #fca5a5; }
 body.terrain.theme-dark .t-tabs a.active .ico { background: #3f1418; }
+
+/* mode sombre : boutons et choix des fenêtres (montants, moyen de paiement…) */
+body.terrain.theme-dark .amount-chips button { background: var(--card); color: var(--text); border-color: var(--border); }
+body.terrain.theme-dark .amount-chips button:active { background: var(--surface-2); }
+body.terrain.theme-dark .mode-switch input:checked + span { background: #475569; color: #fff; }
+body.terrain.theme-dark .seg-btn.active { background: #475569; color: #fff; }
+body.terrain.theme-dark .btn:hover { background: var(--surface-2); }
+body.terrain.theme-dark .btn.primary:hover { background: var(--accent-dark); }
+body.terrain.theme-dark .btn.danger { border-color: #7f1d1d; }
+body.terrain.theme-dark .btn.danger:hover, body.terrain.theme-dark .icon-btn.danger:hover { background: #2a0e12; }
+body.terrain.theme-dark .btn.active { background: #3a2c06; border-color: #b45309; }
+body.terrain.theme-dark .icon-btn:hover { background: var(--surface-2); }
+body.terrain.theme-dark .t-filter.active { background: #e5e7eb; border-color: #e5e7eb; color: #0b1220; }
+body.terrain.theme-dark .t-filter.active b { color: #334155; }
+body.terrain.theme-dark .t-search:focus { background: var(--card); }
+body.terrain.theme-dark .don-line { background: var(--surface-2); }
+body.terrain.theme-dark .amount-field b { color: var(--text); }
+body.terrain.theme-dark .sumup-btn { background: #e5e7eb; color: #0b1220; border-color: #e5e7eb; }
+body.terrain.theme-dark .tt-btn.fait, body.terrain.theme-dark .r-chip.fait { background: #064e3b; color: #bbf7d0; }
+body.terrain.theme-dark .tt-btn.absent, body.terrain.theme-dark .r-chip.absent { background: #4a3205; color: #fde68a; }
+body.terrain.theme-dark .tt-btn.refus, body.terrain.theme-dark .r-chip.refus { background: #4c0d12; color: #fecaca; }
+body.terrain.theme-dark :is(.time-chip.st-fait, .don-badge.ok) { background: #064e3b; color: #bbf7d0; }
+body.terrain.theme-dark :is(.time-chip.st-absent, .don-badge.wait) { background: #4a3205; color: #fde68a; }
+body.terrain.theme-dark :is(.time-chip.st-refus, .don-badge.fail) { background: #4c0d12; color: #fecaca; }
+body.terrain.theme-dark :is(.note-chip) { background: #3a320c; color: #fde68a; }
+body.terrain.theme-dark :is(.bld-chip, .sig-chip) { background: #2e1065; color: #ddd6fe; }
+body.terrain.theme-dark .prev-year { background: var(--surface-2); color: var(--muted); }
+body.terrain.theme-dark .prev-year.prev-ok { background: #064e3b; color: #a7f3d0; }
+body.terrain.theme-dark .prev-year.prev-absent { background: #4a3205; color: #fde68a; }
+body.terrain.theme-dark .prev-year.prev-refus { background: #4c0d12; color: #fecaca; }
