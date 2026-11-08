@@ -217,7 +217,7 @@ sur Courzieu et Brussieu (69690).
     vert quand l'immeuble est entamé), et la tournée « maison suivante » ouvre
     les logements et reste sur l'immeuble tant qu'il n'est pas terminé.
   - **Affichage, propre à chaque téléphone** (onglet Équipe → « Affichage sur
-    ce téléphone ») : thème **Auto / Clair / Sombre** (pratique le soir, et
+    ce téléphone ») : thème **Clair** par défaut, ou **Sombre** / **Auto** (pratique le soir, et
     économe en batterie), **gros texte et gros boutons**, **contraste renforcé**,
     **vibration** à chaque validation, et **ordre de passage conseillé** : les
     maisons sont numérotées dans un parcours logique depuis la mairie (à vol

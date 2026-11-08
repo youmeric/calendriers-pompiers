@@ -32,8 +32,13 @@
 
   // ---- affichage, propre à chaque téléphone : thème, gros texte, contraste, vibration, ordre de passage
   const DISPLAY_KEY = "terrain-affichage";
-  const disp = { theme: "auto", big: false, contrast: false, vibrate: true, ordre: false };
-  try { Object.assign(disp, JSON.parse(storage.get(DISPLAY_KEY, "{}"))); } catch { /* réglages par défaut */ }
+  // thème clair par défaut ; chacun choisit Sombre ou Auto dans l'onglet Équipe
+  const disp = { theme: "light", big: false, contrast: false, vibrate: true, ordre: false, v: 2 };
+  try {
+    const saved = JSON.parse(storage.get(DISPLAY_KEY, "{}"));
+    if (!saved.v && saved.theme === "auto") saved.theme = "light"; // ancien défaut « Auto », jamais choisi exprès
+    Object.assign(disp, saved, { v: 2 });
+  } catch { /* réglages par défaut */ }
   const darkQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 
   function applyDisplay() {
