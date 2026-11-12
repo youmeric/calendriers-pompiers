@@ -454,6 +454,23 @@
     </form>
   </dialog>
 
+  <!-- Avertissement avant d'enregistrer des secteurs modifiés en pleine tournée -->
+  <dialog id="impact-dialog" class="app-dialog impact-dialog" aria-labelledby="impact-title">
+    <form method="dialog">
+      <h3 id="impact-title">Des maisons déjà passées changent de secteur</h3>
+      <p id="impact-summary"></p>
+      <ul id="impact-list" class="impact-list"></ul>
+      <p id="impact-deleted" class="impact-warn" hidden></p>
+      <p class="hint">Rien n'est perdu : le statut (fait, absent, refus, avec l'heure), la note et les logements suivent la maison dans son nouveau secteur.
+        Les dons déjà reçus restent dans la caisse de l'équipe qui les a encaissés ; la nouvelle équipe les voit pour information.
+        Les téléphones prennent le nouveau découpage en moins d'une minute ; ce qu'une équipe a marqué hors réseau avant le changement reste accepté.</p>
+      <div class="dialog-actions">
+        <button type="submit" class="btn" value="cancel">Annuler</button>
+        <button type="submit" class="btn primary" value="ok" id="impact-ok">Enregistrer quand même</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Envoi groupé des codes d'accès par le bot WhatsApp -->
   <dialog id="send-dialog" class="app-dialog send-dialog" aria-labelledby="send-title">
     <form id="send-form" method="dialog">

@@ -284,15 +284,14 @@ def get_commune(slug: str):
 def update_status(slug: str, address_id: str, payload: StatusUpdate, request: Request):
     if not _suivi_enabled():
         raise HTTPException(status_code=403, detail="Le suivi des adresses est désactivé")
-    sector_id = _sector_of_address(slug, address_id)
-    _require_role(request, sector_id)
+    sector_id, moved = _sector_for_action(request, slug, address_id, payload.sector_id, payload.fait_le)
     n = db.get_units(slug).get(address_id, 1)
     if payload.logement and payload.logement > n:
         raise HTTPException(status_code=422, detail=f"Cet immeuble a {n} logement(s)")
     before = (db.get_statuses(slug).get(address_id) or {}).get("status")
     unit_before = (db.get_unit_statuses(slug).get(address_id, {}).get(payload.logement) or {}).get("status") if payload.logement else None
     result = _mark(slug, address_id, payload.status, _actor(request)[0], payload.logement, payload.note)
-    where = f"{_sector_label(sector_id)} · {_addr_label(slug, address_id)}"
+    where = f"{_sector_label(sector_id)} · {_addr_label(slug, address_id)}" + (" · maison passée depuis dans un autre secteur" if moved else "")
     if n > 1 and payload.logement:
         if unit_before != payload.status:
             _log(request, "statut", f"{where} · {_unit_name(slug, address_id, payload.logement)}",
@@ -343,6 +342,57 @@ def _sector_of_address(slug: str, address_id: str) -> int:
         if any(a["id"] == address_id for a in addresses):
             return sector_id
     raise HTTPException(status_code=404, detail="Adresse hors secteur")
+
+
+RETARD_TOLERE = dt.timedelta(minutes=15)   # liste pas encore rafraîchie sur le téléphone
+HORS_RESEAU_MAX = dt.timedelta(days=7)      # au-delà, un envoi en attente n'est plus accepté
+
+
+def _sectors_at(slug: str, address_id: str, fait_le: dt.datetime | None) -> list[int]:
+    """Secteurs où se trouvait la maison au moment du geste (ou dans le quart d'heure avant)."""
+    now = dt.datetime.now(dt.timezone.utc)
+    when = now if fait_le is None else (fait_le if fait_le.tzinfo else fait_le.replace(tzinfo=dt.timezone.utc))
+    when = min(when, now)
+    if now - when > HORS_RESEAU_MAX:
+        return []
+    addr = next((a for a in _active_addresses(slug, _load_commune(slug)) if a["id"] == address_id), None)
+    if not addr:
+        return []
+    iso = lambda t: t.astimezone(dt.timezone.utc).isoformat(timespec="microseconds")
+    found: list[int] = []
+    for sectors in db.versions_between(slug, iso(when - RETARD_TOLERE), iso(when)):
+        sid = next((s["id"] for s in sectors if point_in_polys(addr["lat"], addr["lon"], s["polygon"])), None)
+        if sid is not None and sid not in found:
+            found.append(sid)
+    return found
+
+
+def _sector_for_action(request: Request, slug: str, address_id: str,
+                       hint: int | None = None, fait_le: dt.datetime | None = None) -> tuple[int, bool]:
+    """Secteur au titre duquel l'équipe agit sur une maison, et s'il a changé depuis.
+    Normalement celui où est la maison aujourd'hui. Si l'admin a modifié les secteurs entre-temps
+    (téléphone hors réseau, liste pas encore rafraîchie), le geste reste accepté pour l'équipe
+    du secteur où était la maison au moment où il a été fait."""
+    try:
+        current = _sector_of_address(slug, address_id)
+    except HTTPException as err:
+        if err.detail != "Adresse hors secteur":
+            raise
+        current = None
+    if current is not None and _role(request, current):
+        return current, False
+    past = _sectors_at(slug, address_id, fait_le)
+    if hint in past:
+        past.remove(hint)
+        past.insert(0, hint)
+    existing = db.sector_communes().get(slug, set())
+    for sid in past:
+        if sid != current and sid in existing and _role(request, sid):
+            return sid, True
+    if current is None:
+        raise HTTPException(status_code=404, detail="Adresse hors secteur")
+    _require_role(request, current)
+    return current, False
 
 
 def _role(request: Request, sector_id: int) -> str | None:
@@ -488,6 +538,23 @@ def team_sector_tracking(sector_id: int, request: Request):
         out["dons"] = [_don_view(d, full, me) for d in dons]
         if full:
             out["totaux"] = _totaux(dons)
+        out["dons_autres"] = _dons_autres(sector_id, ids, full, me)
+    return out
+
+
+def _dons_autres(sector_id: int, ids: set[str], full: bool, me: int | None) -> dict[str, list[dict]]:
+    """Dons déjà reçus pour des maisons du secteur par une autre équipe (la maison a changé
+    de secteur depuis) : affichés pour information, ils restent dans la caisse de cette équipe."""
+    out: dict[str, list[dict]] = {}
+    labels = None
+    for d in db.list_dons(_annee()):
+        if d["address_id"] not in ids or d["sector_id"] == sector_id or d["statut"] == "echec":
+            continue
+        labels = labels or _sector_labels()
+        view = _don_view(d, full, me)
+        view.pop("tx_code", None)
+        view["secteur"] = labels.get(d["sector_id"], "secteur supprimé")
+        out.setdefault(d["address_id"], []).append(view)
     return out
 
 
@@ -509,8 +576,7 @@ def _unit_name(slug: str, address_id: str, logement: int) -> str:
 @app.post("/api/equipe/logements")
 def team_set_units(payload: LogementsIn, request: Request):
     """Indique qu'une adresse est un immeuble de N logements (1 = maison individuelle)."""
-    sector_id = _sector_of_address(payload.slug, payload.address_id)
-    _require_role(request, sector_id)
+    sector_id, _ = _sector_for_action(request, payload.slug, payload.address_id, payload.sector_id, payload.fait_le)
     before = db.get_units(payload.slug).get(payload.address_id, 1)
     db.set_units(payload.slug, payload.address_id, payload.logements)
     old_labels = db.get_unit_labels(payload.slug).get(payload.address_id, {})
@@ -537,8 +603,9 @@ def team_set_units(payload: LogementsIn, request: Request):
 def team_add_don(payload: DonIn, request: Request):
     if not (_suivi_enabled() and _flag("dons_actifs", False)):
         raise HTTPException(status_code=403, detail="L'enregistrement des dons est désactivé")
-    sector_id = _sector_of_address(payload.slug, payload.address_id)
-    _require_role(request, sector_id)
+    # le don revient à l'équipe qui l'a reçu (c'est elle qui a l'argent), même si la maison
+    # a changé de secteur pendant que le téléphone était hors réseau
+    sector_id, moved = _sector_for_action(request, payload.slug, payload.address_id, payload.sector_id, payload.fait_le)
     _check_open(_annee())
     person = auth.team_member(request)
     use_sumup = payload.mode == "cb" and payload.sumup
@@ -559,7 +626,7 @@ def team_add_don(payload: DonIn, request: Request):
     })
     if created:
         _log(request, "don.ajout", f"{_sector_label(sector_id)} · {_addr_label(payload.slug, payload.address_id)}"
-             + (f" · {_unit_name(payload.slug, payload.address_id, logement)}" if logement else ""),
+             + (f" · {_unit_name(payload.slug, payload.address_id, logement)}" if logement else "") + (" · maison passée depuis dans un autre secteur" if moved else ""),
              f"{_euros(don['montant_cents'])} {MODE_FR[don['mode']]}{' (SumUp, en attente)' if use_sumup else ''}")
     # un don reçu veut dire que la maison est faite (paiement carte : une fois confirmé)
     if created and don["statut"] == "ok":
@@ -695,8 +762,7 @@ def team_set_note(payload: NoteIn, request: Request):
     """Note de l'équipe sur une maison (vide = effacée), gardée d'une année sur l'autre."""
     if not _suivi_enabled():
         raise HTTPException(status_code=403, detail="Le suivi des adresses est désactivé")
-    sector_id = _sector_of_address(payload.slug, payload.address_id)
-    _require_role(request, sector_id)
+    sector_id, _ = _sector_for_action(request, payload.slug, payload.address_id, payload.sector_id, payload.fait_le)
     _log(request, "note", f"{_sector_label(sector_id)} · {_addr_label(payload.slug, payload.address_id)}", payload.note or "note effacée")
     return {"note": db.set_note(payload.slug, payload.address_id, payload.note, _person_name(request))}
 
@@ -713,10 +779,10 @@ def team_report(payload: SignalementIn, request: Request):
         sector_id = payload.sector_id
         if sector_id not in db.sector_communes().get(payload.slug, set()):
             raise HTTPException(status_code=404, detail="Secteur inconnu")
+        _require_role(request, sector_id)
     else:
-        sector_id = _sector_of_address(payload.slug, payload.address_id)
-    _require_role(request, sector_id)
-    sig = db.add_signalement({**payload.model_dump(exclude={"slug", "sector_id"}), "commune_slug": payload.slug,
+        sector_id, _ = _sector_for_action(request, payload.slug, payload.address_id, payload.sector_id, payload.fait_le)
+    sig = db.add_signalement({**payload.model_dump(exclude={"slug", "sector_id", "fait_le"}), "commune_slug": payload.slug,
                               "sector_id": sector_id, "personne_nom": _person_name(request)})
     where = _addr_label(payload.slug, payload.address_id) if payload.address_id else " ".join(x for x in (payload.numero, payload.nom_voie) if x) or "position sur la carte"
     _log(request, "signalement", f"{_sector_label(sector_id)} · {where}", f"{payload.type}{' · ' + payload.note if payload.note else ''}")
@@ -1896,11 +1962,83 @@ def admin_get_commune(slug: str):
     }
 
 
+def _sectors_impact(slug: str, data: dict, payload: SectorsIn) -> dict:
+    """Ce que changerait l'enregistrement de ces secteurs pour les maisons déjà passées cette année :
+    celles qui changent de secteur (avec leur statut, leurs dons) et les secteurs supprimés."""
+    addresses = _active_addresses(slug, data)
+    current = db.list_sectors(slug)
+    old_by, _ = _assign(addresses, current)
+    old_of = {a["id"]: sid for sid, lst in old_by.items() for a in lst}
+    known = {s["id"] for s in current}
+    proposed = [{"id": x.id if x.id in known else f"nouveau-{i}", "nom": x.nom, "polygon": x.polygon}
+                for i, x in enumerate(payload.sectors)]
+    new_by, _ = _assign(addresses, proposed)
+    new_of = {a["id"]: sid for sid, lst in new_by.items() for a in lst}
+    names = {s["id"]: s["nom"] for s in current} | {s["id"]: s["nom"] for s in proposed}
+    statuses = db.get_statuses(slug)
+    notes = db.get_notes(slug)
+    dons_by: dict[str, list[dict]] = {}
+    all_dons = [d for d in db.list_dons(_annee()) if d["commune_slug"] == slug]
+    for d in all_dons:
+        dons_by.setdefault(d["address_id"], []).append(d)
+    labels = {a["id"]: a["label"] for a in addresses}
+    maisons, deplacees = [], 0
+    for aid in sorted(set(old_of) | set(new_of), key=lambda x: labels.get(x, x)):
+        de, vers = old_of.get(aid), new_of.get(aid)
+        if de == vers:
+            continue
+        deplacees += 1
+        st = (statuses.get(aid) or {}).get("status")
+        dons = [d for d in dons_by.get(aid, []) if d["statut"] == "ok"]
+        if not (st or dons or aid in notes):
+            continue
+        maisons.append({"address_id": aid, "label": labels.get(aid, aid),
+                        "de": names.get(de, "hors secteur"), "vers": names.get(vers, "hors secteur"),
+                        "status": st, "note": aid in notes, "nb_dons": len(dons),
+                        "montant": sum(d["montant_cents"] for d in dons) / 100})
+    kept = {x.id for x in payload.sectors if x.id in known}
+    teams = db.get_teams()
+    supprimes = []
+    for sec in current:
+        if sec["id"] in kept:
+            continue
+        dons = [d for d in all_dons if d["sector_id"] == sec["id"] and d["statut"] == "ok"]
+        supprimes.append({"id": sec["id"], "nom": sec["nom"], "membres": len((teams.get(sec["id"]) or {}).get("membres", [])),
+                          "nb_dons": len(dons), "montant": sum(d["montant_cents"] for d in dons) / 100})
+    return {"deplacees": deplacees, "maisons": maisons, "supprimes": supprimes}
+
+
+@app.post("/api/admin/communes/{slug}/sectors/impact", dependencies=[Depends(auth.require("secteurs"))])
+def admin_sectors_impact(slug: str, payload: SectorsIn):
+    return _sectors_impact(slug, _load_commune(slug), payload)
+
+
 @app.put("/api/admin/communes/{slug}/sectors", dependencies=[Depends(auth.require("secteurs"))])
 def admin_save_sectors(slug: str, payload: SectorsIn, request: Request):
     data = _load_commune(slug)
+    impact = _sectors_impact(slug, data, payload)
     db.replace_sectors(slug, [s.model_dump() for s in payload.sectors])
     _log(request, "secteurs.enregistres", data["commune"]["nom"], f"{len(payload.sectors)} secteur(s) : " + ", ".join(x.nom for x in payload.sectors)[:300])
+    if impact["maisons"]:
+        # trace de ce que les maisons déjà passées sont devenues (statut et dons ne bougent pas : ils suivent la maison)
+        items = [f"{m['label']} ({m['de']} → {m['vers']}" + (f", {STATUS_FR.get(m['status'], m['status'])}" if m["status"] else "")
+                 + (f", {m['nb_dons']} don(s) {_euros(round(m['montant'] * 100))}" if m["nb_dons"] else "") + ")"
+                 for m in impact["maisons"]]
+        chunks, cur = [], ""
+        for it in items:  # le journal garde 500 caractères par ligne : plusieurs lignes si besoin
+            if cur and len(cur) + len(it) + 2 > 480:
+                chunks.append(cur)
+                cur = ""
+            cur = f"{cur}; {it}" if cur else it
+        chunks.append(cur)
+        for i, chunk in enumerate(chunks):
+            head = f"{len(items)} maison(s) déjà passée(s) changent de secteur" if i == 0 else "suite"
+            _log(request, "secteurs.maisons", data["commune"]["nom"], f"{head} : {chunk}")
+    for sec in impact["supprimes"]:
+        if sec["membres"] or sec["nb_dons"]:
+            _log(request, "secteurs.supprime", data["commune"]["nom"],
+                 f"{sec['nom']} : équipe de {sec['membres']} personne(s) retirée, {sec['nb_dons']} don(s) "
+                 f"{_euros(round(sec['montant'] * 100))} gardés au registre")
     return {"sectors": _sectors_with_limits(slug, data)}
 
 

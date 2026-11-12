@@ -2,7 +2,7 @@
   "use strict";
   const {
     PALETTE, escapeHtml, fetchJSON, showToast, labelPoint, formatDistance, formatDuration,
-    toPolys, pointInPolys, OFF_ROAD, addBaseLayers, sectorCode, labelHtml,
+    toPolys, pointInPolys, OFF_ROAD, addBaseLayers, sectorCode, labelHtml, euros,
   } = window.Common;
   const Geometry = window.Geometry;
 
@@ -1047,6 +1047,40 @@
     state.savedById = new Map(sectors.map((s) => [s.id, { polygon: JSON.stringify(s.polygon), limite: s.limite }]));
   }
 
+  /** En pleine tournée : montre les maisons déjà passées qui changent de secteur et les secteurs
+   *  supprimés qui ont une équipe ou des dons, et demande confirmation. */
+  async function confirmImpact(payload) {
+    let impact;
+    try {
+      impact = await fetchJSON(`/api/admin/communes/${state.slug}/sectors/impact`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      });
+    } catch { return true; } // vérification impossible : on n'empêche pas d'enregistrer
+    const deleted = (impact.supprimes || []).filter((s) => s.membres || s.nb_dons);
+    if (!impact.maisons.length && !deleted.length) return true;
+    const ST = { fait: "✓ faite", absent: "absent — à repasser", refus: "refus" };
+    const m = impact.maisons;
+    const nb = (k) => m.filter((x) => x.status === k).length;
+    const withDons = m.filter((x) => x.nb_dons);
+    const parts = [nb("fait") && `${nb("fait")} faite${nb("fait") > 1 ? "s" : ""}`, nb("absent") && `${nb("absent")} à repasser`,
+      nb("refus") && `${nb("refus")} refus`, withDons.length && `${withDons.length} avec un don`].filter(Boolean);
+    const dialog = document.getElementById("impact-dialog");
+    document.getElementById("impact-title").textContent = m.length ? "Des maisons déjà passées changent de secteur" : "Secteur supprimé";
+    document.getElementById("impact-summary").innerHTML = m.length
+      ? `<b>${m.length} maison${m.length > 1 ? "s" : ""} déjà passée${m.length > 1 ? "s" : ""}</b> ${m.length > 1 ? "changent" : "change"} de secteur${parts.length ? ` (${parts.join(", ")})` : ""}`
+        + (impact.deplacees > m.length ? `, sur ${impact.deplacees} maisons déplacées en tout.` : ".")
+      : "";
+    document.getElementById("impact-list").hidden = !m.length;
+    document.getElementById("impact-list").innerHTML = m.map((x) => `<li><b>${escapeHtml(x.label)}</b>
+      <small>${escapeHtml(x.de)} → ${escapeHtml(x.vers)}${x.status ? ` · ${ST[x.status]}` : ""}${x.nb_dons ? ` · don ${euros(x.montant)} (reste à l'équipe ${escapeHtml(x.de)})` : ""}${x.note ? " · 📝 note" : ""}</small></li>`).join("");
+    const del = document.getElementById("impact-deleted");
+    del.hidden = !deleted.length;
+    del.innerHTML = deleted.map((s) => `⚠ Le secteur <b>${escapeHtml(s.nom)}</b> est supprimé : ${s.membres ? `son équipe (${s.membres} personne${s.membres > 1 ? "s" : ""}) sera retirée` : "il n'a pas d'équipe"}${s.nb_dons ? `, ses ${s.nb_dons} don${s.nb_dons > 1 ? "s" : ""} (${euros(s.montant)}) restent au registre sous « secteurs supprimés »` : ""}. Pour garder l'équipe, modifiez le tracé au lieu de supprimer le secteur.`).join("<br>");
+    dialog.returnValue = "";
+    dialog.showModal();
+    return new Promise((resolve) => dialog.addEventListener("close", () => resolve(dialog.returnValue === "ok"), { once: true }));
+  }
+
   async function save() {
     const empty = state.sectors.find((s) => !s.nom.trim());
     if (empty) {
@@ -1059,6 +1093,10 @@
       sectors: state.sectors.map((s) => ({ id: s.id, nom: s.nom.trim(), couleur: s.couleur, polygon: polysOf(s.layer) })),
     };
     els.save.disabled = true;
+    if (!(await confirmImpact(payload))) {
+      refreshDirty();
+      return;
+    }
     try {
       const res = await fetchJSON(`/api/admin/communes/${state.slug}/sectors`, {
         method: "PUT",

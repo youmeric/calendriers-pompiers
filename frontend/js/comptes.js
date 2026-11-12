@@ -15,7 +15,7 @@
     "equipe.retrait": "Équipier retiré (terrain)",
     "personne.ajout": "Personne ajoutée", "personne.modif": "Personne modifiée", "personne.suppression": "Personne supprimée",
     "personne.code": "Nouveau code d'accès", "acces.envoi": "Code envoyé par WhatsApp",
-    "secteurs.enregistres": "Secteurs enregistrés", "adresses.exclues": "Adresses exclues", "adresses.reintegrees": "Adresses réintégrées",
+    "secteurs.enregistres": "Secteurs enregistrés", "secteurs.maisons": "Maisons changées de secteur", "secteurs.supprime": "Secteur supprimé", "adresses.exclues": "Adresses exclues", "adresses.reintegrees": "Adresses réintégrées",
     "statuts.remise_a_zero": "Statuts remis à zéro",
     reglages: "Réglages", sauvegarde: "Sauvegarde", export: "Export",
     "depot.ajout": "Dépôt en banque", "depot.annulation": "Dépôt annulé",

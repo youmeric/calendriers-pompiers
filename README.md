@@ -51,6 +51,17 @@ sur Courzieu et Brussieu (69690).
     temps estimé et écart à la moyenne (minutes par porte réglables).
   - **↶ / ↷** (Ctrl+Z / Ctrl+Y) pour annuler ou rétablir, et **versions** :
     chaque enregistrement garde une copie (30 dernières) qu'on peut recharger.
+  - **Modifier les secteurs en pleine tournée** : le statut d'une maison (fait,
+    absent, refus, avec l'heure), sa note et ses logements la suivent dans son
+    nouveau secteur. Les dons déjà reçus restent dans la caisse de l'équipe qui
+    les a encaissés ; la nouvelle équipe les voit « reçu par C2 » pour
+    information. Avant d'enregistrer, un avertissement liste les maisons déjà
+    passées qui changent de secteur et les secteurs supprimés qui ont une équipe
+    ou des dons (tout est aussi noté au journal). Un marquage fait hors réseau
+    avant le changement (jusqu'à 7 jours), ou dans le quart d'heure qui suit
+    (liste pas encore rafraîchie), reste accepté pour l'ancienne équipe.
+    Préférez modifier le tracé plutôt que supprimer un secteur : la suppression
+    retire son équipe.
   - **Suivi des maisons et dons** : désactivés par défaut (le site sert
     uniquement de plan) ; voir « Suivi & dons » plus bas.
   - **Année de la tournée** : affichée dans le titre du site et sur les plans

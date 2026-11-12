@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -13,6 +13,9 @@ class StatusUpdate(BaseModel):
     status: Literal["fait", "absent", "refus", None] = None
     note: str | None = Field(default=None, max_length=500)
     logement: int | None = Field(default=None, ge=1, le=500)  # immeuble : un seul logement
+    # contexte du marquage : secteur où l'équipe voyait la maison et heure du geste (envois hors réseau)
+    sector_id: int | None = None
+    fait_le: datetime | None = None
 
 
 class LogementsIn(BaseModel):
@@ -21,6 +24,9 @@ class LogementsIn(BaseModel):
     logements: int = Field(ge=1, le=500)  # 1 = maison individuelle
     # noms des logements à changer, ex. {"3": "Apt 12"} ; vide = « Logement 3 »
     libelles: dict[int, str] = Field(default_factory=dict, max_length=500)
+    # contexte du marquage : secteur où l'équipe voyait la maison et heure du geste (envois hors réseau)
+    sector_id: int | None = None
+    fait_le: datetime | None = None
 
     @field_validator("libelles")
     @classmethod
@@ -307,6 +313,9 @@ class DonIn(BaseModel):
     # identifiant donné par le téléphone : un don saisi hors réseau et renvoyé deux fois n'est compté qu'une fois
     client_id: str | None = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     logement: int | None = Field(default=None, ge=1, le=500)  # immeuble : logement qui a donné
+    # contexte du marquage : secteur où l'équipe voyait la maison et heure du geste (envois hors réseau)
+    sector_id: int | None = None
+    fait_le: datetime | None = None
 
     @field_validator("note", "tx_code")
     @classmethod
@@ -370,6 +379,9 @@ class NoteIn(BaseModel):
     slug: str = Field(max_length=80)
     address_id: str = Field(max_length=120)
     note: str = Field(default="", max_length=300)
+    # contexte du marquage : secteur où l'équipe voyait la maison et heure du geste (envois hors réseau)
+    sector_id: int | None = None
+    fait_le: datetime | None = None
 
     @field_validator("note")
     @classmethod
@@ -388,6 +400,7 @@ class SignalementIn(BaseModel):
     numero: str = Field(default="", max_length=12)
     nom_voie: str = Field(default="", max_length=120)
     note: str = Field(default="", max_length=300)
+    fait_le: datetime | None = None  # heure du signalement (envoi hors réseau)
 
     @field_validator("numero", "nom_voie", "note")
     @classmethod

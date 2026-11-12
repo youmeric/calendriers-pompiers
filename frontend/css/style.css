@@ -2122,3 +2122,16 @@ body.terrain.theme-dark .prev-year { background: var(--surface-2); color: var(--
 body.terrain.theme-dark .prev-year.prev-ok { background: #064e3b; color: #a7f3d0; }
 body.terrain.theme-dark .prev-year.prev-absent { background: #4a3205; color: #fde68a; }
 body.terrain.theme-dark .prev-year.prev-refus { background: #4c0d12; color: #fecaca; }
+
+/* Dons reçus par une autre équipe (maison passée dans un autre secteur) : pour information */
+.don-badge.other { background: #e0e7ff; color: #3730a3; border: 1px dashed #818cf8; }
+.don-line.other { opacity: .85; border-left: 3px dashed #818cf8; padding-left: 8px; }
+body.terrain.theme-dark .don-badge.other { background: #1e1b4b; color: #c7d2fe; border-color: #6366f1; }
+
+/* Admin : avertissement avant d'enregistrer des secteurs modifiés en pleine tournée */
+.impact-dialog { max-width: 560px; }
+.impact-list { max-height: 45vh; overflow: auto; margin: 8px 0; padding: 0; list-style: none; border: 1px solid var(--line, #e5e7eb); border-radius: 8px; }
+.impact-list li { padding: 6px 10px; border-bottom: 1px solid var(--line, #e5e7eb); font-size: 14px; }
+.impact-list li:last-child { border-bottom: none; }
+.impact-list small { display: block; color: var(--muted, #6b7280); }
+.impact-warn { background: #fef3c7; color: #92400e; border-radius: 8px; padding: 8px 10px; font-size: 14px; }

@@ -1365,3 +1365,22 @@ def purge_personal_data(tel_ans: float, notes_ans: float, connexions_mois: float
         out["journal"] = conn.execute("DELETE FROM journal WHERE at < ?", (_ago(journal_ans * 365.25),)).rowcount
         conn.commit()
     return out
+
+
+def versions_between(commune_slug: str, start: str, end: str) -> list[list[dict]]:
+    """Découpages en vigueur entre deux instants (ISO, UTC) : celui en place au début,
+    puis ceux enregistrés pendant. Sert à savoir dans quel secteur était une maison à un moment donné."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT data FROM sector_versions WHERE commune_slug = ? AND id >= COALESCE("
+            "(SELECT MAX(id) FROM sector_versions WHERE commune_slug = ? AND saved_at <= ?), 0) "
+            "AND saved_at <= ? ORDER BY id",
+            (commune_slug, commune_slug, start, end),
+        ).fetchall()
+    out = []
+    for (data,) in rows:
+        sectors = json.loads(data)
+        for s in sectors:
+            s["polygon"] = normalize_polys(s["polygon"])
+        out.append(sectors)
+    return out

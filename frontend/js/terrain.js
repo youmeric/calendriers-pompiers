@@ -286,7 +286,7 @@
     T.tr = {
       readOnly: false, role: t.role, lead, full: lead, donsActive: t.dons !== null, dons, allDons,
       totaux: t.totaux, precedent: t.precedent || {}, equipe: t.equipe, caisse: T.raw.caisse[s.id] || null,
-      notes, signalements, logements,
+      notes, signalements, logements, donsAutres: t.dons_autres || {},
     };
   }
 
@@ -487,10 +487,16 @@
     return open ? `<span class="sig-chip">⚠ signalé</span>` : "";
   }
 
+  /** Dons reçus pour cette maison par une autre équipe (la maison a changé de secteur depuis). */
+  function otherDons(addressId) {
+    return (T.tr && T.tr.donsAutres && T.tr.donsAutres[addressId]) || [];
+  }
+
   function donBadges(addressId) {
     const list = T.tr && T.tr.dons.get(addressId);
-    if (!list || !list.length) return "";
-    return list.map((d) => {
+    const others = otherDons(addressId).map((d) => `<span class="don-badge other" title="Reçu par l'équipe ${escapeHtml(d.secteur)} : compté dans sa caisse, pas la vôtre">${d.montant !== undefined ? euros(d.montant) : "Don"} reçu par ${escapeHtml(d.secteur)}</span>`).join("");
+    if (!list || !list.length) return others;
+    return others + list.map((d) => {
       const amount = d.montant !== undefined ? euros(d.montant) : "Don";
       const cls = d.statut === "ok" ? "ok" : d.statut === "attente" ? "wait" : "fail";
       const tail = d.pending ? " · à envoyer" : d.statut === "attente" ? " · en attente" : d.statut === "echec" ? " · échoué" : "";
@@ -1052,9 +1058,15 @@
     renderTop();
   }
 
-  function sendStatus(slug, addressId, status, logement) {
+  /** Secteur où l'équipe voit la maison et heure du geste : si l'admin modifie les secteurs entre-temps,
+   *  le serveur accepte quand même ce qui a été fait (hors réseau, liste pas encore rafraîchie). */
+  const ctxOf = (sectorId, at) => ({ ...(sectorId ? { sector_id: sectorId } : {}), ...(at ? { fait_le: at } : {}) });
+  const curSectorId = () => (T.cur && T.cur.sector ? T.cur.sector.id : null);
+
+  function sendStatus(slug, addressId, status, logement, sectorId = curSectorId(), at = null) {
     return fetchJSON(`/api/communes/${slug}/addresses/${encodeURIComponent(addressId)}/status`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(logement ? { status, logement } : { status }),
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, ...(logement ? { logement } : {}), ...ctxOf(sectorId, at) }),
     });
   }
 
@@ -1063,12 +1075,12 @@
   });
 
   function sendQueued(item) {
-    if (item.kind === "status") return sendStatus(item.slug, item.addressId, item.status, item.logement);
-    if (item.kind === "note") return postJSON("/api/equipe/notes", { slug: item.slug, address_id: item.address_id, note: item.note });
-    if (item.kind === "sig") return postJSON("/api/equipe/signalements", item.body);
+    if (item.kind === "status") return sendStatus(item.slug, item.addressId, item.status, item.logement, item.sectorId, item.at);
+    if (item.kind === "note") return postJSON("/api/equipe/notes", { slug: item.slug, address_id: item.address_id, note: item.note, ...ctxOf(item.sectorId, item.at) });
+    if (item.kind === "sig") return postJSON("/api/equipe/signalements", { ...item.body, ...(item.at && !item.body.fait_le ? { fait_le: item.at } : {}) });
     return postJSON("/api/equipe/dons", {
       slug: item.slug, address_id: item.address_id, montant: item.montant, mode: item.mode, tx_code: item.tx_code || "", client_id: item.client_id,
-      ...(item.logement ? { logement: item.logement } : {}),
+      ...(item.logement ? { logement: item.logement } : {}), ...ctxOf(item.sector_id, item.at),
     });
   }
 
@@ -1121,10 +1133,11 @@
       });
     }
     const slug = T.cur.slug;
-    const keep = () => enqueue({ kind: "status", slug, addressId: a.id, status, at: a.validAt }, (x) => x.kind === "status" && x.slug === slug && x.addressId === a.id && !x.logement);
+    const sectorId = curSectorId();
+    const keep = () => enqueue({ kind: "status", slug, addressId: a.id, status, at: a.validAt, sectorId }, (x) => x.kind === "status" && x.slug === slug && x.addressId === a.id && !x.logement);
     if (T.offline) { keep(); return; }
     try {
-      const r = await sendStatus(slug, a.id, status);
+      const r = await sendStatus(slug, a.id, status, null, sectorId);
       if (r.updated_at) a.validAt = r.updated_at; // heure du serveur
       patchRaw((t) => { if (status) t.statuses[a.id] = { status, updated_at: r.updated_at, par: r.par }; else delete t.statuses[a.id]; });
     } catch (err) {
@@ -1152,11 +1165,12 @@
       });
     }
     const slug = T.cur.slug;
-    const keep = () => enqueue({ kind: "status", slug, addressId: a.id, logement: l, status, at },
+    const sectorId = curSectorId();
+    const keep = () => enqueue({ kind: "status", slug, addressId: a.id, logement: l, status, at, sectorId },
       (x) => x.kind === "status" && x.slug === slug && x.addressId === a.id && x.logement === l);
     if (T.offline) { keep(); return; }
     try {
-      const r = await sendStatus(slug, a.id, status, l);
+      const r = await sendStatus(slug, a.id, status, l, sectorId);
       if (r.logements) { lg.units = r.logements.units; a.status = r.status; refreshAfterChange(a); }
       patchRaw((t) => {
         t.logements = t.logements || {};
@@ -1172,7 +1186,7 @@
 
   /** Envoie le nombre de logements et, si besoin, des noms ; met à jour l'écran. */
   async function saveUnits(a, n, libelles = {}) {
-    const r = await postJSON("/api/equipe/logements", { slug: T.cur.slug, address_id: a.id, logements: n, libelles });
+    const r = await postJSON("/api/equipe/logements", { slug: T.cur.slug, address_id: a.id, logements: n, libelles, ...ctxOf(curSectorId()) });
     T.tr.logements[a.id] = r.logements;
     a.status = r.status || null;
     patchRaw((t) => {
@@ -1353,13 +1367,14 @@
       if (note) T.tr.notes[a.id] = { note, par: T.me.personne ? T.me.personne.nom : "Admin", pending: true };
       else delete T.tr.notes[a.id];
     };
-    const keep = () => enqueue({ kind: "note", slug, address_id: a.id, note }, (x) => x.kind === "note" && x.slug === slug && x.address_id === a.id);
+    const sectorId = curSectorId();
+    const keep = () => enqueue({ kind: "note", slug, address_id: a.id, note, sectorId, at: new Date().toISOString() }, (x) => x.kind === "note" && x.slug === slug && x.address_id === a.id);
     if (T.offline) {
       keep();
       local();
     } else {
       try {
-        const r = await postJSON("/api/equipe/notes", { slug, address_id: a.id, note });
+        const r = await postJSON("/api/equipe/notes", { slug, address_id: a.id, note, ...ctxOf(sectorId) });
         if (r.note) T.tr.notes[a.id] = r.note; else delete T.tr.notes[a.id];
         patchRaw((t) => { t.notes = t.notes || {}; if (r.note) t.notes[a.id] = r.note; else delete t.notes[a.id]; });
       } catch (err) {
@@ -1408,9 +1423,9 @@
       note: $("sig-note").value.trim(),
     };
     if (missing) Object.assign(body, { sector_id: T.cur.sector.id, lat: sigCtx.lat, lon: sigCtx.lon, numero: $("sig-numero").value.trim(), nom_voie: $("sig-voie").value.trim() });
-    else body.address_id = sigCtx.a.id;
+    else Object.assign(body, { address_id: sigCtx.a.id, sector_id: T.cur.sector.id });
     const keep = () => {
-      enqueue({ kind: "sig", slug: T.cur.slug, body });
+      enqueue({ kind: "sig", slug: T.cur.slug, body, at: new Date().toISOString() });
       T.tr.signalements = [...(T.tr.signalements || []), { ...body, pending: true }];
     };
     if (T.offline) keep();
@@ -1584,6 +1599,8 @@
         <span><b>${d.montant !== undefined ? euros(d.montant) : "Don"}</b> ${MODE_LABEL[d.mode]} ${d.pending ? "📴 à envoyer" : d.statut === "ok" ? "✓" : d.statut === "attente" ? "⏳ en attente" : "✕ échoué"}<small>${d.logement ? `${escapeHtml(unitNameOf(d.address_id, d.logement))} · ` : ""}${escapeHtml(d.personne_nom)} · ${escapeHtml(whenValid(d.created_at))}</small></span>
         ${T.tr.full || d.mine ? `<span class="don-line-actions">${d.statut === "attente" ? `<button type="button" class="btn small" data-act="ok">Payé</button><button type="button" class="btn small" data-act="echec">Non payé</button>` : ""}
           ${receiptBtn(d)}<button type="button" class="icon-btn danger" data-act="delete" aria-label="Annuler ce don">✕</button></span>` : ""}
+      </div>`).join("") + otherDons(donCtx.a.id).map((d) => `<div class="don-line other">
+        <span><b>${d.montant !== undefined ? euros(d.montant) : "Don"}</b> ${MODE_LABEL[d.mode]} ${d.statut === "ok" ? "✓" : "⏳ en attente"}<small>Reçu par l'équipe ${escapeHtml(d.secteur)} avant le changement de secteur · ${d.logement ? `${escapeHtml(unitNameOf(d.address_id, d.logement))} · ` : ""}${escapeHtml(d.personne_nom)} · ${escapeHtml(whenValid(d.created_at))} — dans sa caisse, pas la vôtre</small></span>
       </div>`).join("");
   }
 
@@ -1613,7 +1630,7 @@
   function donBody(sumup) {
     // référence : n° du chèque, ou n° de transaction SumUp saisi à la main
     const ref = selectedMode() === "cheque" ? $("don-cheque").value : selectedMode() === "cb" ? $("don-tx").value : "";
-    return { slug: T.cur.slug, address_id: donCtx.a.id, montant: readAmount(), mode: selectedMode(), sumup, tx_code: ref.trim(), client_id: uid(),
+    return { slug: T.cur.slug, address_id: donCtx.a.id, sector_id: T.cur.sector.id, montant: readAmount(), mode: selectedMode(), sumup, tx_code: ref.trim(), client_id: uid(),
       ...(donCtx.logement ? { logement: donCtx.logement } : {}) };
   }
 
