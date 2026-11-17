@@ -700,7 +700,7 @@
       return `<button type="button" class="ov-row${cur ? " current" : ""}" data-sector="${x.sector_id}">
         <b class="sector-code" style="background:${x.couleur}">${escapeHtml(x.secteur.split(" ")[0])}</b>
         <span class="ov-main"><span class="ov-name">${escapeHtml(x.secteur.split(" ").slice(1).join(" "))}</span>
-          <span class="ov-bar">${pg.showProv ? `<i class="prov" style="width:${pg.provPct}%;background:${x.couleur}"></i>` : ""}<i style="width:${pct}%;background:${x.couleur}"></i></span>
+          <span class="ov-bar">${pg.showProv ? `<i class="prov" style="width:${pg.provPct}%"></i>` : ""}<i style="width:${pct}%;background:${x.couleur}"></i></span>
           <small>${done}/${x.adresses}${x.absent ? ` · ${x.absent} à repasser` : ""} · ${C.STATUT_LABEL[x.statut] || ""}${x.responsables.length ? ` · ${escapeHtml(x.responsables.join(", "))}` : ""}</small></span>
         <span class="ov-num"><b>${pct} %</b>${pg.showProv ? `<small class="prov-text">${pg.provPct} %</small>` : ""}${x.dons ? `<small>${euros(x.dons.total)}</small>` : ""}</span></button>`;
     }).join("");
