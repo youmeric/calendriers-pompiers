@@ -325,6 +325,22 @@ window.Common = (() => {
     return { main, others: main === google ? [["Waze", waze]] : [["Google Maps", google], ["Waze", waze]] };
   }
 
+  /** Maisons comptées dans le pourcentage d'avancement, selon le réglage de l'admin :
+   *  « passees » = faites + refus + absents à repasser, « terminees » = faites + refus, « faites » = faites seulement. */
+  const AVANCEMENT = {
+    passees: { label: "maisons passées", court: "passées", detail: "faites, refus et absents à repasser" },
+    terminees: { label: "maisons terminées", court: "terminées", detail: "faites et refus — les absents restent à faire" },
+    faites: { label: "maisons faites", court: "faites", detail: "seulement les maisons faites" },
+  };
+  function doneCount(c, mode) {
+    const fait = c.fait || 0;
+    const refus = c.refus || 0;
+    const absent = c.absent || 0;
+    if (mode === "faites") return fait;
+    if (mode === "terminees") return fait + refus;
+    return fait + refus + absent;
+  }
+
   function euros(v) {
     const n = Number(v) || 0;
     return `${n.toLocaleString("fr-FR", { minimumFractionDigits: Math.abs(n % 1) > 0.001 ? 2 : 0, maximumFractionDigits: 2 })} €`;
@@ -405,6 +421,6 @@ window.Common = (() => {
     toPolys, pointInPolys, outerRings, holeRings, OFF_ROAD,
     addBaseLayers, sectorCode, labelHtml, compactLabelsBelow, distanceToEdge, normalizeText,
     tourneeTitle, IS_IOS, IS_ANDROID, navLinks, euros, parseEuros, STATUT_LABEL, personAvatar, formatDay, telHref, hasTeam, statutPill, teamLine, renderEquipe,
-    IGN_PLAN_URL, routeOrder,
+    IGN_PLAN_URL, routeOrder, AVANCEMENT, doneCount,
   };
 })();

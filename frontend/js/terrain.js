@@ -608,7 +608,8 @@
     const e = tr.equipe || s.equipe;
     const roleLabel = { admin: "Administrateur", responsable: "Responsable du secteur", superviseur: "Superviseur", equipier: "Équipier" }[tr.role] || "";
     const c = counts();
-    const done = c.fait + c.absent + c.refus;
+    const mode = T.me.avancement || "passees";
+    const done = C.doneCount(c, mode);
     const pct = c.total ? Math.round((done / c.total) * 100) : 0;
     const when = whenText(e);
     let html = `<div class="r-hello">
@@ -623,7 +624,7 @@
     } else {
       html += `<div class="r-card r-progress">
           <div class="r-ring-wrap">${ring(pct)}<span class="r-pct">${pct}<small>%</small></span></div>
-          <div class="r-progress-text"><strong>${done} / ${c.total}</strong><span>maisons passées</span>
+          <div class="r-progress-text"><strong>${done} / ${c.total}</strong><span>${C.AVANCEMENT[mode].label}</span>
             <div class="r-chips">
               <button type="button" class="r-chip todo" data-filter="todo">${c.todo} à faire</button>
               <button type="button" class="r-chip fait" data-filter="fait">✓ ${c.fait}</button>
@@ -688,9 +689,10 @@
   function overviewCard() {
     const ov = T.raw.apercu;
     if (!(T.me.superviseur || T.me.admin) || !ov || !ov.secteurs.length) return "";
-    const tot = ov.secteurs.reduce((a, x) => ({ ad: a.ad + x.adresses, done: a.done + x.fait + x.absent + x.refus, eur: a.eur + (x.dons ? x.dons.total : 0) }), { ad: 0, done: 0, eur: 0 });
+    const mode = T.me.avancement || "passees";
+    const tot = ov.secteurs.reduce((a, x) => ({ ad: a.ad + x.adresses, done: a.done + C.doneCount(x, mode), eur: a.eur + (x.dons ? x.dons.total : 0) }), { ad: 0, done: 0, eur: 0 });
     const rows = ov.secteurs.map((x) => {
-      const done = x.fait + x.absent + x.refus;
+      const done = C.doneCount(x, mode);
       const pct = x.adresses ? Math.round((done / x.adresses) * 100) : 0;
       const cur = T.cur && T.cur.sector.id === x.sector_id;
       return `<button type="button" class="ov-row${cur ? " current" : ""}" data-sector="${x.sector_id}">
@@ -701,7 +703,7 @@
         <span class="ov-num"><b>${pct} %</b>${x.dons ? `<small>${euros(x.dons.total)}</small>` : ""}</span></button>`;
     }).join("");
     return `<div class="r-card ov-card"><div class="ov-head"><span class="r-label">Toutes les tournées</span>
-        <small>${tot.done}/${tot.ad} maisons${ov.secteurs.some((x) => x.dons) ? ` · ${euros(tot.eur)}` : ""}</small></div>${rows}</div>`;
+        <small>${tot.done}/${tot.ad} ${C.AVANCEMENT[mode].label}${ov.secteurs.some((x) => x.dons) ? ` · ${euros(tot.eur)}` : ""}</small></div>${rows}</div>`;
   }
 
   async function loadOverview() {

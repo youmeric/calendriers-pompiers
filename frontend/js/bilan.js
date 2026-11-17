@@ -2,7 +2,8 @@
    par secteur, paiements carte en attente, export des dons. */
 (() => {
   "use strict";
-  const { escapeHtml, fetchJSON, showToast, sectorCode, toPolys, addBaseLayers } = window.Common;
+  const { escapeHtml, fetchJSON, showToast, sectorCode, toPolys, addBaseLayers, doneCount, AVANCEMENT } = window.Common;
+  let avancement = "passees"; // ce qui compte dans le pourcentage (réglage « Pourcentage d'avancement »)
   const $ = (id) => document.getElementById(id);
   const euros = (v) => `${Number(v).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
   const MODE = { especes: "Espèces", cheque: "Chèque", cb: "Carte" };
@@ -34,6 +35,9 @@
   }
 
   function applySettings(st, { fields = true } = {}) {
+    avancement = st.avancement || "passees";
+    $("avancement-select").value = avancement;
+    $("avancement-select").disabled = !can("reglages", "suivi");
     $("suivi-toggle").checked = st.suivi_adresses;
     $("dons-toggle").checked = st.dons_actifs;
     $("dons-toggle").disabled = !st.suivi_adresses;
@@ -75,6 +79,10 @@
     saveSetting({ [k]: v });
   }));
   $("recus-toggle").addEventListener("change", () => saveSetting({ recus_actifs: $("recus-toggle").checked }));
+  $("avancement-select").addEventListener("change", async () => {
+    await saveSetting({ avancement: $("avancement-select").value });
+    render().catch(() => {});
+  });
   $("offsite-test").addEventListener("click", async () => {
     $("offsite-test").disabled = true;
     $("offsite-status").textContent = "Envoi en cours…";
@@ -130,9 +138,9 @@
     liveLayer.clearLayers();
     const bounds = L.latLngBounds([]);
     for (const s of rows) {
-      const done = s.counts.fait + s.counts.absent + s.counts.refus;
+      const done = doneCount(s.counts, avancement);
       const pct = s.adresses ? Math.round((done / s.adresses) * 100) : 0;
-      const finished = s.adresses > 0 && s.counts.a_faire === 0;
+      const finished = s.adresses > 0 && done >= s.adresses;
       const poly = L.polygon(toPolys(s.polygon), {
         color: s.couleur, weight: 2, fillColor: progressColor(pct, finished), fillOpacity: 0.6,
       }).addTo(liveLayer);
@@ -301,8 +309,9 @@
     const t = bilan.totaux;
     const maisons = bilan.secteurs.reduce((n, s) => n + s.adresses, 0);
     const faites = bilan.secteurs.reduce((n, s) => n + s.counts.fait, 0);
+    const passees = bilan.secteurs.reduce((n, s) => n + doneCount(s.counts, avancement), 0);
     $("bilan-cards").innerHTML = `
-      <div class="bilan-card"><span>Maisons faites</span><strong>${faites}<small>/${maisons}</small></strong></div>
+      <div class="bilan-card"><span>Avancement</span><strong>${maisons ? Math.round((passees / maisons) * 100) : 0} %</strong><small>${passees} ${AVANCEMENT[avancement].court} / ${maisons}${avancement === "faites" ? "" : ` · dont ${faites} faites`}</small></div>
       <div class="bilan-card total"><span>Total des dons</span><strong>${euros(t.total)}</strong><small>${t.nb} don${t.nb > 1 ? "s" : ""}${t.nb ? ` · moyenne ${euros(t.total / t.nb)}` : ""}</small></div>
       <div class="bilan-card"><span>Espèces</span><strong>${euros(t.especes)}</strong></div>
       <div class="bilan-card"><span>Chèques</span><strong>${euros(t.cheque)}</strong></div>
@@ -313,18 +322,18 @@
           <span><button type="button" class="btn small" data-act="ok">Payé</button> <button type="button" class="btn small" data-act="echec">Non payé</button></span></div>`).join("")}
       </div></div>` : "";
     $("bilan-body").innerHTML = bilan.secteurs.map((s) => {
-      const done = s.counts.fait + s.counts.absent + s.counts.refus;
+      const done = doneCount(s.counts, avancement);
       const pct = s.adresses ? Math.round((done / s.adresses) * 100) : 0;
       return `<tr>
         <td><span class="bilan-sector">${tag(s.sector_id)} ${escapeHtml(s.nom)}</span><small class="hint">${escapeHtml(s.commune)}</small></td>
         <td><span class="bilan-progress"><span style="width:${pct}%;background:${s.couleur}"></span></span>
-          <small>${s.counts.fait} faites · ${s.counts.absent} absents · ${s.counts.refus} refus / ${s.adresses}</small></td>
+          <small><b>${pct} %</b> · ${s.counts.fait} faites · ${s.counts.absent} absents · ${s.counts.refus} refus / ${s.adresses}</small></td>
         <td>${s.totaux.nb}${s.totaux.attente ? ` <small class="wait">+${s.totaux.attente} en attente</small>` : ""}</td>
         <td>${euros(s.totaux.especes)}</td><td>${euros(s.totaux.cheque)}</td><td>${euros(s.totaux.cb)}</td>
         <td><b>${euros(s.totaux.total)}</b></td>
         <td>${reste(s.caisse.reste)}</td>
       </tr>`;
-    }).join("") + `<tr class="bilan-total-row"><td>Total</td><td>${faites} faites / ${maisons}</td><td>${t.nb}</td>
+    }).join("") + `<tr class="bilan-total-row"><td>Total</td><td>${maisons ? Math.round((passees / maisons) * 100) : 0} % · ${passees} ${AVANCEMENT[avancement].court} / ${maisons}</td><td>${t.nb}</td>
       <td>${euros(t.especes)}</td><td>${euros(t.cheque)}</td><td>${euros(t.cb)}</td><td><b>${euros(t.total)}</b></td>
       <td>${reste(bilan.secteurs.reduce((acc, s) => ({ especes: acc.especes + s.caisse.reste.especes, cheques: acc.cheques + s.caisse.reste.cheques }), { especes: 0, cheques: 0 }))}</td></tr>`;
   }

@@ -240,6 +240,14 @@
           <input type="checkbox" id="suivi-toggle" />
           <span><b>Suivi des maisons</b> (fait / absent / refus) pour les équipes connectées</span>
         </label>
+        <label class="setting-row setting-select">
+          <span><b>Pourcentage d'avancement</b> : ce qui compte comme « fait » dans les statistiques (appli des équipes, carte et tableau ci-dessous)</span>
+          <select id="avancement-select">
+            <option value="passees">Maisons passées : faites + refus + absents à repasser</option>
+            <option value="terminees">Maisons terminées : faites + refus (les absents à repasser restent à faire)</option>
+            <option value="faites">Maisons faites seulement</option>
+          </select>
+        </label>
         <label class="setting-row">
           <input type="checkbox" id="dons-toggle" />
           <span><b>Enregistrer les dons</b> : montant et moyen de paiement (espèces, chèque, carte)</span>

@@ -51,6 +51,11 @@ sur Courzieu et Brussieu (69690).
     temps estimé et écart à la moyenne (minutes par porte réglables).
   - **↶ / ↷** (Ctrl+Z / Ctrl+Y) pour annuler ou rétablir, et **versions** :
     chaque enregistrement garde une copie (30 dernières) qu'on peut recharger.
+  - **Pourcentage d'avancement** (onglet « Suivi & dons », Réglages) : au choix,
+    maisons *passées* (faites + refus + absents à repasser, par défaut),
+    *terminées* (faites + refus : un absent à repasser reste à faire) ou
+    *faites* seulement. S'applique à l'appli des équipes, à l'aperçu du
+    superviseur, à la carte en direct et au tableau de l'admin.
   - **Modifier les secteurs en pleine tournée** : le statut d'une maison (fait,
     absent, refus, avec l'heure), sa note et ses logements la suivent dans son
     nouveau secteur. Les dons déjà reçus restent dans la caisse de l'équipe qui

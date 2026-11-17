@@ -2135,3 +2135,7 @@ body.terrain.theme-dark .don-badge.other { background: #1e1b4b; color: #c7d2fe; 
 .impact-list li:last-child { border-bottom: none; }
 .impact-list small { display: block; color: var(--muted, #6b7280); }
 .impact-warn { background: #fef3c7; color: #92400e; border-radius: 8px; padding: 8px 10px; font-size: 14px; }
+
+/* Réglage « Pourcentage d'avancement » */
+.setting-row.setting-select { flex-direction: column; gap: 6px; cursor: default; }
+.setting-row.setting-select select { width: 100%; height: auto; padding: 8px 10px; font: inherit; border: 1px solid var(--line, #e5e7eb); border-radius: 8px; background: var(--card, #fff); color: inherit; }

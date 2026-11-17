@@ -197,6 +197,13 @@ def _assign(addresses: list[dict], sectors: list[dict]) -> tuple[dict[int, list[
     return by_sector, outside
 
 
+def _avancement() -> str:
+    """Ce qui compte dans le pourcentage d'avancement : « passees » (faites, refus et absents à repasser),
+    « terminees » (faites et refus : les absents restent à faire) ou « faites » (seulement les maisons faites)."""
+    v = db.get_setting("avancement", "") or "passees"
+    return v if v in ("passees", "terminees", "faites") else "passees"
+
+
 def _suivi_enabled() -> bool:
     return db.get_setting("suivi_adresses", "0") == "1"
 
@@ -482,6 +489,7 @@ def team_me(request: Request):
         "dons": _suivi_enabled() and _flag("dons_actifs", False),
         "sumup": _sumup_config(),
         "recus": _flag("recus_actifs", True),
+        "avancement": _avancement(),
     }
 
 
@@ -1145,11 +1153,12 @@ def _sector_label(sector_id: int | None) -> str:
     return _sector_labels().get(sector_id, f"secteur {sector_id}") if sector_id else ""
 
 
-PUBLIC_SETTINGS = ("suivi_adresses", "annee", "equipes_public", "telephones_public", "dons_actifs", "sumup_actif")
+PUBLIC_SETTINGS = ("suivi_adresses", "annee", "equipes_public", "telephones_public", "dons_actifs", "sumup_actif", "avancement")
 SETTING_PERMS = {  # qui peut changer quoi
     "equipes_public": ("reglages", "equipes"), "telephones_public": ("reglages", "equipes"),
     "whatsapp_bot_url": ("reglages", "equipes"), "whatsapp_bot_key": ("reglages", "equipes"),
     "whatsapp_message": ("reglages", "equipes"),
+    "avancement": ("reglages", "suivi"),
     "asso_nom": ("reglages", "dons"), "asso_adresse": ("reglages", "dons"), "asso_siret": ("reglages", "dons"),
 }
 
@@ -1171,6 +1180,7 @@ def admin_get_settings(request: Request):
             **{k: db.get_setting(k, "") or "" for k in ("editeur", "contact_email", "contact_tel", "hebergeur")},
             **{k: float(db.get_setting(k, "") or d) for k, d in RETENTION_DEFAULTS.items()},
             "recus_actifs": _flag("recus_actifs", True),
+            "avancement": _avancement(),
             "purge_derniere": json.loads(db.get_setting("purge_derniere", "") or "null"),
             # copie hors du serveur : les mots de passe ne sont jamais renvoyés
             "offsite_mode": db.get_setting("offsite_mode", "") or "", "offsite_url": db.get_setting("offsite_url", "") or "",
@@ -1206,7 +1216,7 @@ def admin_save_settings(payload: SettingsIn, request: Request):
             db.set_setting(key, "1" if value else "0")
     for key in ("sumup_affiliate_key", "sumup_app_id", "whatsapp_bot_url", "whatsapp_bot_key", "asso_nom", "asso_adresse", "asso_siret",
                 "editeur", "contact_email", "contact_tel", "hebergeur", "offsite_mode", "offsite_url", "offsite_user",
-                "offsite_password", "offsite_dossier", "offsite_passphrase"):
+                "offsite_password", "offsite_dossier", "offsite_passphrase", "avancement"):
         value = getattr(payload, key)
         if value is not None:
             db.set_setting(key, value)

@@ -170,6 +170,8 @@ class SettingsIn(BaseModel):
     retention_connexions_mois: float | None = Field(default=None, ge=1, le=120)
     retention_journal_ans: float | None = Field(default=None, ge=1, le=30)
     recus_actifs: bool | None = None
+    # pourcentage d'avancement : maisons passées (avec les absents à repasser), terminées (faites + refus) ou faites seulement
+    avancement: Literal["passees", "terminees", "faites"] | None = None
     # copie chiffrée hors du serveur
     offsite_mode: Literal["", "webdav", "dossier"] | None = None
     offsite_url: str | None = Field(default=None, max_length=300)
