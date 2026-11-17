@@ -56,6 +56,9 @@ sur Courzieu et Brussieu (69690).
     *terminées* (faites + refus : un absent à repasser reste à faire) ou
     *faites* seulement. S'applique à l'appli des équipes, à l'aperçu du
     superviseur, à la carte en direct et au tableau de l'admin.
+    Quand les absents ne sont pas comptés, le pourcentage provisoire (absents
+    à repasser compris) et le nombre de maisons à repasser s'affichent à côté,
+    en transparence.
   - **Modifier les secteurs en pleine tournée** : le statut d'une maison (fait,
     absent, refus, avec l'heure), sa note et ses logements la suivent dans son
     nouveau secteur. Les dons déjà reçus restent dans la caisse de l'équipe qui

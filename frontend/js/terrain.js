@@ -593,11 +593,12 @@
     $("t-offline").innerHTML = `📴 <b>Hors connexion</b> · données ${escapeHtml(snapTime())}${q ? ` · <b>${q}</b> à envoyer` : ""}`;
   }
 
-  function ring(pct) {
+  function ring(pct, provPct = 0) {
     const r = 42;
     const c = 2 * Math.PI * r;
     return `<svg class="r-ring" viewBox="0 0 100 100" aria-hidden="true">
       <circle cx="50" cy="50" r="${r}" class="r-ring-bg" />
+      ${provPct > pct ? `<circle cx="50" cy="50" r="${r}" class="r-ring-prov" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - provPct / 100)}" />` : ""}
       <circle cx="50" cy="50" r="${r}" class="r-ring-fg" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - pct / 100)}" />
     </svg>`;
   }
@@ -609,8 +610,8 @@
     const roleLabel = { admin: "Administrateur", responsable: "Responsable du secteur", superviseur: "Superviseur", equipier: "Équipier" }[tr.role] || "";
     const c = counts();
     const mode = T.me.avancement || "passees";
-    const done = C.doneCount(c, mode);
-    const pct = c.total ? Math.round((done / c.total) * 100) : 0;
+    const pg = C.progress(c, c.total, mode);
+    const { done, pct } = pg;
     const when = whenText(e);
     let html = `<div class="r-hello">
         <div><h2>Bonjour ${escapeHtml(firstName())} 👋</h2><p class="hint">${roleLabel} · ${escapeHtml(T.cur.communeNom)}</p></div>
@@ -623,8 +624,9 @@
       html += `<div class="r-card"><p class="hint">Le suivi des maisons n'est pas encore ouvert par le chef de tournée. Vous pouvez déjà consulter la carte et la liste des maisons.</p></div>`;
     } else {
       html += `<div class="r-card r-progress">
-          <div class="r-ring-wrap">${ring(pct)}<span class="r-pct">${pct}<small>%</small></span></div>
+          <div class="r-ring-wrap">${ring(pct, pg.showProv ? pg.provPct : 0)}<span class="r-pct">${pct}<small>%</small></span></div>
           <div class="r-progress-text"><strong>${done} / ${c.total}</strong><span>${C.AVANCEMENT[mode].label}</span>
+            ${pg.showProv ? `<span class="prov-text" title="En comptant les maisons déjà passées mais à repasser">${C.provText(pg)}</span>` : ""}
             <div class="r-chips">
               <button type="button" class="r-chip todo" data-filter="todo">${c.todo} à faire</button>
               <button type="button" class="r-chip fait" data-filter="fait">✓ ${c.fait}</button>
@@ -692,15 +694,15 @@
     const mode = T.me.avancement || "passees";
     const tot = ov.secteurs.reduce((a, x) => ({ ad: a.ad + x.adresses, done: a.done + C.doneCount(x, mode), eur: a.eur + (x.dons ? x.dons.total : 0) }), { ad: 0, done: 0, eur: 0 });
     const rows = ov.secteurs.map((x) => {
-      const done = C.doneCount(x, mode);
-      const pct = x.adresses ? Math.round((done / x.adresses) * 100) : 0;
+      const pg = C.progress(x, x.adresses, mode);
+      const { done, pct } = pg;
       const cur = T.cur && T.cur.sector.id === x.sector_id;
       return `<button type="button" class="ov-row${cur ? " current" : ""}" data-sector="${x.sector_id}">
         <b class="sector-code" style="background:${x.couleur}">${escapeHtml(x.secteur.split(" ")[0])}</b>
         <span class="ov-main"><span class="ov-name">${escapeHtml(x.secteur.split(" ").slice(1).join(" "))}</span>
-          <span class="ov-bar"><i style="width:${pct}%;background:${x.couleur}"></i></span>
-          <small>${done}/${x.adresses} · ${C.STATUT_LABEL[x.statut] || ""}${x.responsables.length ? ` · ${escapeHtml(x.responsables.join(", "))}` : ""}</small></span>
-        <span class="ov-num"><b>${pct} %</b>${x.dons ? `<small>${euros(x.dons.total)}</small>` : ""}</span></button>`;
+          <span class="ov-bar">${pg.showProv ? `<i class="prov" style="width:${pg.provPct}%;background:${x.couleur}"></i>` : ""}<i style="width:${pct}%;background:${x.couleur}"></i></span>
+          <small>${done}/${x.adresses}${x.absent ? ` · ${x.absent} à repasser` : ""} · ${C.STATUT_LABEL[x.statut] || ""}${x.responsables.length ? ` · ${escapeHtml(x.responsables.join(", "))}` : ""}</small></span>
+        <span class="ov-num"><b>${pct} %</b>${pg.showProv ? `<small class="prov-text">${pg.provPct} %</small>` : ""}${x.dons ? `<small>${euros(x.dons.total)}</small>` : ""}</span></button>`;
     }).join("");
     return `<div class="r-card ov-card"><div class="ov-head"><span class="r-label">Toutes les tournées</span>
         <small>${tot.done}/${tot.ad} ${C.AVANCEMENT[mode].label}${ov.secteurs.some((x) => x.dons) ? ` · ${euros(tot.eur)}` : ""}</small></div>${rows}</div>`;

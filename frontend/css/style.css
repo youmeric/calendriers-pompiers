@@ -2139,3 +2139,14 @@ body.terrain.theme-dark .don-badge.other { background: #1e1b4b; color: #c7d2fe; 
 /* Réglage « Pourcentage d'avancement » */
 .setting-row.setting-select { flex-direction: column; gap: 6px; cursor: default; }
 .setting-row.setting-select select { width: 100%; height: auto; padding: 8px 10px; font: inherit; border: 1px solid var(--line, #e5e7eb); border-radius: 8px; background: var(--card, #fff); color: inherit; }
+
+/* Pourcentage provisoire (absents à repasser compris), en transparence derrière le principal */
+.prov-text { opacity: .55; font-weight: 600; }
+.r-progress-text .prov-text { display: block; font-size: 13px; margin-top: 2px; }
+.r-ring-prov { fill: none; stroke: var(--fait); stroke-width: 10; stroke-linecap: round; opacity: .28; transition: stroke-dashoffset 0.4s ease; }
+.ov-bar, .bilan-progress { position: relative; }
+.ov-bar i, .bilan-progress span { position: absolute; left: 0; top: 0; }
+.ov-bar i.prov, .bilan-progress span.prov { opacity: .3; }
+.ov-num .prov-text { display: block; font-size: 11px; }
+.live-label .prov-text { color: inherit; margin-left: 3px; }
+.bilan-card .prov-text { display: block; margin-top: 2px; }

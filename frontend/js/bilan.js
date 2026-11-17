@@ -2,7 +2,7 @@
    par secteur, paiements carte en attente, export des dons. */
 (() => {
   "use strict";
-  const { escapeHtml, fetchJSON, showToast, sectorCode, toPolys, addBaseLayers, doneCount, AVANCEMENT } = window.Common;
+  const { escapeHtml, fetchJSON, showToast, sectorCode, toPolys, addBaseLayers, doneCount, AVANCEMENT, progress, provText } = window.Common;
   let avancement = "passees"; // ce qui compte dans le pourcentage (réglage « Pourcentage d'avancement »)
   const $ = (id) => document.getElementById(id);
   const euros = (v) => `${Number(v).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
@@ -138,8 +138,8 @@
     liveLayer.clearLayers();
     const bounds = L.latLngBounds([]);
     for (const s of rows) {
-      const done = doneCount(s.counts, avancement);
-      const pct = s.adresses ? Math.round((done / s.adresses) * 100) : 0;
+      const pg = progress(s.counts, s.adresses, avancement);
+      const { done, pct } = pg;
       const finished = s.adresses > 0 && done >= s.adresses;
       const poly = L.polygon(toPolys(s.polygon), {
         color: s.couleur, weight: 2, fillColor: progressColor(pct, finished), fillOpacity: 0.6,
@@ -149,7 +149,7 @@
         interactive: false,
         icon: L.divIcon({
           className: "live-label-icon",
-          html: `<span class="live-label">${tag(s.sector_id)}<b>${pct} %</b><small>${euros(s.totaux.total)}</small></span>`,
+          html: `<span class="live-label">${tag(s.sector_id)}<b>${pct} %</b>${pg.showProv ? `<small class="prov-text">${pg.provPct} %</small>` : ""}<small>${euros(s.totaux.total)}</small></span>`,
           iconSize: null,
         }),
       }).addTo(liveLayer);
@@ -310,8 +310,9 @@
     const maisons = bilan.secteurs.reduce((n, s) => n + s.adresses, 0);
     const faites = bilan.secteurs.reduce((n, s) => n + s.counts.fait, 0);
     const passees = bilan.secteurs.reduce((n, s) => n + doneCount(s.counts, avancement), 0);
+    const all = progress(bilan.secteurs.reduce((c, s) => ({ fait: c.fait + s.counts.fait, absent: c.absent + s.counts.absent, refus: c.refus + s.counts.refus }), { fait: 0, absent: 0, refus: 0 }), maisons, avancement);
     $("bilan-cards").innerHTML = `
-      <div class="bilan-card"><span>Avancement</span><strong>${maisons ? Math.round((passees / maisons) * 100) : 0} %</strong><small>${passees} ${AVANCEMENT[avancement].court} / ${maisons}${avancement === "faites" ? "" : ` · dont ${faites} faites`}</small></div>
+      <div class="bilan-card"><span>Avancement</span><strong>${maisons ? Math.round((passees / maisons) * 100) : 0} %</strong><small>${passees} ${AVANCEMENT[avancement].court} / ${maisons}${avancement === "faites" ? "" : ` · dont ${faites} faites`}</small>${all.showProv ? `<small class="prov-text">${provText(all)}</small>` : ""}</div>
       <div class="bilan-card total"><span>Total des dons</span><strong>${euros(t.total)}</strong><small>${t.nb} don${t.nb > 1 ? "s" : ""}${t.nb ? ` · moyenne ${euros(t.total / t.nb)}` : ""}</small></div>
       <div class="bilan-card"><span>Espèces</span><strong>${euros(t.especes)}</strong></div>
       <div class="bilan-card"><span>Chèques</span><strong>${euros(t.cheque)}</strong></div>
@@ -322,12 +323,12 @@
           <span><button type="button" class="btn small" data-act="ok">Payé</button> <button type="button" class="btn small" data-act="echec">Non payé</button></span></div>`).join("")}
       </div></div>` : "";
     $("bilan-body").innerHTML = bilan.secteurs.map((s) => {
-      const done = doneCount(s.counts, avancement);
-      const pct = s.adresses ? Math.round((done / s.adresses) * 100) : 0;
+      const pg = progress(s.counts, s.adresses, avancement);
+      const { pct } = pg;
       return `<tr>
         <td><span class="bilan-sector">${tag(s.sector_id)} ${escapeHtml(s.nom)}</span><small class="hint">${escapeHtml(s.commune)}</small></td>
-        <td><span class="bilan-progress"><span style="width:${pct}%;background:${s.couleur}"></span></span>
-          <small><b>${pct} %</b> · ${s.counts.fait} faites · ${s.counts.absent} absents · ${s.counts.refus} refus / ${s.adresses}</small></td>
+        <td><span class="bilan-progress">${pg.showProv ? `<span class="prov" style="width:${pg.provPct}%;background:${s.couleur}"></span>` : ""}<span style="width:${pct}%;background:${s.couleur}"></span></span>
+          <small><b>${pct} %</b>${pg.showProv ? ` <span class="prov-text">(${pg.provPct} % provisoire)</span>` : ""} · ${s.counts.fait} faites · ${s.counts.absent} absents · ${s.counts.refus} refus / ${s.adresses}</small></td>
         <td>${s.totaux.nb}${s.totaux.attente ? ` <small class="wait">+${s.totaux.attente} en attente</small>` : ""}</td>
         <td>${euros(s.totaux.especes)}</td><td>${euros(s.totaux.cheque)}</td><td>${euros(s.totaux.cb)}</td>
         <td><b>${euros(s.totaux.total)}</b></td>

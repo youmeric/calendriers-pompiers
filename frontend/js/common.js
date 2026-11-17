@@ -341,6 +341,19 @@ window.Common = (() => {
     return fait + refus + absent;
   }
 
+  /** Avancement d'un secteur : pourcentage principal (selon le réglage) et pourcentage provisoire
+   *  (toutes les maisons passées, absents à repasser compris), montré en transparence s'il diffère. */
+  function progress(c, total, mode) {
+    const pct = (n) => (total ? Math.round((n / total) * 100) : 0);
+    const done = doneCount(c, mode);
+    const prov = doneCount(c, "passees");
+    return { done, pct: pct(done), prov, provPct: pct(prov), absent: c.absent || 0, showProv: prov > done };
+  }
+  /** « 17 % provisoire · 2 à repasser » */
+  function provText(p) {
+    return `${p.provPct} % provisoire${p.absent ? ` · ${p.absent} à repasser` : ""}`;
+  }
+
   function euros(v) {
     const n = Number(v) || 0;
     return `${n.toLocaleString("fr-FR", { minimumFractionDigits: Math.abs(n % 1) > 0.001 ? 2 : 0, maximumFractionDigits: 2 })} €`;
@@ -421,6 +434,6 @@ window.Common = (() => {
     toPolys, pointInPolys, outerRings, holeRings, OFF_ROAD,
     addBaseLayers, sectorCode, labelHtml, compactLabelsBelow, distanceToEdge, normalizeText,
     tourneeTitle, IS_IOS, IS_ANDROID, navLinks, euros, parseEuros, STATUT_LABEL, personAvatar, formatDay, telHref, hasTeam, statutPill, teamLine, renderEquipe,
-    IGN_PLAN_URL, routeOrder, AVANCEMENT, doneCount,
+    IGN_PLAN_URL, routeOrder, AVANCEMENT, doneCount, progress, provText,
   };
 })();
