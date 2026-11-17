@@ -327,7 +327,7 @@
       const { pct } = pg;
       return `<tr>
         <td><span class="bilan-sector">${tag(s.sector_id)} ${escapeHtml(s.nom)}</span><small class="hint">${escapeHtml(s.commune)}</small></td>
-        <td><span class="bilan-progress">${pg.showProv ? `<span class="prov" style="width:${pg.provPct}%"></span>` : ""}<span style="width:${pct}%;background:${s.couleur}"></span></span>
+        <td><span class="bilan-progress">${pg.showProv ? `<span class="prov" style="width:${pg.provPct}%;background:${s.couleur}"></span>` : ""}<span style="width:${pct}%;background:${s.couleur}"></span></span>
           <small><b>${pct} %</b>${pg.showProv ? ` <span class="prov-text">(${pg.provPct} % provisoire)</span>` : ""} · ${s.counts.fait} faites · ${s.counts.absent} absents · ${s.counts.refus} refus / ${s.adresses}</small></td>
         <td>${s.totaux.nb}${s.totaux.attente ? ` <small class="wait">+${s.totaux.attente} en attente</small>` : ""}</td>
         <td>${euros(s.totaux.especes)}</td><td>${euros(s.totaux.cheque)}</td><td>${euros(s.totaux.cb)}</td>
