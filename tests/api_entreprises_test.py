@@ -88,5 +88,50 @@ with admin:
     check(any(x["action"] == "entreprise.ajout" for x in jr) and any(x["action"] == "entreprise.retrait" and "retour dans" in x["details"] for x in jr), "journal : ajout et retrait")
     check(admin.delete(f"/api/admin/communes/courzieu/addresses/{a['id']}/entreprise").status_code == 404, "retirer deux fois : 404")
     check(TestClient(app).put(f"/api/admin/communes/courzieu/addresses/{b['id']}/entreprise", json={"nom": "x"}).status_code == 401, "réservé à l'admin")
+
+    # une seule tournée des entreprises pour les deux communes
+    bautos = admin.get("/api/admin/communes/brussieu").json()["auto_sectors"]
+    bsecs = admin.put("/api/admin/communes/brussieu/sectors", json={"sectors": bautos}).json()["sectors"]
+    bpub = lambda: admin.get("/api/communes/brussieu").json()["sectors"]  # noqa: E731
+    bx = next(s for s in bpub() if s["id"] == bsecs[0]["id"])["addresses"][0]
+    admin.put(f"/api/admin/communes/brussieu/addresses/{bx['id']}/entreprise", json={"nom": "Fromagerie de Brussieu"})
+    ents = [s for slug in ("courzieu", "brussieu") for s in admin.get(f"/api/communes/{slug}").json()["sectors"] if s["kind"] == "entreprises"]
+    check(len({s["id"] for s in ents}) == 1 and len(ents) == 2, "une seule tournée des entreprises, présente dans les deux communes")
+    check(any(y["id"] == bx["id"] for y in next(s for s in bpub() if s["kind"] == "entreprises")["addresses"]), "Brussieu : son entreprise dans la tournée")
+    eid = ents[0]["id"]
+    t = e.get(f"/api/equipe/secteurs/{eid}/suivi").json()
+    check(t["slugs"] == ["courzieu", "brussieu"], "équipe entreprises : la tournée couvre Courzieu + Brussieu")
+    r = e.post(f"/api/communes/brussieu/addresses/{bx['id']}/status", json={"status": "fait", "sector_id": eid})
+    check(r.status_code == 200, "équipe entreprises : marque une entreprise de Brussieu")
+    d = e.post("/api/equipe/dons", json={"slug": "brussieu", "address_id": bx["id"], "montant": 20, "mode": "especes", "sector_id": eid}).json()
+    t = e.get(f"/api/equipe/secteurs/{eid}/suivi").json()
+    check(t["statuses"][bx["id"]]["status"] == "fait" and any(x["id"] == d["id"] for x in t["dons"]), "suivi : statuts et dons des deux communes ensemble")
+    check(e.get(f"/api/equipe/secteurs/{eid}/caisse").json()["attendu"]["especes"] == 20, "une seule caisse pour la tournée")
+    rows = [x for x in admin.get("/api/admin/bilan").json()["secteurs"] if x["sector_id"] == eid]
+    check(len(rows) == 1 and rows[0]["commune"] == "Courzieu + Brussieu" and rows[0]["adresses"] == 4, f"suivi admin : une ligne « Entreprises » (Courzieu + Brussieu)")
+    ov = [x for x in admin.get("/api/equipe/apercu").json()["secteurs"] if x["sector_id"] == eid]
+    check(len(ov) == 1 and ov[0]["adresses"] == 4 and ov[0]["secteur"] == "E Entreprises", "aperçu des tournées : une ligne « E Entreprises »")
+    fis = [x for x in admin.get("/api/admin/fiscal").json()["secteurs"] if x["sector_id"] == eid]
+    check(len(fis) == 1 and fis[0]["adresses"] == 4, "dossier comptable : une ligne pour la tournée")
+    ba = [x for x in admin.get("/api/admin/bilan-annee").json()["secteurs"] if x["sector_id"] == eid]
+    check(len(ba) == 1, "bilan de l'année : une ligne pour la tournée")
+    sig = e.post("/api/equipe/signalements", json={"slug": "brussieu", "type": "autre", "address_id": bx["id"], "sector_id": eid, "note": "fermé le lundi"})
+    check(sig.status_code == 200, "signalement depuis une entreprise de Brussieu")
+    # anciennes tournées par commune (version précédente) : fusionnées au démarrage
+    import sqlite3
+    from backend.app import db as dbm
+    con = sqlite3.connect(os.environ["DB_PATH"])
+    old = con.execute("INSERT INTO sectors (commune_slug, position, nom, couleur, polygon, updated_at, kind) VALUES "
+                      "('brussieu', 1000, 'Entreprises', '#475569', '[]', '2026-11-18', 'entreprises')").lastrowid
+    con.execute("UPDATE sectors SET commune_slug = 'courzieu' WHERE id = ?", (eid,))
+    con.execute("UPDATE dons SET sector_id = ? WHERE id = ?", (old, d["id"]))
+    con.execute("INSERT INTO sector_team (sector_id, personne_id, role, position) VALUES (?, ?, 'equipier', 0)", (old, jean["id"]))
+    con.commit(); con.close()
+    dbm.init_db()
+    ents = {s["id"] for slug in ("courzieu", "brussieu") for s in admin.get(f"/api/communes/{slug}").json()["sectors"] if s["kind"] == "entreprises"}
+    check(ents == {eid}, "anciennes tournées par commune : fusionnées en une seule")
+    check(dbm.get_don(d["id"])["sector_id"] == eid, "fusion : les dons rejoignent la tournée gardée")
+    membres = {m["personne_id"] for m in dbm.get_teams()[eid]["membres"]}
+    check(membres == {eve["id"], jean["id"]}, "fusion : les deux équipes réunies")
 print("ÉCHECS :", fails)
 sys.exit(1 if fails else 0)

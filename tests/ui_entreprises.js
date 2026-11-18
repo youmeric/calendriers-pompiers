@@ -48,7 +48,7 @@ function check(c, m) { console.log(`${c ? "OK  " : "FAIL"} ${m}`); if (!c) proce
   await a.locator(".leaflet-popup button", { hasText: "Ajouter à la tournée des entreprises" }).click(); await a.waitForTimeout(900);
   check((await a.textContent("#ent-count")) === "2" && (await a.textContent("#ent-list")).includes("Menuiserie Roux"), "entreprise ajoutée sur la carte");
   let ent = (await pub()).find((s) => s.kind === "entreprises");
-  check(ent && ent.addresses.length === 2 && ent.addresses.some((x) => x.entreprise === "Menuiserie Roux" && x.label === "ZA des Platanes"), "site : tournée « Entreprises » avec les 2 entreprises");
+  check(ent && ent.addresses.length === 2 && ent.kind === "entreprises" && ent.addresses.some((x) => x.entreprise === "Menuiserie Roux" && x.label === "ZA des Platanes"), "site : tournée « Entreprises » avec les 2 entreprises");
   await a.screenshot({ path: `${SP}/ent-admin-liste.png` });
 
   // équipe : signale une entreprise oubliée
@@ -75,14 +75,26 @@ function check(c, m) { console.log(`${c ? "OK  " : "FAIL"} ${m}`); if (!c) proce
   const bil = await a.textContent("#bilan-body");
   check(bil.includes("Entreprises"), "suivi : ligne de la tournée « Entreprises »");
 
+  // une entreprise de Brussieu : même tournée
+  const bautos = (await (await req.get(`${B}/api/admin/communes/brussieu`)).json()).auto_sectors;
+  const bsecs = (await (await req.put(`${B}/api/admin/communes/brussieu/sectors`, { data: { sectors: bautos } })).json()).sectors;
+  const bx = (await (await req.get(`${B}/api/communes/brussieu`)).json()).sectors.find((x) => x.id === bsecs[0].id).addresses[0];
+  await req.put(`${B}/api/admin/communes/brussieu/addresses/${bx.id}/entreprise`, { data: { nom: "Fromagerie de Brussieu" } });
+
   // appli de l'équipe entreprises
   await req.put(`${B}/api/admin/secteurs/${ent.id}/equipe`, { data: { membres: [{ personne_id: eve.id, role: "responsable" }] } });
   const e = await (await browser.newContext({ ...devices["iPhone 13"] })).newPage(); watch(e, "eve"); await block(e);
   await e.goto(`${B}/equipe#acces=${eve.code}`); await e.waitForTimeout(1600);
-  check((await e.textContent("header")).includes("Entreprises"), "équipe entreprises : sa tournée « Entreprises »");
+  check((await e.textContent("header")).includes("Entreprises") && (await e.textContent("header")).includes("E"), "équipe entreprises : sa tournée « E Entreprises »");
+  check(await e.locator("[data-sector]").count() <= 1 && !(await e.textContent("body")).includes("B3"), "une seule tournée, pas une par commune");
   await e.click('.t-tabs a[data-tab="maisons"]'); await e.waitForTimeout(300);
   const list = await e.textContent("#t-list");
-  check(list.includes("🏢 Garage Martin") && list.includes("🏢 Boulangerie Dupont") && list.includes("🏢 Menuiserie Roux"), "équipe entreprises : les 3 entreprises avec leur nom");
+  check(list.includes("🏢 Garage Martin") && list.includes("🏢 Boulangerie Dupont") && list.includes("🏢 Menuiserie Roux") && list.includes("🏢 Fromagerie de Brussieu"),
+    "équipe entreprises : les entreprises des deux communes dans la même liste");
+  await e.locator(`.t-row[data-id="${bx.id}"] .t-st.fait`).click(); await e.waitForTimeout(800);
+  const bst = await (await req.get(`${B}/api/admin/bilan`)).json();
+  const erow = bst.secteurs.find((x) => x.sector_id === ent.id);
+  check(erow.counts.fait === 1 && erow.commune === "Courzieu + Brussieu", "entreprise de Brussieu marquée depuis la tournée commune");
   await e.screenshot({ path: `${SP}/ent-equipe-liste.png` });
   await e.locator(`.t-row[data-id="${h1.id}"] [data-open]`).first().click(); await e.waitForTimeout(400);
   check((await e.textContent("#tf-title")) === "🏢 Boulangerie Dupont" && (await e.textContent("#tf-sub")).includes(h1.label), "fiche : nom de l'entreprise et adresse");
@@ -95,12 +107,14 @@ function check(c, m) { console.log(`${c ? "OK  " : "FAIL"} ${m}`); if (!c) proce
   check((await pub()).find((s) => s.id === s1.id).addresses.some((x) => x.id === h0.id), "retirée : de retour dans son secteur");
   // les autres pages connaissent la tournée des entreprises
   await a.click('.admin-tab[data-tab="equipes"]'); await a.waitForTimeout(1200);
-  check((await a.textContent("#equipes-view, main")).includes("Entreprises"), "onglet Équipes : la tournée « Entreprises » (pour lui donner une équipe)");
+  const eqText = await a.textContent("#team-cards");
+  check(eqText.includes("Entreprises") && eqText.includes("Courzieu + Brussieu"), "onglet Équipes : une seule tournée « Entreprises » (Courzieu + Brussieu)");
+  await a.screenshot({ path: `${SP}/ent-admin-equipes.png` });
   const pubPage = await (await browser.newContext({ ...devices["iPhone 13"] })).newPage(); watch(pubPage, "public"); await block(pubPage);
   await pubPage.goto(`${B}/`); await pubPage.waitForTimeout(1500);
   const plan = await (await browser.newContext({ viewport: { width: 1200, height: 900 } })).newPage(); watch(plan, "plan"); await block(plan);
   await plan.goto(`${B}/plan.html#/courzieu/${ent.id}`); await plan.waitForTimeout(2000);
-  check((await plan.textContent("body")).includes("Entreprises"), "plan imprimable de la tournée des entreprises");
+  check((await plan.textContent("body")).includes("Entreprises") && (await plan.textContent("body")).includes("Courzieu + Brussieu · 3 adresses"), "plan imprimable : la tournée des deux communes");
   await plan.screenshot({ path: `${SP}/ent-plan.png` });
   check(errors.length === 0, `aucune erreur JS ${errors.join(" | ")}`);
   await browser.close();

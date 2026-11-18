@@ -533,9 +533,10 @@
     const any = Object.values(state.all)[0];
     state.suivi = Boolean(any && any.suivi);
     state.dons = Boolean(any && any.dons);
+    window.Common.mergeShared(state.communes.map((c) => state.all[c.slug]));
     for (const c of state.communes) {
       const d = state.all[c.slug];
-      if (d) d.sectors.forEach((s, i) => { s.code = sectorCode(d.commune.nom, i); });
+      if (d) d.sectors.forEach((s, i) => { s.code = sectorCode(d.commune.nom, i, s); });
     }
     buildSearchIndex();
     renderTeamAccess();

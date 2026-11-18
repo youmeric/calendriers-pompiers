@@ -269,6 +269,7 @@ def init_db() -> None:
         conn.execute("""CREATE TABLE IF NOT EXISTS entreprises (
             commune_slug TEXT NOT NULL, address_id TEXT NOT NULL, nom TEXT NOT NULL DEFAULT '',
             par TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, PRIMARY KEY (commune_slug, address_id))""")
+        _merge_entreprise_sectors(conn)
         sigcols = {row[1] for row in conn.execute("PRAGMA table_info(signalements)")}
         if "entreprise" not in sigcols:  # nom de l'entreprise signalée (NULL : pas une entreprise)
             conn.execute("ALTER TABLE signalements ADD COLUMN entreprise TEXT")
@@ -419,12 +420,36 @@ def set_setting(key: str, value: str) -> None:
 MAX_VERSIONS = 30
 
 
+ALL_COMMUNES = "*"  # tournée commune à toutes les communes (la tournée des entreprises)
+
+
+def _merge_entreprise_sectors(conn) -> None:
+    """Une seule tournée des entreprises pour toutes les communes. Les anciennes tournées par commune
+    sont fusionnées dans la première : équipe, organisation, dons, remises et signalements la rejoignent."""
+    ids = [r[0] for r in conn.execute("SELECT id FROM sectors WHERE kind = 'entreprises' ORDER BY id")]
+    if not ids:
+        return
+    keep, others = ids[0], ids[1:]
+    for sid in others:
+        for table in ("dons", "remises", "signalements"):
+            conn.execute(f"UPDATE {table} SET sector_id = ? WHERE sector_id = ?", (keep, sid))
+        conn.execute("UPDATE OR IGNORE sector_team SET sector_id = ? WHERE sector_id = ?", (keep, sid))
+        conn.execute("DELETE FROM sector_team WHERE sector_id = ?", (sid,))
+        if not conn.execute("SELECT 1 FROM sector_plan WHERE sector_id = ?", (keep,)).fetchone():
+            conn.execute("UPDATE sector_plan SET sector_id = ? WHERE sector_id = ?", (keep, sid))
+        conn.execute("DELETE FROM sector_plan WHERE sector_id = ?", (sid,))
+        conn.execute("DELETE FROM sectors WHERE id = ?", (sid,))
+    conn.execute("UPDATE sectors SET commune_slug = ? WHERE id = ?", (ALL_COMMUNES, keep))
+    conn.commit()
+
+
 def list_sectors(commune_slug: str, kind: str | None = None) -> list[dict]:
-    """Secteurs de la commune (tous, ou seulement kind="secteur" / "entreprises")."""
+    """Secteurs de la commune (tous, ou seulement kind="secteur" / "entreprises"), y compris la
+    tournée commune à toutes les communes (tournée des entreprises), placée après les autres."""
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT id, nom, couleur, polygon, limite, limite_src, kind FROM sectors "
-            "WHERE commune_slug = ? AND (? IS NULL OR kind = ?) ORDER BY position, id",
+            "WHERE commune_slug IN (?, '*') AND (? IS NULL OR kind = ?) ORDER BY position, id",
             (commune_slug, kind, kind),
         ).fetchall()
     return [
@@ -773,11 +798,17 @@ def delete_personne(personne_id: int) -> bool:
 
 
 def sector_communes() -> dict[str, set[int]]:
-    """Secteurs par commune : {slug: {sector_id, ...}}."""
+    """Secteurs par commune : {slug: {sector_id, ...}} (la tournée commune à toutes est dans chacune)."""
     out: dict[str, set[int]] = {}
+    shared: set[int] = set()
     with get_conn() as conn:
         for slug, sid in conn.execute("SELECT commune_slug, id FROM sectors").fetchall():
-            out.setdefault(slug, set()).add(sid)
+            if slug == ALL_COMMUNES:
+                shared.add(sid)
+            else:
+                out.setdefault(slug, set()).add(sid)
+    for ids in out.values():
+        ids |= shared
     return out
 
 
@@ -919,14 +950,14 @@ def delete_correction(commune_slug: str, address_id: str) -> None:
         conn.commit()
 
 
-def entreprise_sector(commune_slug: str, create: bool = False) -> int | None:
-    """Id de la tournée des entreprises de la commune (créée au besoin, après les secteurs)."""
+def entreprise_sector(create: bool = False) -> int | None:
+    """Id de la tournée des entreprises, commune à toutes les communes (créée au besoin, après les secteurs)."""
     with get_conn() as conn:
-        row = conn.execute("SELECT id FROM sectors WHERE commune_slug = ? AND kind = 'entreprises'", (commune_slug,)).fetchone()
+        row = conn.execute("SELECT id FROM sectors WHERE kind = 'entreprises' ORDER BY id").fetchone()
         if row or not create:
             return row[0] if row else None
         sid = conn.execute("INSERT INTO sectors (commune_slug, position, nom, couleur, polygon, updated_at, kind) "
-                           "VALUES (?, 1000, 'Entreprises', '#475569', '[]', ?, 'entreprises')", (commune_slug, _now())).lastrowid
+                           "VALUES (?, 1000, 'Entreprises', '#475569', '[]', ?, 'entreprises')", (ALL_COMMUNES, _now())).lastrowid
         conn.commit()
         return sid
 

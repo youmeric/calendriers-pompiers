@@ -197,7 +197,7 @@
     $("plan-title").innerHTML =
       `<b class="sector-code" style="background:${sector.couleur}">${escapeHtml(sector.code)}</b> ${escapeHtml(sector.nom)}`;
     $("plan-subtitle").textContent =
-      `${data.commune.nom} · ${sector.addresses.length} adresses${polys.length > 1 ? ` · ${polys.length} morceaux` : ""}`;
+      `${sector.communes ? sector.communes.join(" + ") : data.commune.nom} · ${sector.addresses.length} adresses${polys.length > 1 ? ` · ${polys.length} morceaux` : ""}`;
 
     for (const other of everyone) {
       if (other === sector) continue;
@@ -343,7 +343,8 @@
     $("plan-tournee").textContent = window.Common.tourneeTitle(index.annee);
     if (slug && !communes.some((c) => c.slug === slug)) throw new Error("Commune inconnue");
     const all = await Promise.all(communes.map((c) => fetchJSON(`/api/communes/${encodeURIComponent(c.slug)}`)));
-    all.forEach((d) => d.sectors.forEach((s, i) => { s.code = sectorCode(d.commune.nom, i); }));
+    window.Common.mergeShared(all);
+    all.forEach((d) => d.sectors.forEach((s, i) => { s.code = sectorCode(d.commune.nom, i, s); }));
     const admin = await adminTeams();
     if (admin) {
       const people = new Map(admin.personnes.map((p) => [p.id, p]));
@@ -358,7 +359,7 @@
     opts = loadOptions();
     document.body.classList.add(sector ? "plan-sector" : "plan-overview");
     fillPlanChoice(all, slug, sector ? sectorId : null);
-    $("plan-commune").textContent = datas.map((d) => d.commune.nom).join(" · ");
+    $("plan-commune").textContent = sector && sector.communes ? sector.communes.join(" + ") : datas.map((d) => d.commune.nom).join(" · ");
     $("plan-date").textContent = `imprimé le ${new Date().toLocaleDateString("fr-FR")}`;
 
     map = L.map("plan-map", { zoomControl: true, zoomSnap: 0.25 }).setView([45.742, 4.57], 13);

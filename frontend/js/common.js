@@ -110,8 +110,36 @@ window.Common = (() => {
   }
 
   /** Code court d'un secteur pour les pastilles : initiale de la commune + rang (C1, B2…). */
-  function sectorCode(communeNom, index) {
+  function sectorCode(communeNom, index, sector = null) {
+    if (sector && sector.kind === "entreprises") return "E"; // tournée des entreprises (toutes communes)
     return `${(communeNom || "?").trim().charAt(0).toUpperCase()}${index + 1}`;
+  }
+
+  /** La tournée des entreprises couvre toutes les communes : chaque commune la renvoie avec ses
+   *  propres entreprises. On la regroupe en une seule (dans la première commune) ; chaque adresse
+   *  garde sa commune (a.slug) pour les envois. Modifie et renvoie la liste. */
+  function mergeShared(datas) {
+    const seen = new Map();
+    for (const d of datas) {
+      if (!d || !d.sectors) continue;
+      d.sectors.forEach((s) => (s.addresses || []).forEach((a) => { if (!a.slug) a.slug = d.commune.slug; }));
+      d.sectors = d.sectors.filter((s) => {
+        if (s.kind !== "entreprises") return true;
+        const first = seen.get(s.id);
+        if (!first) {
+          seen.set(s.id, s);
+          s.communes = [d.commune.nom];
+          s.slugs = [d.commune.slug];
+          return true;
+        }
+        const ids = new Set((first.addresses || []).map((a) => a.id));
+        first.addresses = [...(first.addresses || []), ...(s.addresses || []).filter((a) => !ids.has(a.id))];
+        first.polygon = [...first.polygon, ...s.polygon];
+        if (!first.slugs.includes(d.commune.slug)) { first.communes.push(d.commune.nom); first.slugs.push(d.commune.slug); }
+        return false;
+      });
+    }
+    return datas;
   }
 
   /** Étiquette de secteur : pastille avec le code, puis le nom (masqué quand on est loin). */
@@ -434,6 +462,6 @@ window.Common = (() => {
     toPolys, pointInPolys, outerRings, holeRings, OFF_ROAD,
     addBaseLayers, sectorCode, labelHtml, compactLabelsBelow, distanceToEdge, normalizeText,
     tourneeTitle, IS_IOS, IS_ANDROID, navLinks, euros, parseEuros, STATUT_LABEL, personAvatar, formatDay, telHref, hasTeam, statutPill, teamLine, renderEquipe,
-    IGN_PLAN_URL, routeOrder, AVANCEMENT, doneCount, progress, provText,
+    IGN_PLAN_URL, routeOrder, AVANCEMENT, doneCount, progress, provText, mergeShared,
   };
 })();

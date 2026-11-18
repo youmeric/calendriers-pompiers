@@ -399,6 +399,43 @@ def _sector_map(slug: str) -> tuple[dict, list[dict], dict[int, list[dict]]]:
     return data, sectors, by_sector
 
 
+def _all_slugs() -> list[str]:
+    """Toutes les communes : celles du site (index.json) et celles qui ont des secteurs."""
+    slugs: list[str] = []
+    index_path = DATA_DIR / "index.json"
+    if index_path.exists():
+        with open(index_path, "r", encoding="utf-8") as fh:
+            slugs = [c["slug"] for c in json.load(fh).get("communes", []) if (DATA_DIR / f"{c['slug']}.json").exists()]
+    return slugs + [s for s in db.sector_communes() if s not in slugs]
+
+
+def _tours() -> list[dict]:
+    """Chaque tournée une seule fois, même la tournée des entreprises qui couvre plusieurs communes :
+    {"sector", "slugs", "commune" (noms), "addrs": [(slug, adresse)], "polygon"}."""
+    out: dict[int, dict] = {}
+    for slug in _all_slugs():
+        data, sectors, by_sector = _sector_map(slug)
+        nom = data["commune"]["nom"]
+        for s in sectors:
+            t = out.get(s["id"])
+            if t is None:
+                t = out[s["id"]] = {"sector": s, "slugs": [], "communes": [], "addrs": [], "polygon": []}
+            t["slugs"].append(slug)
+            t["communes"].append(nom)
+            t["addrs"].extend((slug, a) for a in by_sector.get(s["id"], []))
+            t["polygon"].extend(s["polygon"])
+    for t in out.values():
+        t["commune"] = " + ".join(t["communes"])
+        t["slug"] = t["slugs"][0]
+    # secteurs des communes dans l'ordre, puis les tournées communes (entreprises)
+    return sorted(out.values(), key=lambda t: (t["sector"]["kind"] != "secteur",))
+
+
+def _sector_slugs(sector_id: int) -> list[str]:
+    """Communes couvertes par une tournée (plusieurs pour la tournée des entreprises)."""
+    return [slug for slug in _all_slugs() if any(s["id"] == sector_id for s in db.list_sectors(slug))]
+
+
 def _sector_of_address(slug: str, address_id: str) -> int:
     data, _, by_sector = _sector_map(slug)
     if address_id not in _address_ids(slug, data):
@@ -450,7 +487,7 @@ def _sector_for_action(request: Request, slug: str, address_id: str,
     if hint in past:
         past.remove(hint)
         past.insert(0, hint)
-    existing = db.sector_communes().get(slug, set())
+    existing = {s["id"] for s in db.list_sectors(slug)}
     for sid in past:
         if sid != current and sid in existing and _role(request, sid):
             return sid, True
@@ -579,26 +616,31 @@ def team_sector_tracking(sector_id: int, request: Request):
     if not _suivi_enabled():
         raise HTTPException(status_code=403, detail="Le suivi des adresses est désactivé")
     role = _require_role(request, sector_id)
-    slug = next((c for c, ids in db.sector_communes().items() if sector_id in ids), None)
-    if slug is None:
+    slugs = _sector_slugs(sector_id)
+    if not slugs:
         raise HTTPException(status_code=404, detail="Secteur inconnu")
-    _, _, by_sector = _sector_map(slug)
-    ids = {a["id"] for a in by_sector.get(sector_id, [])}
-    statuses = {aid: st for aid, st in db.get_statuses(slug).items() if aid in ids and st.get("status")}
     full = role in ("admin", "responsable", "superviseur")
     person = auth.team_member(request)
     me = person["id"] if person else None
-    out = {"slug": slug, "role": role, "statuses": statuses, "dons": None, "totaux": None, "precedent": {},
-           "equipe": _team_view(sector_id),
-           "notes": {aid: n for aid, n in db.get_notes(slug).items() if aid in ids},
-           "logements": _logements(slug, ids),
+    out = {"slug": slugs[0], "slugs": slugs, "role": role, "statuses": {}, "dons": None, "totaux": None, "precedent": {},
+           "equipe": _team_view(sector_id), "notes": {}, "logements": {},
            "signalements": [_sig_view(x) for x in db.list_signalements(sector_id, open_only=True)]}
-    for aid, prev in db.previous_year(slug, _annee()).items():
-        if aid in ids:
-            item = {"annee": prev["annee"], "status": prev["status"], "nb_dons": prev["nb_dons"]}
-            if full:
-                item["montant"] = prev["montant_cents"] / 100
-            out["precedent"][aid] = item
+    all_ids: set[str] = set()
+    # une tournée peut couvrir plusieurs communes (entreprises) : les identifiants d'adresse sont uniques
+    for slug in slugs:
+        _, _, by_sector = _sector_map(slug)
+        ids = {a["id"] for a in by_sector.get(sector_id, [])}
+        all_ids |= ids
+        out["statuses"].update({aid: st for aid, st in db.get_statuses(slug).items() if aid in ids and st.get("status")})
+        out["notes"].update({aid: n for aid, n in db.get_notes(slug).items() if aid in ids})
+        out["logements"].update(_logements(slug, ids))
+        for aid, prev in db.previous_year(slug, _annee()).items():
+            if aid in ids:
+                item = {"annee": prev["annee"], "status": prev["status"], "nb_dons": prev["nb_dons"]}
+                if full:
+                    item["montant"] = prev["montant_cents"] / 100
+                out["precedent"][aid] = item
+    ids = all_ids
     if _flag("dons_actifs", False):
         dons = db.list_dons(_annee(), sector_id)
         out["dons"] = [_don_view(d, full, me) for d in dons]
@@ -751,22 +793,21 @@ def team_overview(request: Request):
     dons_on = _suivi_enabled() and _flag("dons_actifs", False)
     dons = db.list_dons(_annee()) if dons_on else []
     out = []
-    for slug in db.sector_communes():
-        _, sectors, by_sector = _sector_map(slug)
-        statuses = db.get_statuses(slug) if _suivi_enabled() else {}
-        for s in sectors:
-            ids = [a["id"] for a in by_sector.get(s["id"], [])]
-            c = {"fait": 0, "absent": 0, "refus": 0}
-            for aid in ids:
-                st = (statuses.get(aid) or {}).get("status")
-                if st in c:
-                    c[st] += 1
-            team = teams.get(s["id"]) or {"date": "", "creneau": "", "statut": "a_faire", "membres": []}
-            mine = [d for d in dons if d["sector_id"] == s["id"] and d["statut"] == "ok"]
-            out.append({"sector_id": s["id"], "slug": slug, "secteur": labels.get(s["id"], s["nom"]), "couleur": s["couleur"],
-                        "adresses": len(ids), **c, "statut": team["statut"], "date": team["date"], "creneau": team["creneau"],
-                        "responsables": [people[m["personne_id"]] for m in team["membres"] if m["role"] == "responsable" and m["personne_id"] in people],
-                        "dons": ({"nb": len(mine), "total": sum(d["montant_cents"] for d in mine) / 100} if dons_on else None)})
+    statuses_of = {slug: (db.get_statuses(slug) if _suivi_enabled() else {}) for slug in _all_slugs()}
+    for t in _tours():
+        s, slug = t["sector"], t["slug"]
+        ids = [a["id"] for _, a in t["addrs"]]
+        c = {"fait": 0, "absent": 0, "refus": 0}
+        for sl, a in t["addrs"]:
+            st = (statuses_of[sl].get(a["id"]) or {}).get("status")
+            if st in c:
+                c[st] += 1
+        team = teams.get(s["id"]) or {"date": "", "creneau": "", "statut": "a_faire", "membres": []}
+        mine = [d for d in dons if d["sector_id"] == s["id"] and d["statut"] == "ok"]
+        out.append({"sector_id": s["id"], "slug": slug, "secteur": labels.get(s["id"], s["nom"]), "couleur": s["couleur"],
+                    "adresses": len(ids), **c, "statut": team["statut"], "date": team["date"], "creneau": team["creneau"],
+                    "responsables": [people[m["personne_id"]] for m in team["membres"] if m["role"] == "responsable" and m["personne_id"] in people],
+                    "dons": ({"nb": len(mine), "total": sum(d["montant_cents"] for d in mine) / 100} if dons_on else None)})
     return {"secteurs": out, "suivi": _suivi_enabled()}
 
 
@@ -843,7 +884,7 @@ def team_report(payload: SignalementIn, request: Request):
     """Maison manquante, vide ou démolie, adresse fausse… vue sur le terrain ; l'admin tranche."""
     if payload.type == "manquante":
         sector_id = payload.sector_id
-        if sector_id not in db.sector_communes().get(payload.slug, set()):
+        if sector_id not in {s["id"] for s in db.list_sectors(payload.slug)}:
             raise HTTPException(status_code=404, detail="Secteur inconnu")
         _require_role(request, sector_id)
     else:
@@ -860,11 +901,11 @@ def team_report(payload: SignalementIn, request: Request):
 @app.get("/api/admin/signalements", dependencies=[Depends(auth.require("suivi"))])
 def admin_reports():
     labels: dict[str, dict] = {}
-    for slug in db.sector_communes():
+    for slug in _all_slugs():
         for a in _addresses(slug, _load_commune(slug)):
             labels[f"{slug}/{a['id']}"] = a
-    sectors = {s["id"]: s["nom"] for slug in db.sector_communes() for s in db.list_sectors(slug)}
-    excluded = {slug: db.get_excluded(slug) for slug in db.sector_communes()}
+    sectors = {s["id"]: s["nom"] for slug in _all_slugs() for s in db.list_sectors(slug)}
+    excluded = {slug: db.get_excluded(slug) for slug in _all_slugs()}
     out = []
     for x in db.list_signalements():
         a = labels.get(f"{x['commune_slug']}/{x['address_id']}") if x["address_id"] else None
@@ -935,7 +976,7 @@ def _set_entreprise(request: Request, slug: str, address_id: str, nom: str) -> d
         raise HTTPException(status_code=404, detail="Adresse inconnue")
     before = _where_now(slug, address_id)
     was = db.list_entreprises(slug).get(address_id)
-    db.entreprise_sector(slug, create=True)
+    db.entreprise_sector(create=True)
     db.set_entreprise(slug, address_id, nom, _actor(request)[0])
     label = _addr_label(slug, address_id)
     if was:
@@ -1619,10 +1660,11 @@ def _bot() -> tuple[str, str]:
 
 def _sector_labels() -> dict[int, str]:
     out = {}
-    for slug in db.sector_communes():
+    for slug in _all_slugs():
         nom = _load_commune(slug)["commune"]["nom"]
         for i, s in enumerate(db.list_sectors(slug)):
-            out[s["id"]] = f"{(nom or '?').strip()[:1].upper()}{i + 1} {s['nom']}"
+            if s["id"] not in out:  # la tournée des entreprises (toutes communes) : code « E »
+                out[s["id"]] = f"E {s['nom']}" if s["kind"] == "entreprises" else f"{(nom or '?').strip()[:1].upper()}{i + 1} {s['nom']}"
     return out
 
 
@@ -1758,19 +1800,18 @@ def admin_bilan():
     annee = _annee()
     dons = db.list_dons(annee)
     rows = []
-    for slug, sector_ids in db.sector_communes().items():
-        data, sectors, by_sector = _sector_map(slug)
-        statuses = db.get_statuses(slug)
-        for s in sectors:
-            ids = [a["id"] for a in by_sector.get(s["id"], [])]
-            counts = {"fait": 0, "absent": 0, "refus": 0, "a_faire": 0}
-            for aid in ids:
-                counts[(statuses.get(aid) or {}).get("status") or "a_faire"] += 1
-            rows.append({"sector_id": s["id"], "slug": slug, "commune": data["commune"]["nom"], "nom": s["nom"],
-                         "couleur": s["couleur"], "adresses": len(ids), "counts": counts, "kind": s["kind"],
-                         "polygon": s["polygon"],
-                         "totaux": _totaux([d for d in dons if d["sector_id"] == s["id"]]),
-                         "caisse": _caisse(s["id"])})
+    statuses_of = {slug: db.get_statuses(slug) for slug in _all_slugs()}
+    for t in _tours():
+        s = t["sector"]
+        ids = [a["id"] for _, a in t["addrs"]]
+        counts = {"fait": 0, "absent": 0, "refus": 0, "a_faire": 0}
+        for sl, a in t["addrs"]:
+            counts[(statuses_of[sl].get(a["id"]) or {}).get("status") or "a_faire"] += 1
+        rows.append({"sector_id": s["id"], "slug": t["slug"], "commune": t["commune"], "nom": s["nom"],
+                     "couleur": s["couleur"], "adresses": len(ids), "counts": counts, "kind": s["kind"],
+                     "polygon": t["polygon"],
+                     "totaux": _totaux([d for d in dons if d["sector_id"] == s["id"]]),
+                     "caisse": _caisse(s["id"])})
     return {"annee": annee, "secteurs": rows, "totaux": _totaux(dons),
             "attente": [_don_view(d, True, None) | {"sector_id": d["sector_id"], "slug": d["commune_slug"]}
                         for d in dons if d["statut"] == "attente"]}
@@ -1791,10 +1832,11 @@ def admin_year_report(annee: int | None = None):
         return {"adresses": 0, "fait": 0, "absent": 0, "refus": 0, "dons": []}
 
     rows, totals = [], {y: blank() for y in years}
-    for slug in db.sector_communes():
-        data, sectors, by_sector = _sector_map(slug)
+    tours = _tours()
+    per = {t["sector"]["id"]: {y: blank() for y in years} for t in tours}
+    for slug in _all_slugs():
+        _, _, by_sector = _sector_map(slug)
         where = {a["id"]: sid for sid, addrs in by_sector.items() for a in addrs}
-        per = {s["id"]: {y: blank() for y in years} for s in sectors}
         for y in years:
             statuses = db.get_statuses(slug, y)
             for aid, sid in where.items():
@@ -1810,20 +1852,21 @@ def admin_year_report(annee: int | None = None):
                     per[sid][y]["dons"].append(d)
                 else:
                     totals[y]["dons"].append(d)  # secteur disparu : compté dans le total seulement
-        for s in sectors:
-            team = teams.get(s["id"]) or {"membres": []}
-            rows.append({"sector_id": s["id"], "commune": data["commune"]["nom"], "slug": slug, "nom": s["nom"],
-                         "couleur": s["couleur"],
-                         "responsables": [people[m["personne_id"]] for m in team["membres"]
-                                          if m["role"] == "responsable" and m["personne_id"] in people],
-                         "annees": {}})
-            for y in years:
-                v = per[s["id"]][y]
-                for k in ("adresses", "fait", "absent", "refus"):
-                    totals[y][k] += v[k]
-                totals[y]["dons"].extend(v["dons"])
-                rows[-1]["annees"][str(y)] = {**{k: v[k] for k in ("adresses", "fait", "absent", "refus")},
-                                             "dons": _totaux(v["dons"])}
+    for t in tours:  # chaque tournée une fois (la tournée des entreprises couvre plusieurs communes)
+        s = t["sector"]
+        team = teams.get(s["id"]) or {"membres": []}
+        rows.append({"sector_id": s["id"], "commune": t["commune"], "slug": t["slug"], "nom": s["nom"],
+                     "couleur": s["couleur"], "kind": s["kind"],
+                     "responsables": [people[m["personne_id"]] for m in team["membres"]
+                                      if m["role"] == "responsable" and m["personne_id"] in people],
+                     "annees": {}})
+        for y in years:
+            v = per[s["id"]][y]
+            for k in ("adresses", "fait", "absent", "refus"):
+                totals[y][k] += v[k]
+            totals[y]["dons"].extend(v["dons"])
+            rows[-1]["annees"][str(y)] = {**{k: v[k] for k in ("adresses", "fait", "absent", "refus")},
+                                         "dons": _totaux(v["dons"])}
     remises = db.list_remises(annee)
     return {
         "annee": annee, "precedente": prev, "annees": annees, "secteurs": rows,
@@ -1853,8 +1896,8 @@ def _registre(annee: int) -> list[dict]:
     labels = _sector_labels()
     addr: dict[str, str] = {}
     communes: dict[str, str] = {}
-    unit_labels = {slug: db.get_unit_labels(slug) for slug in db.sector_communes()}
-    for slug in db.sector_communes():
+    unit_labels = {slug: db.get_unit_labels(slug) for slug in _all_slugs()}
+    for slug in _all_slugs():
         data = _load_commune(slug)
         communes[slug] = data["commune"]["nom"]
         for a in _addresses(slug, data):
@@ -1939,32 +1982,31 @@ def _fiscal(annee: int) -> dict:
     labels = _sector_labels()
     maisons = {"adresses": 0, "fait": 0, "absent": 0, "refus": 0}
     secteurs = []
-    for slug in db.sector_communes():
-        _, sectors, by_sector = _sector_map(slug)
-        statuses = db.get_statuses(slug, annee)
-        for sct in sectors:
-            ids = [a["id"] for a in by_sector.get(sct["id"], [])]
-            c = {"fait": 0, "absent": 0, "refus": 0}
-            for aid in ids:
-                st = (statuses.get(aid) or {}).get("status")
-                if st in c:
-                    c[st] += 1
-            maisons["adresses"] += len(ids)
-            for k in c:
-                maisons[k] += c[k]
-            mine = [r for r in ok if r["sector_id"] == sct["id"]]
-            rem = [r for r in remises if r["sector_id"] == sct["id"]]
-            esp, chq = cents([r for r in mine if r["mode"] == "especes"]), cents([r for r in mine if r["mode"] == "cheque"])
-            r_esp, r_chq = sum(r["especes_cents"] for r in rem), sum(r["cheques_cents"] for r in rem)
-            secteurs.append({
-                "sector_id": sct["id"], "secteur": labels.get(sct["id"], sct["nom"]),
-                "responsables": [people[m["personne_id"]] for m in (teams.get(sct["id"]) or {"membres": []})["membres"]
-                                 if m["role"] == "responsable" and m["personne_id"] in people],
-                "adresses": len(ids), **c, "nb": len(mine), "especes": esp / 100, "cheque": chq / 100,
-                "cb": cents([r for r in mine if r["mode"] == "cb"]) / 100, "total": cents(mine) / 100,
-                "remis_especes": r_esp / 100, "remis_cheques": r_chq / 100,
-                "reste": (esp + chq - r_esp - r_chq) / 100,
-            })
+    statuses_of = {slug: db.get_statuses(slug, annee) for slug in _all_slugs()}
+    for t in _tours():
+        sct = t["sector"]
+        ids = [a["id"] for _, a in t["addrs"]]
+        c = {"fait": 0, "absent": 0, "refus": 0}
+        for sl, a in t["addrs"]:
+            st = (statuses_of[sl].get(a["id"]) or {}).get("status")
+            if st in c:
+                c[st] += 1
+        maisons["adresses"] += len(ids)
+        for k in c:
+            maisons[k] += c[k]
+        mine = [r for r in ok if r["sector_id"] == sct["id"]]
+        rem = [r for r in remises if r["sector_id"] == sct["id"]]
+        esp, chq = cents([r for r in mine if r["mode"] == "especes"]), cents([r for r in mine if r["mode"] == "cheque"])
+        r_esp, r_chq = sum(r["especes_cents"] for r in rem), sum(r["cheques_cents"] for r in rem)
+        secteurs.append({
+            "sector_id": sct["id"], "secteur": labels.get(sct["id"], sct["nom"]),
+            "responsables": [people[m["personne_id"]] for m in (teams.get(sct["id"]) or {"membres": []})["membres"]
+                             if m["role"] == "responsable" and m["personne_id"] in people],
+            "adresses": len(ids), **c, "nb": len(mine), "especes": esp / 100, "cheque": chq / 100,
+            "cb": cents([r for r in mine if r["mode"] == "cb"]) / 100, "total": cents(mine) / 100,
+            "remis_especes": r_esp / 100, "remis_cheques": r_chq / 100,
+            "reste": (esp + chq - r_esp - r_chq) / 100,
+        })
     # dons rattachés à un secteur supprimé depuis : comptés à part pour que les totaux tombent juste
     known = {x["sector_id"] for x in secteurs}
     orphans = [r for r in ok if r["sector_id"] not in known]
@@ -2118,7 +2160,7 @@ def admin_close_archive(cloture_id: int):
 @app.get("/api/admin/dons", dependencies=[Depends(auth.require("dons"))])
 def admin_dons():
     labels = {}
-    for slug in db.sector_communes():
+    for slug in _all_slugs():
         labels.update({a["id"]: _full_label(a) for a in _addresses(slug, _load_commune(slug))})
     return {"annee": _annee(), "dons": [
         {**_don_view(d, True, None), "sector_id": d["sector_id"], "slug": d["commune_slug"],

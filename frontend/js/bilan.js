@@ -105,7 +105,7 @@
     const index = await fetchJSON("/api/communes");
     codes = new Map();
     const datas = await Promise.all(index.communes.map((c) => fetchJSON(`/api/communes/${encodeURIComponent(c.slug)}`)));
-    datas.forEach((d) => d.sectors.forEach((s, i) => codes.set(s.id, { code: sectorCode(d.commune.nom, i), couleur: s.couleur, nom: s.nom })));
+    datas.forEach((d) => d.sectors.forEach((s, i) => codes.set(s.id, { code: sectorCode(d.commune.nom, i, s), couleur: s.couleur, nom: s.nom })));
     $("bilan-title").textContent = `Suivi & dons — ${window.Common.tourneeTitle(index.annee)}`;
   }
 

@@ -131,13 +131,14 @@
     $("t-login-title").textContent = tourneeTitle(index.annee);
     const datas = await Promise.all(index.communes.map((c) => fetchJSON(`/api/communes/${encodeURIComponent(c.slug)}`)));
     const roles = new Map(T.me.secteurs.map((x) => [x.sector_id, x.role]));
+    C.mergeShared(datas); // tournée des entreprises : une seule pour toutes les communes
     T.sectors = [];
     for (const d of datas) {
       d.sectors.forEach((s, i) => {
-        s.code = sectorCode(d.commune.nom, i);
+        s.code = sectorCode(d.commune.nom, i, s);
         T.allSectors.set(s.id, { code: s.code, nom: s.nom });
         if (T.me.admin || roles.has(s.id)) {
-          T.sectors.push({ slug: d.commune.slug, communeNom: d.commune.nom, mairie: d.commune.mairie || null, sector: s, role: T.me.admin ? "admin" : roles.get(s.id) });
+          T.sectors.push({ slug: d.commune.slug, communeNom: s.communes ? s.communes.join(" + ") : d.commune.nom, mairie: d.commune.mairie || null, sector: s, role: T.me.admin ? "admin" : roles.get(s.id) });
         }
       });
     }
@@ -237,7 +238,8 @@
       T.tr = { readOnly: true, role: T.cur.role, lead: T.cur.role !== "equipier", full: T.cur.role !== "equipier", donsActive: false, dons: new Map(), allDons: [], precedent: {}, notes: {}, signalements: [], logements: {}, equipe: T.raw.equipe[s.id] || s.equipe || null };
       return;
     }
-    const queue = readQueue().filter((q) => q.slug === T.cur.slug);
+    const slugs = new Set(s.slugs || [T.cur.slug]); // tournée des entreprises : plusieurs communes
+    const queue = readQueue().filter((q) => slugs.has(q.slug));
     const ids = new Set(s.addresses.map((a) => a.id));
     // les modifications pas encore envoyées (hors réseau) restent prioritaires
     const pending = new Map(queue.filter((q) => q.kind === "status" && !q.logement).map((q) => [q.addressId, q]));
@@ -1072,6 +1074,19 @@
   const ctxOf = (sectorId, at) => ({ ...(sectorId ? { sector_id: sectorId } : {}), ...(at ? { fait_le: at } : {}) });
   const curSectorId = () => (T.cur && T.cur.sector ? T.cur.sector.id : null);
 
+  /** Commune d'une adresse (la tournée des entreprises en couvre plusieurs). */
+  const slugOf = (a) => (a && a.slug) || T.cur.slug;
+  /** Commune de l'adresse la plus proche d'un point (maison manquante placée sur la carte). */
+  function slugNear(lat, lon) {
+    let best = null;
+    let bestD = Infinity;
+    for (const a of T.cur.sector.addresses) {
+      const d = (a.lat - lat) ** 2 + ((a.lon - lon) * 0.7) ** 2;
+      if (d < bestD) { bestD = d; best = a; }
+    }
+    return slugOf(best);
+  }
+
   function sendStatus(slug, addressId, status, logement, sectorId = curSectorId(), at = null) {
     return fetchJSON(`/api/communes/${slug}/addresses/${encodeURIComponent(addressId)}/status`, {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -1141,7 +1156,7 @@
         if (T.tour.active) { T.tour.current = a; renderTour(); }
       });
     }
-    const slug = T.cur.slug;
+    const slug = slugOf(a);
     const sectorId = curSectorId();
     const keep = () => enqueue({ kind: "status", slug, addressId: a.id, status, at: a.validAt, sectorId }, (x) => x.kind === "status" && x.slug === slug && x.addressId === a.id && !x.logement);
     if (T.offline) { keep(); return; }
@@ -1173,7 +1188,7 @@
         setUnitStatus(a, l, prev, { undo: false });
       });
     }
-    const slug = T.cur.slug;
+    const slug = slugOf(a);
     const sectorId = curSectorId();
     const keep = () => enqueue({ kind: "status", slug, addressId: a.id, logement: l, status, at, sectorId },
       (x) => x.kind === "status" && x.slug === slug && x.addressId === a.id && x.logement === l);
@@ -1195,7 +1210,7 @@
 
   /** Envoie le nombre de logements et, si besoin, des noms ; met à jour l'écran. */
   async function saveUnits(a, n, libelles = {}) {
-    const r = await postJSON("/api/equipe/logements", { slug: T.cur.slug, address_id: a.id, logements: n, libelles, ...ctxOf(curSectorId()) });
+    const r = await postJSON("/api/equipe/logements", { slug: slugOf(a), address_id: a.id, logements: n, libelles, ...ctxOf(curSectorId()) });
     T.tr.logements[a.id] = r.logements;
     a.status = r.status || null;
     patchRaw((t) => {
@@ -1371,7 +1386,7 @@
 
   async function saveNote(a, raw) {
     const note = raw.split(/\s+/).join(" ").trim().slice(0, 300);
-    const slug = T.cur.slug;
+    const slug = slugOf(a);
     const local = () => {
       if (note) T.tr.notes[a.id] = { note, par: T.me.personne ? T.me.personne.nom : "Admin", pending: true };
       else delete T.tr.notes[a.id];
@@ -1444,7 +1459,7 @@
     e.preventDefault();
     const missing = sigCtx.type === "manquante";
     const body = {
-      slug: T.cur.slug,
+      slug: missing ? slugNear(sigCtx.lat, sigCtx.lon) : slugOf(sigCtx.a),
       type: missing ? "manquante" : sigDialog.querySelector('input[name="sig-type"]:checked').value,
       note: $("sig-note").value.trim(),
     };
@@ -1452,7 +1467,7 @@
     else Object.assign(body, { address_id: sigCtx.a.id, sector_id: T.cur.sector.id });
     if (sigIsEnt()) body.entreprise = $("sig-ent-nom").value.trim();
     const keep = () => {
-      enqueue({ kind: "sig", slug: T.cur.slug, body, at: new Date().toISOString() });
+      enqueue({ kind: "sig", slug: body.slug, body, at: new Date().toISOString() });
       T.tr.signalements = [...(T.tr.signalements || []), { ...body, pending: true }];
     };
     if (T.offline) keep();
@@ -1658,7 +1673,7 @@
   function donBody(sumup) {
     // référence : n° du chèque, ou n° de transaction SumUp saisi à la main
     const ref = selectedMode() === "cheque" ? $("don-cheque").value : selectedMode() === "cb" ? $("don-tx").value : "";
-    return { slug: T.cur.slug, address_id: donCtx.a.id, sector_id: T.cur.sector.id, montant: readAmount(), mode: selectedMode(), sumup, tx_code: ref.trim(), client_id: uid(),
+    return { slug: slugOf(donCtx.a), address_id: donCtx.a.id, sector_id: T.cur.sector.id, montant: readAmount(), mode: selectedMode(), sumup, tx_code: ref.trim(), client_id: uid(),
       ...(donCtx.logement ? { logement: donCtx.logement } : {}) };
   }
 

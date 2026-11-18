@@ -101,15 +101,17 @@
     state.personnes = teams.personnes;
     state.equipes = {};
     for (const [id, t] of Object.entries(teams.equipes)) state.equipes[Number(id)] = t;
+    window.Common.mergeShared(communes);
     state.sectors = communes.flatMap((d) => d.sectors.map((s, i) => ({
       id: s.id,
-      code: sectorCode(d.commune.nom, i),
+      code: sectorCode(d.commune.nom, i, s),
       nom: s.nom,
       couleur: s.couleur,
-      commune: d.commune.nom,
+      commune: s.communes ? s.communes.join(" + ") : d.commune.nom,
       nbAdresses: s.addresses.length,
       hameaux: hameauxPreview(s.resume, 3),
-    })));
+      kind: s.kind,
+    }))).sort((x, y) => (x.kind === "entreprises") - (y.kind === "entreprises")); // la tournée des entreprises après les communes
     state.annee = index.annee;
     els.title.textContent = `Équipes de la ${window.Common.tourneeTitle(index.annee).replace(/^Tournée/, "tournée")}`;
     els.pubTeams.checked = settings.equipes_public;

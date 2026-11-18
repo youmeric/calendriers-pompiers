@@ -148,7 +148,7 @@
     const codes = new Map();
     for (const c of index.communes) {
       const d = await fetchJSON(`/api/communes/${encodeURIComponent(c.slug)}`);
-      d.sectors.forEach((s, i) => codes.set(s.id, sectorCode(d.commune.nom, i)));
+      d.sectors.forEach((s, i) => codes.set(s.id, sectorCode(d.commune.nom, i, s)));
     }
     const years = [...new Set([...r.annees, r.annee])].sort((a, b) => b - a);
     $("rp-annee").innerHTML = years.map((y) => `<option value="${y}"${y === r.annee ? " selected" : ""}>${y}</option>`).join("");
