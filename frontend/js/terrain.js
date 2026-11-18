@@ -438,6 +438,11 @@
   }
 
   /** Immeuble : {n, units} si l'adresse a plusieurs logements, sinon null. */
+  /** Nom de l'entreprise (tournée des entreprises), devant l'adresse. */
+  function entName(a) {
+    return a.entreprise ? `<span class="ent-name">🏢 ${escapeHtml(a.entreprise)}</span> ` : "";
+  }
+
   function unitsOf(a) {
     const lg = T.tr && T.tr.logements && T.tr.logements[a.id];
     return lg && lg.n > 1 ? lg : null;
@@ -752,7 +757,7 @@
           ${T.tr.donsActive ? `<button type="button" class="t-st don" data-don aria-label="Don : ${escapeHtml(a.label)}">€</button>` : ""}
         </div>`;
       html += `<div class="t-row${a.status ? ` st-${a.status}` : ""}" data-id="${escapeHtml(a.id)}">
-        <button type="button" class="t-row-main" data-open><span class="t-row-label">${disp.ordre ? `<span class="ord-num" aria-label="étape ${routeIndex(a) + 1}">${routeIndex(a) + 1}</span>` : ""}${escapeHtml(a.label)}</span>
+        <button type="button" class="t-row-main" data-open><span class="t-row-label">${disp.ordre ? `<span class="ord-num" aria-label="étape ${routeIndex(a) + 1}">${routeIndex(a) + 1}</span>` : ""}${entName(a)}${escapeHtml(a.label)}</span>
           <span class="t-row-chips">${validChip(a)}${noteChip(a)}${sigChip(a)}${prevChip(a)}${donBadges(a.id)}</span></button>
         ${btns}
       </div>`;
@@ -1280,8 +1285,8 @@
   let ficheAddr = null;
 
   function fillFiche(a) {
-    $("tf-title").textContent = a.label;
-    $("tf-sub").textContent = `${a.groupe} · ${T.cur.communeNom}`;
+    $("tf-title").textContent = a.entreprise ? `🏢 ${a.entreprise}` : a.label;
+    $("tf-sub").textContent = `${a.entreprise ? `${a.label} · ` : ""}${a.groupe} · ${T.cur.communeNom}`;
     $("tf-info").innerHTML = `${sigChip(a)}${prevChip(a)}${donBadges(a.id)}`;
     const lg = unitsOf(a);
     $("tf-when").hidden = !(lg || (a.status && a.validAt));
@@ -1409,12 +1414,29 @@
     $("sig-types").hidden = missing;
     $("sig-new").hidden = !missing;
     sigDialog.querySelector('input[name="sig-type"][value="vide"]').checked = true;
+    $("sig-type-ent").hidden = !missing && !!ctx.a.entreprise; // déjà dans la tournée des entreprises
+    $("sig-ent-box").checked = false;
+    $("sig-ent-nom").value = "";
+    refreshSigEnt();
     $("sig-numero").value = "";
     $("sig-voie").value = ctx.voie || "";
     $("sig-note").value = "";
     $("sig-error").hidden = true;
     sigDialog.showModal();
   }
+
+  /** « C'est une entreprise » : case à cocher pour une maison manquante, type de signalement sinon ; le nom est facultatif. */
+  function sigIsEnt() {
+    if (!sigCtx) return false;
+    return sigCtx.type === "manquante" ? $("sig-ent-box").checked
+      : (sigDialog.querySelector('input[name="sig-type"]:checked') || {}).value === "entreprise";
+  }
+  function refreshSigEnt() {
+    $("sig-ent-check").hidden = sigCtx.type !== "manquante";
+    $("sig-ent-field").hidden = !sigIsEnt();
+  }
+  sigDialog.querySelectorAll('input[name="sig-type"]').forEach((r) => r.addEventListener("change", refreshSigEnt));
+  $("sig-ent-box").addEventListener("change", refreshSigEnt);
 
   $("tf-sig").addEventListener("click", () => { $("t-fiche").close(); openSig({ type: null, a: ficheAddr }); });
 
@@ -1428,6 +1450,7 @@
     };
     if (missing) Object.assign(body, { sector_id: T.cur.sector.id, lat: sigCtx.lat, lon: sigCtx.lon, numero: $("sig-numero").value.trim(), nom_voie: $("sig-voie").value.trim() });
     else Object.assign(body, { address_id: sigCtx.a.id, sector_id: T.cur.sector.id });
+    if (sigIsEnt()) body.entreprise = $("sig-ent-nom").value.trim();
     const keep = () => {
       enqueue({ kind: "sig", slug: T.cur.slug, body, at: new Date().toISOString() });
       T.tr.signalements = [...(T.tr.signalements || []), { ...body, pending: true }];
@@ -1545,6 +1568,7 @@
     const lg = unitsOf(a);
     actions.forEach((x) => { x.hidden = !!lg && !x.classList.contains("secondary"); });
     $("tt-card").innerHTML = `<span class="tt-group">${escapeHtml(a.groupe)}</span>
+      ${a.entreprise ? `<span class="ent-name tt-ent">🏢 ${escapeHtml(a.entreprise)}</span>` : ""}
       <h2 class="tt-label">${escapeHtml(a.label)}</h2>
       <span class="tt-dist"></span>
       ${lg ? `<button type="button" class="btn primary tt-bld" data-tour-units>🏢 Immeuble : ${unitsDone(lg)}/${lg.n} logements passés<small>Ouvrir les logements</small></button>` : ""}

@@ -162,7 +162,7 @@
   // ---- signalements du terrain ----
   const SIG = {
     manquante: ["🏠", "Maison manquante"], vide: ["🚫", "Maison vide / pas une habitation"],
-    erreur: ["✏️", "Adresse fausse"], autre: ["⚠", "Autre problème"],
+    erreur: ["✏️", "Adresse fausse"], entreprise: ["🏢", "C'est une entreprise"], autre: ["⚠", "Autre problème"],
   };
   let sigLayer = null;
   let sigs = [];
@@ -176,15 +176,22 @@
     const when = (iso) => new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
     const item = (x) => {
       const [icon, label] = SIG[x.type] || SIG.autre;
-      const where = x.type === "manquante" ? [x.numero, x.nom_voie].filter(Boolean).join(" ") || "position sur la carte" : x.adresse || x.address_id;
+      const where = (x.type === "manquante" ? [x.numero, x.nom_voie].filter(Boolean).join(" ") || "position sur la carte" : x.adresse || x.address_id)
+        + (x.entreprise ? ` · 🏢 « ${x.entreprise} »` : x.entreprise === "" && x.type === "manquante" ? " · 🏢 entreprise" : "");
       let actions = "";
       if (x.statut !== "nouveau") {
         actions = `<span class="hint">${x.statut === "traite" ? "✓ traité" : "ignoré"}${x.traite_le ? ` le ${when(x.traite_le)}` : ""}</span>
           <button type="button" class="btn small" data-act="rouvrir">Rouvrir</button>`;
+      } else if (x.type === "entreprise") {
+        actions = x.deja_entreprise ? `<span class="hint">déjà dans la tournée des entreprises (🏢 ${escapeHtml(x.deja_entreprise)})</span> <button type="button" class="btn small" data-act="traite">Marquer traité</button>`
+          : `<input class="sig-voie" data-f="entreprise" value="${escapeHtml(x.entreprise || "")}" placeholder="Nom de l'entreprise (facultatif)" aria-label="Nom de l'entreprise" />
+          <button type="button" class="btn small primary" data-act="entreprise">🏢 Ajouter à la tournée des entreprises</button>
+          <button type="button" class="btn small" data-act="ignore">Ignorer</button>`;
       } else if (x.type === "manquante") {
         actions = `<input class="sig-num" data-f="numero" value="${escapeHtml(x.numero)}" placeholder="N°" aria-label="Numéro" />
           <input class="sig-voie" data-f="nom_voie" value="${escapeHtml(x.nom_voie)}" placeholder="Rue ou lieu-dit" aria-label="Rue" />
-          <button type="button" class="btn small primary" data-act="ajouter">Ajouter la maison</button>
+          ${x.entreprise !== null && x.entreprise !== undefined ? `<input class="sig-voie" data-f="entreprise" value="${escapeHtml(x.entreprise)}" placeholder="Nom de l'entreprise" aria-label="Nom de l'entreprise" />` : ""}
+          <button type="button" class="btn small primary" data-act="ajouter">${x.entreprise !== null && x.entreprise !== undefined ? "🏢 Ajouter l'entreprise" : "Ajouter la maison"}</button>
           <button type="button" class="btn small" data-act="ignore">Ignorer</button>`;
       } else if (x.type === "vide") {
         actions = x.exclue ? `<span class="hint">adresse déjà exclue</span> <button type="button" class="btn small" data-act="traite">Marquer traité</button>`
@@ -237,6 +244,7 @@
       await api(`/api/admin/signalements/${x.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       flashSaved();
       if (body.action === "ajouter") showToast("Maison ajoutée à la liste ✓");
+      if (body.action === "entreprise") showToast("Ajoutée à la tournée des entreprises ✓");
       if (body.action === "corriger") showToast("Adresse corrigée ✓ (les équipes la voient au prochain rafraîchissement)");
       await render();
     } catch (err) {

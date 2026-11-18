@@ -51,6 +51,15 @@ sur Courzieu et Brussieu (69690).
     temps estimé et écart à la moyenne (minutes par porte réglables).
   - **↶ / ↷** (Ctrl+Z / Ctrl+Y) pour annuler ou rétablir, et **versions** :
     chaque enregistrement garde une copie (30 dernières) qu'on peut recharger.
+  - **Tournée des entreprises** : une tournée à part par commune (« Entreprises »),
+    avec sa propre équipe, sa caisse et son suivi, qui ne contient que les
+    adresses marquées entreprise. Onglet Secteurs : clic sur une adresse →
+    « 🏢 Entreprise » (avec son nom), liste des entreprises, et « + Ajouter une
+    entreprise absente de la carte ». Sur le terrain, une équipe peut signaler
+    « C'est une entreprise » (ou cocher « entreprise » pour une maison manquante) ;
+    l'admin la passe dans la tournée d'un clic depuis les signalements.
+    Une entreprise retirée retourne d'elle-même dans le secteur dessiné où elle
+    se trouve ; statut, note et dons suivent l'adresse dans les deux sens.
   - **Pourcentage d'avancement** (onglet « Suivi & dons », Réglages) : au choix,
     maisons *passées* (faites + refus + absents à repasser, par défaut),
     *terminées* (faites + refus : un absent à repasser reste à faire) ou

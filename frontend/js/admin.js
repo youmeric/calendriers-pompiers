@@ -41,6 +41,8 @@
     list: $("sector-editor-list"),
     excludedCount: $("excluded-count"),
     excludedList: $("excluded-list"),
+    entCount: $("ent-count"),
+    entList: $("ent-list"),
     suivi: $("suivi-toggle"),
     annee: $("annee-input"),
     versionsBtn: $("btn-versions"),
@@ -631,10 +633,12 @@
     const group = state.data.addresses.filter((x) => x.groupe_id === a.groupe_id);
     const box = document.createElement("div");
     box.innerHTML = `<strong>${escapeHtml(a.label)}</strong><br><span class="hint">${escapeHtml(a.groupe)}${excluded ? " · <b>exclue</b>" : ""}</span>`
-      + (a.corrigee ? `<br><span class="hint">✏️ corrigée — origine : ${escapeHtml(a.origine.label)}</span>` : "");
+      + (a.corrigee ? `<br><span class="hint">✏️ corrigée — origine : ${escapeHtml(a.origine.label)}</span>` : "")
+      + (a.entreprise ? `<br><b>🏢 ${escapeHtml(a.entreprise)}</b> <span class="hint">· tournée des entreprises</span>` : "");
     const actions = document.createElement("div");
     actions.className = "popup-actions";
     actions.append(button("✏️ Corriger l'adresse", "btn", () => openCorrection(idx)));
+    if (!excluded) actions.append(button(a.entreprise ? `🏢 ${a.entreprise} : renommer / retirer` : "🏢 Entreprise (tournée des entreprises)", "btn", () => openEntreprise(idx)));
     if (excluded) {
       actions.append(button("Réintégrer cette adresse", "btn", () => setExcluded([a.id], false)));
     } else {
@@ -648,6 +652,104 @@
     box.appendChild(actions);
     L.popup({ maxWidth: 280 }).setLatLng([a.lat, a.lon]).setContent(box).openOn(state.map);
   }
+
+  // ---- Tournée des entreprises -------------------------------------------------------
+
+  /** Passer une adresse à la tournée des entreprises (avec son nom), la renommer ou l'en retirer. */
+  function openEntreprise(idx) {
+    const a = state.data.addresses[idx];
+    const box = document.createElement("div");
+    box.className = "corr-box";
+    box.innerHTML = `<strong>${a.entreprise ? "Entreprise" : "Passer à la tournée des entreprises"}</strong>
+      <p class="hint">${escapeHtml(a.label)}</p>
+      <label class="corr-field">Nom de l'entreprise (facultatif)<input data-f="nom" maxlength="120" placeholder="Ex. : Garage Martin" /></label>
+      <p class="hint">${a.entreprise ? "Retirée, elle retourne dans le secteur dessiné où elle se trouve." : "Elle quitte son secteur pour la tournée des entreprises, avec son statut, sa note et ses dons."}</p>`;
+    box.querySelector('[data-f="nom"]').value = a.entreprise && a.entreprise !== "Entreprise" ? a.entreprise : "";
+    const actions = document.createElement("div");
+    actions.className = "popup-actions";
+    actions.append(button(a.entreprise ? "Enregistrer le nom" : "🏢 Mettre dans la tournée des entreprises", "btn primary",
+      () => saveEntreprise(a.id, "PUT", { nom: box.querySelector('[data-f="nom"]').value.trim() })));
+    if (a.entreprise) actions.append(button("Retirer de la tournée des entreprises", "btn danger", () => saveEntreprise(a.id, "DELETE")));
+    box.appendChild(actions);
+    L.popup({ maxWidth: 300 }).setLatLng([a.lat, a.lon]).setContent(box).openOn(state.map);
+  }
+
+  async function saveEntreprise(addressId, method, body) {
+    try {
+      const res = await fetchJSON(`/api/admin/communes/${state.slug}/addresses/${encodeURIComponent(addressId)}/entreprise`, {
+        method, headers: { "Content-Type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      const idx = state.data.addresses.findIndex((x) => x.id === addressId);
+      const fresh = { ...state.data.addresses[idx], ...res };
+      if (!res.entreprise) delete fresh.entreprise;
+      state.data.addresses[idx] = fresh;
+      state.map.closePopup();
+      recompute();
+      renderEntreprises();
+      showToast(res.entreprise ? `🏢 ${res.entreprise} : dans la tournée des entreprises ✓` : `${res.label} : de retour dans son secteur ✓`);
+    } catch (err) {
+      if (err.status === 401) { showToast("Session expirée : reconnectez-vous.", true); showLogin(); }
+      else showToast(err.message, true);
+    }
+  }
+
+  function renderEntreprises() {
+    const list = state.data.addresses.filter((a) => a.entreprise && !state.excluded.has(a.id))
+      .sort((x, y) => x.entreprise.localeCompare(y.entreprise, "fr"));
+    els.entCount.textContent = String(list.length);
+    els.entList.innerHTML = list.length ? "" : `<p class="hint">Aucune entreprise pour l'instant.</p>`;
+    for (const a of list) {
+      const row = document.createElement("div");
+      row.className = "excluded-row";
+      row.innerHTML = `<span><b>🏢 ${escapeHtml(a.entreprise)}</b><br><span class="hint">${escapeHtml(a.label)}</span></span>`;
+      const btns = document.createElement("span");
+      btns.append(
+        button("Voir", "btn small", () => { state.map.setView([a.lat, a.lon], 18); openEntreprise(state.data.addresses.indexOf(a)); }),
+        button("Retirer", "btn small", () => saveEntreprise(a.id, "DELETE")),
+      );
+      row.appendChild(btns);
+      els.entList.appendChild(row);
+    }
+  }
+
+  // entreprise absente de la Base Adresse : on la place sur la carte
+  $("ent-add").addEventListener("click", () => {
+    if (!state.data) return;
+    state.map.getContainer().classList.add("picking-point");
+    showToast("Cliquez sur la carte à l'emplacement de l'entreprise.");
+    state.pickPoint = (ll) => {
+      const box = document.createElement("div");
+      box.className = "corr-box";
+      box.innerHTML = `<strong>Nouvelle entreprise</strong>
+        <label class="corr-field">Nom de l'entreprise<input data-f="nom" maxlength="120" placeholder="Ex. : Menuiserie Roux" /></label>
+        <label class="corr-field">N°<input data-f="numero" maxlength="20" /></label>
+        <label class="corr-field">Rue, lieu-dit ou zone<input data-f="nom_voie" maxlength="120" placeholder="Ex. : ZA des Platanes" /></label>`;
+      const v = (f) => box.querySelector(`[data-f="${f}"]`).value.trim();
+      const actions = document.createElement("div");
+      actions.className = "popup-actions";
+      actions.append(button("Ajouter à la tournée des entreprises", "btn primary", async () => {
+        if (!v("nom_voie")) { showToast("Indiquez la rue, le lieu-dit ou la zone.", true); return; }
+        try {
+          const res = await fetchJSON(`/api/admin/communes/${state.slug}/entreprises`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nom: v("nom"), numero: v("numero"), nom_voie: v("nom_voie"), lat: ll.lat, lon: ll.lng }),
+          });
+          state.map.closePopup();
+          // nouvelle adresse ajoutée à la carte sans recharger (les modifications de secteurs en cours sont gardées)
+          state.data.addresses.push(res);
+          state.markers.push(L.circleMarker([res.lat, res.lon], {
+            renderer: state.canvas, radius: 4, weight: 1, color: "#fff", fillColor: OUTSIDE_COLOR, fillOpacity: 1,
+            interactive: false, pmIgnore: true, snapIgnore: true,
+          }).addTo(state.map));
+          recompute();
+          renderEntreprises();
+          showToast(`🏢 ${res.entreprise} ajoutée à la tournée des entreprises ✓`);
+        } catch (err) { showToast(err.message, true); }
+      }));
+      box.appendChild(actions);
+      L.popup({ maxWidth: 300 }).setLatLng(ll).setContent(box).openOn(state.map);
+    };
+  });
 
   /** Corriger une adresse fausse (numéro, rue, position) : la maison garde son historique. */
   function openCorrection(idx, pending = null) {
@@ -841,6 +943,11 @@
       if (state.excluded.has(a.id)) {
         state.owners.push(null);
         marker.setStyle({ radius: 3, fillColor: "#ffffff", fillOpacity: 0.6, color: "#888888", weight: 1 });
+        return;
+      }
+      if (a.entreprise) { // tournée des entreprises : pas comptée dans les secteurs dessinés
+        state.owners.push(null);
+        marker.setStyle({ radius: 5, fillColor: "#475569", fillOpacity: 1, color: "#facc15", weight: 2 });
         return;
       }
       const own = [];
@@ -1321,6 +1428,7 @@
     recompute();
     renderList();
     renderExcluded();
+    renderEntreprises();
     els.versionsList.innerHTML = "";
     els.printAll.href = "plan.html#/";
     fitCommune();

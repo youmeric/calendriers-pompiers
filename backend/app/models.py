@@ -394,8 +394,10 @@ class NoteIn(BaseModel):
 class SignalementIn(BaseModel):
     """Problème d'adresse vu sur le terrain : maison manquante (position), maison vide, erreur…"""
     slug: str = Field(max_length=80)
-    type: Literal["manquante", "vide", "erreur", "autre"]
+    type: Literal["manquante", "vide", "erreur", "entreprise", "autre"]
     address_id: str | None = Field(default=None, max_length=120)
+    # « c'est une entreprise » : nom (peut être vide) ; avec une maison manquante, elle ira dans la tournée des entreprises
+    entreprise: str | None = Field(default=None, max_length=120)
     sector_id: int | None = None
     lat: float | None = Field(default=None, ge=-90, le=90)
     lon: float | None = Field(default=None, ge=-180, le=180)
@@ -409,8 +411,15 @@ class SignalementIn(BaseModel):
     def strip_text(cls, v: str) -> str:
         return " ".join(v.split())
 
+    @field_validator("entreprise")
+    @classmethod
+    def strip_ent(cls, v: str | None) -> str | None:
+        return None if v is None else " ".join(v.split())
+
     @model_validator(mode="after")
     def check_target(self):
+        if self.type == "entreprise" and self.entreprise is None:
+            self.entreprise = ""
         if self.type == "manquante":
             if self.lat is None or self.lon is None or self.sector_id is None:
                 raise ValueError("placer la maison manquante sur la carte")
@@ -420,11 +429,36 @@ class SignalementIn(BaseModel):
 
 
 class SignalementActionIn(BaseModel):
-    action: Literal["ajouter", "exclure", "corriger", "traite", "ignore", "rouvrir"]
+    action: Literal["ajouter", "exclure", "corriger", "entreprise", "traite", "ignore", "rouvrir"]
     numero: str = Field(default="", max_length=20)
     nom_voie: str = Field(default="", max_length=120)
+    entreprise: str | None = Field(default=None, max_length=120)  # nom (ajout à la tournée des entreprises)
 
     @field_validator("numero", "nom_voie")
+    @classmethod
+    def strip_text(cls, v: str) -> str:
+        return " ".join(v.split())
+
+
+class EntrepriseIn(BaseModel):
+    """Passer une adresse à la tournée des entreprises (avec le nom de l'entreprise, facultatif)."""
+    nom: str = Field(default="", max_length=120)
+
+    @field_validator("nom")
+    @classmethod
+    def strip_nom(cls, v: str) -> str:
+        return " ".join(v.split())
+
+
+class EntrepriseAjoutIn(BaseModel):
+    """Entreprise absente de la liste des adresses : placée sur la carte par l'admin."""
+    nom: str = Field(default="", max_length=120)
+    numero: str = Field(default="", max_length=20)
+    nom_voie: str = Field(min_length=1, max_length=120)
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+
+    @field_validator("nom", "numero", "nom_voie")
     @classmethod
     def strip_text(cls, v: str) -> str:
         return " ".join(v.split())

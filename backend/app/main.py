@@ -27,7 +27,7 @@ from .models import (AvancementIn, CodeIn, ConfirmIn, DonIn, DonStatutIn, Equipe
                      PersonnesIn, RemiseIn, RenfortIn, SectorsIn, SettingsIn, StatusUpdate, SumupRetourIn,
                      NoteIn, SignalementIn, SignalementActionIn, EnvoiAccesIn, RoleIn, CompteIn,
                      CompteUpdateIn, MotDePasseIn, DepotIn, ClotureIn, ReouvertureIn,
-                     SuperviseurIn, LogementsIn, AdresseCorrectionIn)
+                     SuperviseurIn, LogementsIn, AdresseCorrectionIn, EntrepriseIn, EntrepriseAjoutIn)
 from .resume import build_resume, commune_voie_counts
 
 DATA_DIR = Path(os.environ.get("SECTORS_DATA_DIR") or (Path(__file__).resolve().parent / "data"))
@@ -137,9 +137,12 @@ def _addresses(slug: str, data: dict) -> list[dict]:
     de l'admin (numéro, rue, position)."""
     out = _base_and_added(slug, data)
     fixes = db.list_corrections(slug)
-    if not fixes:
-        return out
-    return [_corrected(a, fixes[a["id"]]) if a["id"] in fixes else a for a in out]
+    if fixes:
+        out = [_corrected(a, fixes[a["id"]]) if a["id"] in fixes else a for a in out]
+    ents = db.list_entreprises(slug)
+    if ents:
+        out = [{**a, "entreprise": ents[a["id"]]["nom"] or "Entreprise"} if a["id"] in ents else a for a in out]
+    return out
 
 
 def _corrected(a: dict, fix: dict) -> dict:
@@ -193,12 +196,38 @@ def _road_index(data: dict) -> RoadIndex:
     return data["_road_index"]
 
 
-def _sectors_with_limits(slug: str, data: dict) -> list[dict]:
+ENT_BOX = 0.00018  # demi-côté (≈ 20 m) du carré tracé autour de chaque entreprise sur les cartes
+
+
+def _sectors(slug: str, data: dict, kind: str | None = None) -> list[dict]:
+    """Secteurs de la commune. La tournée des entreprises n'a pas de tracé : elle prend les adresses
+    marquées « entreprise » (prioritaires sur les secteurs dessinés) et, pour les cartes, un petit carré
+    autour de chacune. Une adresse retirée des entreprises retombe dans le secteur dessiné qui la contient."""
+    sectors = db.list_sectors(slug, kind)
+    for s in sectors:
+        if s["kind"] != "entreprises":
+            continue
+        ents = db.list_entreprises(slug)
+        excluded = db.get_excluded(slug)
+        pts = [a for a in _addresses(slug, data) if a["id"] in ents and a["id"] not in excluded]
+        s["ids"] = {a["id"] for a in pts}
+        if not pts:  # tournée vide : un carré à la mairie, pour que les cartes restent lisibles
+            m = data["commune"].get("mairie") or {"lat": data["addresses"][0]["lat"], "lon": data["addresses"][0]["lon"]}
+            pts = [m]
+        d = ENT_BOX
+        s["polygon"] = [[[[p["lat"] - d, p["lon"] - d * 1.4], [p["lat"] - d, p["lon"] + d * 1.4],
+                          [p["lat"] + d, p["lon"] + d * 1.4], [p["lat"] + d, p["lon"] - d * 1.4]]] for p in pts]
+    return sectors
+
+
+def _sectors_with_limits(slug: str, data: dict, kind: str | None = None) -> list[dict]:
     """Secteurs enregistrés, avec la description de leur limite (recalculée si
     le tracé ou les données de la commune ont changé)."""
-    sectors = db.list_sectors(slug)
-    for s in sectors:
-        if s["limite_src"] != data["_mtime"]:
+    sectors = _sectors(slug, data, kind)
+    for s in sectors:  # (la tournée des entreprises garde ses « ids » : à retirer avant de renvoyer la réponse)
+        if s["kind"] == "entreprises":
+            s["limite"] = None
+        elif s["limite_src"] != data["_mtime"]:
             s["limite"] = describe_limit_polys(s["polygon"], _road_index(data))
             db.set_sector_limite(s["id"], s["limite"], data["_mtime"])
         s.pop("limite_src", None)
@@ -209,8 +238,15 @@ def _assign(addresses: list[dict], sectors: list[dict]) -> tuple[dict[int, list[
     """Affecte chaque adresse au premier secteur (dans l'ordre) qui la contient."""
     by_sector: dict[int, list[dict]] = {s["id"]: [] for s in sectors}
     outside = []
+    ent = next((s for s in sectors if s.get("kind") == "entreprises"), None)
+    ent_ids = ent.get("ids", set()) if ent else set()
     for addr in addresses:
+        if addr["id"] in ent_ids:  # entreprise : dans sa tournée, quel que soit le secteur dessiné
+            by_sector[ent["id"]].append(addr)
+            continue
         for s in sectors:
+            if s.get("kind") == "entreprises":
+                continue
             if point_in_polys(addr["lat"], addr["lon"], s["polygon"]):
                 by_sector[s["id"]].append(addr)
                 break
@@ -291,8 +327,8 @@ def get_commune(slug: str):
     out = []
     for s in sectors:
         mine = by_sector[s["id"]]
-        addresses = [{k: a.get(k, "") for k in ("id", "label", "groupe", "nom_voie", "numero", "lat", "lon")} for a in mine]
-        sector = {**s, "addresses": addresses, "resume": build_resume(mine, voie_counts)}
+        addresses = [{k: a.get(k, "") for k in ("id", "label", "groupe", "nom_voie", "numero", "lat", "lon", "entreprise")} for a in mine]
+        sector = {**{k: v for k, v in s.items() if k != "ids"}, "addresses": addresses, "resume": build_resume(mine, voie_counts)}
         if teams is not None:
             sector["equipe"] = teams.get(s["id"]) or {
                 "date": "", "creneau": "", "statut": "a_faire", "note": "", "responsables": [], "equipiers": []}
@@ -358,7 +394,7 @@ def _don_marks_done(don: dict, par: str) -> None:
 
 def _sector_map(slug: str) -> tuple[dict, list[dict], dict[int, list[dict]]]:
     data = _load_commune(slug)
-    sectors = db.list_sectors(slug)
+    sectors = _sectors(slug, data)
     by_sector, _ = _assign(_active_addresses(slug, data), sectors)
     return data, sectors, by_sector
 
@@ -390,7 +426,7 @@ def _sectors_at(slug: str, address_id: str, fait_le: dt.datetime | None) -> list
     iso = lambda t: t.astimezone(dt.timezone.utc).isoformat(timespec="microseconds")
     found: list[int] = []
     for sectors in db.versions_between(slug, iso(when - RETARD_TOLERE), iso(when)):
-        sid = next((s["id"] for s in sectors if point_in_polys(addr["lat"], addr["lon"], s["polygon"])), None)
+        sid = next((s["id"] for s in sectors if s.get("kind", "secteur") == "secteur" and point_in_polys(addr["lat"], addr["lon"], s["polygon"])), None)
         if sid is not None and sid not in found:
             found.append(sid)
     return found
@@ -799,7 +835,7 @@ def team_set_note(payload: NoteIn, request: Request):
 
 def _sig_view(x: dict) -> dict:
     return {k: x[k] for k in ("id", "type", "address_id", "lat", "lon", "numero", "nom_voie", "note",
-                              "personne_nom", "statut", "created_at")}
+                              "personne_nom", "statut", "created_at", "entreprise")}
 
 
 @app.post("/api/equipe/signalements")
@@ -815,7 +851,9 @@ def team_report(payload: SignalementIn, request: Request):
     sig = db.add_signalement({**payload.model_dump(exclude={"slug", "sector_id", "fait_le"}), "commune_slug": payload.slug,
                               "sector_id": sector_id, "personne_nom": _person_name(request)})
     where = _addr_label(payload.slug, payload.address_id) if payload.address_id else " ".join(x for x in (payload.numero, payload.nom_voie) if x) or "position sur la carte"
-    _log(request, "signalement", f"{_sector_label(sector_id)} · {where}", f"{payload.type}{' · ' + payload.note if payload.note else ''}")
+    _log(request, "signalement", f"{_sector_label(sector_id)} · {where}", f"{payload.type}"
+         + (f" · entreprise « {payload.entreprise} »" if payload.entreprise else " · entreprise" if payload.entreprise is not None else "")
+         + (f" · {payload.note}" if payload.note else ""))
     return _sig_view(sig)
 
 
@@ -835,6 +873,7 @@ def admin_reports():
                     "numero_actuel": " ".join(v for v in ((a or {}).get("numero", ""), (a or {}).get("rep", "")) if v),
                     "voie_actuelle": (a or {}).get("nom_voie", "") or (a or {}).get("lieu_dit", ""),
                     "corrigee": bool(a and a.get("corrigee")),
+                    "deja_entreprise": (a or {}).get("entreprise"),
                     "lat": x["lat"] if x["lat"] is not None else (a or {}).get("lat"),
                     "lon": x["lon"] if x["lon"] is not None else (a or {}).get("lon"),
                     "exclue": bool(a and a["id"] in excluded.get(x["commune_slug"], set())),
@@ -854,6 +893,14 @@ def admin_handle_report(sig_id: int, payload: SignalementActionIn, request: Requ
         _load_commune(sig["commune_slug"])
         added = db.add_address(sig["commune_slug"], payload.numero or sig["numero"], payload.nom_voie or sig["nom_voie"],
                                sig["lat"], sig["lon"])
+        nom = payload.entreprise if payload.entreprise is not None else sig["entreprise"]
+        if nom is not None:  # maison manquante signalée comme entreprise : directement dans la tournée des entreprises
+            _set_entreprise(request, sig["commune_slug"], added, nom)
+    elif payload.action == "entreprise":
+        if not sig["address_id"]:
+            raise HTTPException(status_code=409, detail="Aucune adresse")
+        _set_entreprise(request, sig["commune_slug"], sig["address_id"],
+                        payload.entreprise if payload.entreprise is not None else (sig["entreprise"] or ""))
     elif payload.action == "corriger":
         if not sig["address_id"]:
             raise HTTPException(status_code=409, detail="Aucune adresse à corriger")
@@ -867,9 +914,67 @@ def admin_handle_report(sig_id: int, payload: SignalementActionIn, request: Requ
     statut = {"rouvrir": "nouveau", "ignore": "ignore"}.get(payload.action, "traite")
     where = _addr_label(sig["commune_slug"], sig["address_id"]) if sig["address_id"] else " ".join(x for x in (payload.numero or sig["numero"], payload.nom_voie or sig["nom_voie"]) if x)
     _log(request, "signalement.traite", f"{_sector_label(sig['sector_id'])} · {where}",
-         {"ajouter": "maison ajoutée", "exclure": "adresse exclue", "corriger": "adresse corrigée", "traite": "marqué traité", "ignore": "ignoré", "rouvrir": "rouvert"}[payload.action]
+         {"ajouter": "maison ajoutée", "exclure": "adresse exclue", "corriger": "adresse corrigée", "entreprise": "ajoutée à la tournée des entreprises", "traite": "marqué traité", "ignore": "ignoré", "rouvrir": "rouvert"}[payload.action]
          + f" (signalé par {sig['personne_nom']})")
     return {**_sig_view(db.set_signalement_statut(sig_id, statut)), "adresse_ajoutee": added}
+
+
+# ---- Tournée des entreprises -------------------------------------------------------------
+
+def _where_now(slug: str, address_id: str) -> str:
+    try:
+        return _sector_label(_sector_of_address(slug, address_id))
+    except HTTPException:
+        return "hors secteur"
+
+
+def _set_entreprise(request: Request, slug: str, address_id: str, nom: str) -> dict:
+    """Passe une adresse à la tournée des entreprises (créée au besoin). Statut, note et dons la suivent."""
+    data = _load_commune(slug)
+    if address_id not in _address_ids(slug, data):
+        raise HTTPException(status_code=404, detail="Adresse inconnue")
+    before = _where_now(slug, address_id)
+    was = db.list_entreprises(slug).get(address_id)
+    db.entreprise_sector(slug, create=True)
+    db.set_entreprise(slug, address_id, nom, _actor(request)[0])
+    label = _addr_label(slug, address_id)
+    if was:
+        if was["nom"] != nom:
+            _log(request, "entreprise.renommee", label, f"{was['nom'] or 'sans nom'} → {nom or 'sans nom'}")
+    else:
+        _log(request, "entreprise.ajout", label, f"{before} → {_where_now(slug, address_id)}")
+    return next(a for a in _addresses(slug, data) if a["id"] == address_id)
+
+
+def _unset_entreprise(request: Request, slug: str, address_id: str) -> dict:
+    """Retire une adresse de la tournée des entreprises : elle retourne dans le secteur dessiné qui la contient."""
+    data = _load_commune(slug)
+    ent = db.list_entreprises(slug).get(address_id)
+    if not ent:
+        raise HTTPException(status_code=404, detail="Cette adresse n'est pas dans la tournée des entreprises")
+    label = _addr_label(slug, address_id)
+    db.delete_entreprise(slug, address_id)
+    _log(request, "entreprise.retrait", label, f"retour dans {_where_now(slug, address_id)}")
+    return next(a for a in _addresses(slug, data) if a["id"] == address_id)
+
+
+@app.put("/api/admin/communes/{slug}/addresses/{address_id}/entreprise", dependencies=[Depends(auth.require("secteurs", "suivi"))])
+def admin_set_entreprise(slug: str, address_id: str, payload: EntrepriseIn, request: Request):
+    return _set_entreprise(request, slug, address_id, payload.nom)
+
+
+@app.delete("/api/admin/communes/{slug}/addresses/{address_id}/entreprise", dependencies=[Depends(auth.require("secteurs", "suivi"))])
+def admin_unset_entreprise(slug: str, address_id: str, request: Request):
+    return _unset_entreprise(request, slug, address_id)
+
+
+@app.post("/api/admin/communes/{slug}/entreprises", dependencies=[Depends(auth.require("secteurs", "suivi"))])
+def admin_add_entreprise(slug: str, payload: EntrepriseAjoutIn, request: Request):
+    """Entreprise absente de la Base Adresse (zone artisanale…) : placée sur la carte, dans la tournée des entreprises."""
+    data = _load_commune(slug)
+    aid = db.add_address(slug, payload.numero, payload.nom_voie, payload.lat, payload.lon)
+    _log(request, "adresse.ajoutee", data["commune"]["nom"], " ".join(x for x in (payload.numero, payload.nom_voie) if x))
+    return _set_entreprise(request, slug, aid, payload.nom)
 
 
 # ---- Correction d'une adresse fausse ----------------------------------------------------
@@ -1231,8 +1336,13 @@ def _addr_label(slug: str, address_id: str) -> str:
         return address_id
     for a in _addresses(slug, data):
         if a["id"] == address_id:
-            return a["label"]
+            return _full_label(a)
     return address_id
+
+
+def _full_label(a: dict) -> str:
+    """Adresse avec le nom de l'entreprise : « 12 Rue X (Garage Martin) »."""
+    return f"{a['label']} ({a['entreprise']})" if a.get("entreprise") else a["label"]
 
 
 def _sector_label(sector_id: int | None) -> str:
@@ -1657,7 +1767,7 @@ def admin_bilan():
             for aid in ids:
                 counts[(statuses.get(aid) or {}).get("status") or "a_faire"] += 1
             rows.append({"sector_id": s["id"], "slug": slug, "commune": data["commune"]["nom"], "nom": s["nom"],
-                         "couleur": s["couleur"], "adresses": len(ids), "counts": counts,
+                         "couleur": s["couleur"], "adresses": len(ids), "counts": counts, "kind": s["kind"],
                          "polygon": s["polygon"],
                          "totaux": _totaux([d for d in dons if d["sector_id"] == s["id"]]),
                          "caisse": _caisse(s["id"])})
@@ -1748,7 +1858,7 @@ def _registre(annee: int) -> list[dict]:
         data = _load_commune(slug)
         communes[slug] = data["commune"]["nom"]
         for a in _addresses(slug, data):
-            addr[f"{slug}/{a['id']}"] = a["label"]
+            addr[f"{slug}/{a['id']}"] = _full_label(a)
     out = []
     for d in sorted(db.list_dons(annee, avec_annules=True), key=lambda x: x["numero"] or 0):
         out.append({
@@ -2009,7 +2119,7 @@ def admin_close_archive(cloture_id: int):
 def admin_dons():
     labels = {}
     for slug in db.sector_communes():
-        labels.update({a["id"]: a["label"] for a in _addresses(slug, _load_commune(slug))})
+        labels.update({a["id"]: _full_label(a) for a in _addresses(slug, _load_commune(slug))})
     return {"annee": _annee(), "dons": [
         {**_don_view(d, True, None), "sector_id": d["sector_id"], "slug": d["commune_slug"],
          "adresse": labels.get(d["address_id"], d["address_id"])}
@@ -2046,7 +2156,7 @@ def admin_get_commune(slug: str):
     data = _load_commune(slug)
     return {
         "commune": data["commune"],
-        "sectors": _sectors_with_limits(slug, data),
+        "sectors": _sectors_with_limits(slug, data, "secteur"),
         "addresses": _addresses(slug, data),
         "excluded": sorted(db.get_excluded(slug)),
         "roads": data.get("roads", []),
@@ -2062,12 +2172,14 @@ def _sectors_impact(slug: str, data: dict, payload: SectorsIn) -> dict:
     """Ce que changerait l'enregistrement de ces secteurs pour les maisons déjà passées cette année :
     celles qui changent de secteur (avec leur statut, leurs dons) et les secteurs supprimés."""
     addresses = _active_addresses(slug, data)
-    current = db.list_sectors(slug)
+    current = _sectors(slug, data)
     old_by, _ = _assign(addresses, current)
     old_of = {a["id"]: sid for sid, lst in old_by.items() for a in lst}
+    ent = [s for s in current if s["kind"] == "entreprises"]  # les entreprises restent dans leur tournée
+    current = [s for s in current if s["kind"] == "secteur"]
     known = {s["id"] for s in current}
-    proposed = [{"id": x.id if x.id in known else f"nouveau-{i}", "nom": x.nom, "polygon": x.polygon}
-                for i, x in enumerate(payload.sectors)]
+    proposed = ent + [{"id": x.id if x.id in known else f"nouveau-{i}", "nom": x.nom, "polygon": x.polygon}
+                      for i, x in enumerate(payload.sectors)]
     new_by, _ = _assign(addresses, proposed)
     new_of = {a["id"]: sid for sid, lst in new_by.items() for a in lst}
     names = {s["id"]: s["nom"] for s in current} | {s["id"]: s["nom"] for s in proposed}
@@ -2135,7 +2247,7 @@ def admin_save_sectors(slug: str, payload: SectorsIn, request: Request):
             _log(request, "secteurs.supprime", data["commune"]["nom"],
                  f"{sec['nom']} : équipe de {sec['membres']} personne(s) retirée, {sec['nb_dons']} don(s) "
                  f"{_euros(round(sec['montant'] * 100))} gardés au registre")
-    return {"sectors": _sectors_with_limits(slug, data)}
+    return {"sectors": _sectors_with_limits(slug, data, "secteur")}
 
 
 @app.put("/api/admin/communes/{slug}/excluded", dependencies=[Depends(auth.require("secteurs"))])

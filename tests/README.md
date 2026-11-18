@@ -17,5 +17,6 @@ sh tests/run_tests.sh ui_correction             # un seul test
 | `api_secteurs_test.py`, `ui_secteurs.js` | secteurs modifiés en pleine tournée : l'historique suit la maison, dons de l'ancienne équipe visibles, avertissement admin, gestes hors réseau acceptés |
 | `api_avancement_test.py`, `ui_avancement.js` | réglage du pourcentage d'avancement et pourcentage provisoire en transparence |
 | `api_correction_test.py`, `ui_correction.js` | correction d'une adresse fausse (numéro, rue, position), retour à l'origine |
+| `api_entreprises_test.py`, `ui_entreprises.js` | tournée des entreprises : marquer / renommer / retirer, ajout sur la carte, signalement par une équipe, retour au secteur |
 
 Les journaux et captures d'écran sont dans le dossier temporaire indiqué à la fin.

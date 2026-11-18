@@ -2158,3 +2158,10 @@ body.terrain.theme-dark .don-badge.other { background: #1e1b4b; color: #c7d2fe; 
 .corr-field input { font: inherit; font-weight: 400; font-size: 14px; padding: 6px 8px; border: 1px solid var(--line, #e5e7eb); border-radius: 6px; }
 .leaflet-container.picking-point { cursor: crosshair; }
 .sig-hint { flex-basis: 100%; }
+
+/* Tournée des entreprises */
+.ent-name { font-weight: 800; color: #334155; }
+body.terrain.theme-dark .ent-name { color: #cbd5e1; }
+.tt-ent { display: block; font-size: 15px; margin-top: 4px; }
+.sig-ent-check { margin: 6px 0; }
+.t-row-label .ent-name { display: block; }

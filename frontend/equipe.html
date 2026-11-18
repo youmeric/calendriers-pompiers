@@ -146,12 +146,17 @@
       <div id="sig-types" class="sig-types">
         <label><input type="radio" name="sig-type" value="vide" checked /><span>Maison vide, démolie ou pas une habitation</span></label>
         <label><input type="radio" name="sig-type" value="erreur" /><span>Numéro ou nom de rue faux</span></label>
+        <label id="sig-type-ent"><input type="radio" name="sig-type" value="entreprise" /><span>🏢 C'est une entreprise (à passer dans la tournée des entreprises)</span></label>
         <label><input type="radio" name="sig-type" value="autre" /><span>Autre problème</span></label>
       </div>
       <div id="sig-new" class="field-row" hidden>
         <label class="field sig-num">N°<input id="sig-numero" type="text" maxlength="12" autocomplete="off" inputmode="numeric" /></label>
         <label class="field">Rue ou lieu-dit<input id="sig-voie" type="text" maxlength="120" autocomplete="off" /></label>
       </div>
+      <label id="sig-ent-check" class="setting-row sig-ent-check" hidden><input type="checkbox" id="sig-ent-box" /><span>🏢 C'est une entreprise (tournée des entreprises)</span></label>
+      <label id="sig-ent-field" class="field" hidden>Nom de l'entreprise (facultatif)
+        <input id="sig-ent-nom" type="text" maxlength="120" autocomplete="off" placeholder="Ex. : Garage Martin" />
+      </label>
       <label class="field">Précisions (facultatif)
         <textarea id="sig-note" rows="2" maxlength="300" placeholder="Ex. : c'est le 12 bis, la maison est derrière la ferme…"></textarea>
       </label>

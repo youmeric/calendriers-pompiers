@@ -132,6 +132,14 @@
         <p class="hint">Le suivi des maisons et les dons se règlent dans l'onglet <a href="#bilan">Suivi &amp; dons</a>.</p>
       </section>
 
+      <details class="tools" id="ent-block">
+        <summary>🏢 Tournée des entreprises (<span id="ent-count">0</span>)</summary>
+        <p class="hint">Les entreprises sont passées par une tournée à part, avec sa propre équipe (onglet Équipes : « Entreprises »).
+          Cliquez une adresse sur la carte → « 🏢 Entreprise » pour l'y mettre. Retirée de la liste, elle retourne d'elle-même dans le secteur dessiné où elle se trouve, avec son historique.</p>
+        <button type="button" id="ent-add" class="btn small">+ Ajouter une entreprise absente de la carte</button>
+        <div id="ent-list"></div>
+      </details>
+
       <details class="tools" id="excluded-block">
         <summary>Adresses exclues (<span id="excluded-count">0</span>)</summary>
         <p class="hint">Cliquez une adresse sur la carte pour l'exclure (cimetière, bâtiment sans habitant…). Une adresse exclue n'apparaît plus nulle part, ni dans les comptes ni sur le site public. Pris en compte immédiatement.</p>

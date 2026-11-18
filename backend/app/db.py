@@ -262,6 +262,16 @@ def init_db() -> None:
             conn.execute("ALTER TABLE sectors ADD COLUMN limite TEXT")
         if "limite_src" not in columns:
             conn.execute("ALTER TABLE sectors ADD COLUMN limite_src TEXT")
+        # « secteur » (dessiné sur la carte) ou « entreprises » (tournée des entreprises de la commune)
+        if "kind" not in columns:
+            conn.execute("ALTER TABLE sectors ADD COLUMN kind TEXT NOT NULL DEFAULT 'secteur'")
+        # entreprises : adresses passées à la tournée des entreprises (avec le nom de l'entreprise)
+        conn.execute("""CREATE TABLE IF NOT EXISTS entreprises (
+            commune_slug TEXT NOT NULL, address_id TEXT NOT NULL, nom TEXT NOT NULL DEFAULT '',
+            par TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, PRIMARY KEY (commune_slug, address_id))""")
+        sigcols = {row[1] for row in conn.execute("PRAGMA table_info(signalements)")}
+        if "entreprise" not in sigcols:  # nom de l'entreprise signalée (NULL : pas une entreprise)
+            conn.execute("ALTER TABLE signalements ADD COLUMN entreprise TEXT")
         # statuts par année de tournée (avant : une seule année, sans colonne)
         scols = {row[1] for row in conn.execute("PRAGMA table_info(address_status)")}
         if "annee" not in scols:
@@ -409,15 +419,16 @@ def set_setting(key: str, value: str) -> None:
 MAX_VERSIONS = 30
 
 
-def list_sectors(commune_slug: str) -> list[dict]:
+def list_sectors(commune_slug: str, kind: str | None = None) -> list[dict]:
+    """Secteurs de la commune (tous, ou seulement kind="secteur" / "entreprises")."""
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT id, nom, couleur, polygon, limite, limite_src FROM sectors "
-            "WHERE commune_slug = ? ORDER BY position, id",
-            (commune_slug,),
+            "SELECT id, nom, couleur, polygon, limite, limite_src, kind FROM sectors "
+            "WHERE commune_slug = ? AND (? IS NULL OR kind = ?) ORDER BY position, id",
+            (commune_slug, kind, kind),
         ).fetchall()
     return [
-        {"id": r[0], "nom": r[1], "couleur": r[2], "polygon": normalize_polys(json.loads(r[3])),
+        {"id": r[0], "nom": r[1], "couleur": r[2], "polygon": normalize_polys(json.loads(r[3])), "kind": r[6],
          "limite": json.loads(r[4]) if r[4] else None, "limite_src": r[5]}
         for r in rows
     ]
@@ -435,8 +446,9 @@ def replace_sectors(commune_slug: str, sectors: list[dict]) -> list[dict]:
     existant sont mis à jour (leur id, donc leur lien partagé, reste stable)."""
     now = _now()
     with get_conn() as conn:
+        # la tournée des entreprises n'est pas dessinée : jamais touchée par l'éditeur des secteurs
         existing = {r[0] for r in conn.execute(
-            "SELECT id FROM sectors WHERE commune_slug = ?", (commune_slug,)).fetchall()}
+            "SELECT id FROM sectors WHERE commune_slug = ? AND kind = 'secteur'", (commune_slug,)).fetchall()}
         kept = set()
         for position, s in enumerate(sectors):
             polygon = json.dumps(s["polygon"])
@@ -459,7 +471,7 @@ def replace_sectors(commune_slug: str, sectors: list[dict]) -> list[dict]:
             conn.execute("DELETE FROM sector_team WHERE sector_id = ?", (sector_id,))
             conn.execute("DELETE FROM sector_plan WHERE sector_id = ?", (sector_id,))
         conn.commit()
-    saved = list_sectors(commune_slug)
+    saved = list_sectors(commune_slug, "secteur")
     _add_version(commune_slug, saved, now)
     return saved
 
@@ -907,19 +919,52 @@ def delete_correction(commune_slug: str, address_id: str) -> None:
         conn.commit()
 
 
-SIGNAL_TYPES = ("manquante", "vide", "erreur", "autre")
+def entreprise_sector(commune_slug: str, create: bool = False) -> int | None:
+    """Id de la tournée des entreprises de la commune (créée au besoin, après les secteurs)."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT id FROM sectors WHERE commune_slug = ? AND kind = 'entreprises'", (commune_slug,)).fetchone()
+        if row or not create:
+            return row[0] if row else None
+        sid = conn.execute("INSERT INTO sectors (commune_slug, position, nom, couleur, polygon, updated_at, kind) "
+                           "VALUES (?, 1000, 'Entreprises', '#475569', '[]', ?, 'entreprises')", (commune_slug, _now())).lastrowid
+        conn.commit()
+        return sid
+
+
+def list_entreprises(commune_slug: str) -> dict[str, dict]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT address_id, nom, par, created_at FROM entreprises WHERE commune_slug = ?", (commune_slug,)).fetchall()
+    return {r[0]: {"nom": r[1], "par": r[2], "created_at": r[3]} for r in rows}
+
+
+def set_entreprise(commune_slug: str, address_id: str, nom: str, par: str) -> None:
+    with get_conn() as conn:
+        conn.execute("INSERT INTO entreprises (commune_slug, address_id, nom, par, created_at) VALUES (?, ?, ?, ?, ?) "
+                     "ON CONFLICT (commune_slug, address_id) DO UPDATE SET nom = excluded.nom",
+                     (commune_slug, address_id, nom, par, _now()))
+        conn.commit()
+
+
+def delete_entreprise(commune_slug: str, address_id: str) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM entreprises WHERE commune_slug = ? AND address_id = ?", (commune_slug, address_id))
+        conn.commit()
+
+
+SIGNAL_TYPES = ("manquante", "vide", "erreur", "entreprise", "autre")
 SIGNAL_STATUTS = ("nouveau", "traite", "ignore")
 _SIG_COLS = ("id", "commune_slug", "sector_id", "type", "address_id", "lat", "lon", "numero", "nom_voie", "note",
-             "personne_nom", "statut", "created_at", "traite_le")
+             "personne_nom", "statut", "created_at", "traite_le", "entreprise")
 
 
 def add_signalement(s: dict) -> dict:
     with get_conn() as conn:
         sid = conn.execute(
             "INSERT INTO signalements (commune_slug, sector_id, type, address_id, lat, lon, numero, nom_voie, note, "
-            "personne_nom, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "personne_nom, created_at, entreprise) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (s["commune_slug"], s.get("sector_id"), s["type"], s.get("address_id"), s.get("lat"), s.get("lon"),
-             s.get("numero", ""), s.get("nom_voie", ""), s.get("note", ""), s.get("personne_nom", ""), _now()),
+             s.get("numero", ""), s.get("nom_voie", ""), s.get("note", ""), s.get("personne_nom", ""), _now(),
+             s.get("entreprise")),
         ).lastrowid
         conn.commit()
     return get_signalement(sid)
