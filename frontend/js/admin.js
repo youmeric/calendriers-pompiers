@@ -298,6 +298,13 @@
   }
 
   function onMapClick(e) {
+    if (state.pickPoint) { // « Déplacer le point » d'une adresse corrigée
+      const cb = state.pickPoint;
+      state.pickPoint = null;
+      state.map.getContainer().classList.remove("picking-point");
+      cb(e.latlng);
+      return;
+    }
     if (state.map.pm.globalDrawModeEnabled() || state.editing || state.mergeSource) return;
     const idx = nearestAddress(e.latlng);
     if (idx === null) return;
@@ -623,9 +630,11 @@
     const excluded = state.excluded.has(a.id);
     const group = state.data.addresses.filter((x) => x.groupe_id === a.groupe_id);
     const box = document.createElement("div");
-    box.innerHTML = `<strong>${escapeHtml(a.label)}</strong><br><span class="hint">${escapeHtml(a.groupe)}${excluded ? " · <b>exclue</b>" : ""}</span>`;
+    box.innerHTML = `<strong>${escapeHtml(a.label)}</strong><br><span class="hint">${escapeHtml(a.groupe)}${excluded ? " · <b>exclue</b>" : ""}</span>`
+      + (a.corrigee ? `<br><span class="hint">✏️ corrigée — origine : ${escapeHtml(a.origine.label)}</span>` : "");
     const actions = document.createElement("div");
     actions.className = "popup-actions";
+    actions.append(button("✏️ Corriger l'adresse", "btn", () => openCorrection(idx)));
     if (excluded) {
       actions.append(button("Réintégrer cette adresse", "btn", () => setExcluded([a.id], false)));
     } else {
@@ -638,6 +647,69 @@
     }
     box.appendChild(actions);
     L.popup({ maxWidth: 280 }).setLatLng([a.lat, a.lon]).setContent(box).openOn(state.map);
+  }
+
+  /** Corriger une adresse fausse (numéro, rue, position) : la maison garde son historique. */
+  function openCorrection(idx, pending = null) {
+    const a = state.data.addresses[idx];
+    const at = pending || { lat: a.lat, lon: a.lon };
+    const num = pending ? pending.numero : [a.numero, a.rep].filter(Boolean).join(" ");
+    const voie = pending ? pending.nom_voie : a.nom_voie || "";
+    if (state.pickMarker) { state.map.removeLayer(state.pickMarker); state.pickMarker = null; }
+    if (pending) state.pickMarker = L.circleMarker([at.lat, at.lon], { radius: 8, color: "#dc2626", weight: 3, fillColor: "#fff", fillOpacity: 1 }).addTo(state.map);
+    const box = document.createElement("div");
+    box.className = "corr-box";
+    box.innerHTML = `<strong>Corriger l'adresse</strong>
+      <p class="hint">${a.corrigee ? `Origine : ${escapeHtml(a.origine.label)}` : `Actuellement : ${escapeHtml(a.label)}`}</p>
+      <label class="corr-field">N°<input data-f="numero" maxlength="20" placeholder="ex. 12 bis" /></label>
+      <label class="corr-field">Rue ou lieu-dit<input data-f="nom_voie" maxlength="120" /></label>
+      <p class="hint corr-moved"${pending && pending.moved ? "" : " hidden"}>📍 Nouveau point placé (en rouge)</p>
+      <p class="hint">La maison garde son statut, sa note et ses dons.</p>`;
+    box.querySelector('[data-f="numero"]').value = num;
+    box.querySelector('[data-f="nom_voie"]').value = voie;
+    const read = () => ({ numero: box.querySelector('[data-f="numero"]').value.trim(), nom_voie: box.querySelector('[data-f="nom_voie"]').value.trim() });
+    const actions = document.createElement("div");
+    actions.className = "popup-actions";
+    actions.append(
+      button("📍 Déplacer le point", "btn", () => {
+        const cur = read();
+        state.map.closePopup();
+        state.map.getContainer().classList.add("picking-point");
+        showToast("Cliquez sur la carte à l'endroit exact de la maison.");
+        state.pickPoint = (ll) => openCorrection(idx, { ...cur, lat: ll.lat, lon: ll.lng, moved: true });
+      }),
+      button("Enregistrer la correction", "btn primary", async () => {
+        const v = read();
+        if (!v.nom_voie) { showToast("Indiquez la rue ou le lieu-dit.", true); return; }
+        // « 12 bis » inchangé : on renvoie le numéro tel quel (le « bis » est gardé)
+        if (v.numero === [a.numero, a.rep].filter(Boolean).join(" ")) v.numero = a.numero || "";
+        await saveCorrection(idx, "PUT", { ...v, lat: at.lat, lon: at.lon });
+      }),
+    );
+    if (a.corrigee) actions.append(button("↩ Revenir à l'adresse d'origine", "btn", () => saveCorrection(idx, "DELETE")));
+    box.appendChild(actions);
+    const popup = L.popup({ maxWidth: 300 }).setLatLng([at.lat, at.lon]).setContent(box).openOn(state.map);
+    popup.on("remove", () => { if (state.pickMarker && !state.pickPoint) { state.map.removeLayer(state.pickMarker); state.pickMarker = null; } });
+  }
+
+  async function saveCorrection(idx, method, body) {
+    const a = state.data.addresses[idx];
+    try {
+      const res = await fetchJSON(`/api/admin/communes/${state.slug}/addresses/${encodeURIComponent(a.id)}/correction`, {
+        method, headers: { "Content-Type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      const fresh = { ...a, ...res };
+      if (!res.corrigee) { delete fresh.corrigee; delete fresh.origine; }
+      state.data.addresses[idx] = fresh;
+      state.markers[idx].setLatLng([fresh.lat, fresh.lon]);
+      state.map.closePopup();
+      recompute();
+      renderExcluded();
+      showToast(res.corrigee ? `Adresse corrigée : ${res.label} ✓` : `Adresse d'origine rétablie : ${res.label}`);
+    } catch (err) {
+      if (err.status === 401) { showToast("Session expirée : reconnectez-vous.", true); showLogin(); }
+      else showToast(err.message, true);
+    }
   }
 
   async function setExcluded(ids, excluded) {

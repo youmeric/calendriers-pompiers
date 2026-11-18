@@ -216,7 +216,12 @@ sur Courzieu et Brussieu (69690).
     L'admin les retrouve dans « Suivi & dons » → *Signalements du terrain*
     (et sur la carte en direct) : **« Ajouter la maison »** (elle entre dans
     le secteur, avec son hameau) ou **« Exclure l'adresse »** corrigent
-    aussitôt les secteurs et les comptes.
+    aussitôt les secteurs et les comptes. Pour une **adresse fausse**,
+    **« Corriger l'adresse »** change le numéro et la rue ; dans l'onglet
+    Secteurs, un clic sur la maison → « Corriger l'adresse » permet aussi de
+    **déplacer le point** sur la carte. La maison garde son statut, sa note,
+    ses logements et ses dons ; l'adresse d'origine reste notée (retour possible)
+    et la correction est inscrite au journal.
   - **Heure exacte de validation** : chaque maison (et chaque logement, chaque
     don) garde l'heure à la seconde où elle a été validée dans l'appli et qui
     l'a fait : « ✓ 14:32:05 » dans la liste, « Fait aujourd'hui à 14:32:05 ·

@@ -189,6 +189,13 @@
       } else if (x.type === "vide") {
         actions = x.exclue ? `<span class="hint">adresse déjà exclue</span> <button type="button" class="btn small" data-act="traite">Marquer traité</button>`
           : `<button type="button" class="btn small primary" data-act="exclure">Exclure l'adresse</button> <button type="button" class="btn small" data-act="ignore">Ignorer</button>`;
+      } else if (x.address_id && !x.exclue) {
+        // adresse fausse : on corrige le numéro / la rue ici (pour déplacer le point : onglet Secteurs)
+        actions = `<input class="sig-num" data-f="numero" value="${escapeHtml(x.numero_actuel || "")}" placeholder="N°" aria-label="Numéro" />
+          <input class="sig-voie" data-f="nom_voie" value="${escapeHtml(x.voie_actuelle || "")}" placeholder="Rue ou lieu-dit" aria-label="Rue" />
+          <button type="button" class="btn small primary" data-act="corriger">Corriger l'adresse</button>
+          <button type="button" class="btn small" data-act="traite">Marquer traité</button> <button type="button" class="btn small" data-act="ignore">Ignorer</button>
+          <small class="hint sig-hint">Mal placée sur la carte ? Onglet Secteurs, cliquez la maison → « Corriger l'adresse » → « Déplacer le point ».</small>`;
       } else {
         actions = `<button type="button" class="btn small primary" data-act="traite">Marquer traité</button> <button type="button" class="btn small" data-act="ignore">Ignorer</button>`;
       }
@@ -230,6 +237,7 @@
       await api(`/api/admin/signalements/${x.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       flashSaved();
       if (body.action === "ajouter") showToast("Maison ajoutée à la liste ✓");
+      if (body.action === "corriger") showToast("Adresse corrigée ✓ (les équipes la voient au prochain rafraîchissement)");
       await render();
     } catch (err) {
       showToast(err.message, true);

@@ -2151,3 +2151,10 @@ body.terrain.theme-dark .don-badge.other { background: #1e1b4b; color: #c7d2fe; 
 .ov-num .prov-text { display: block; font-size: 11px; }
 .live-label .prov-text { color: inherit; margin-left: 3px; }
 .bilan-card .prov-text { display: block; margin-top: 2px; }
+
+/* Correction d'une adresse fausse (admin) */
+.corr-box p { margin: 4px 0; }
+.corr-field { display: flex; flex-direction: column; gap: 2px; font-size: 12px; font-weight: 600; margin-top: 6px; }
+.corr-field input { font: inherit; font-weight: 400; font-size: 14px; padding: 6px 8px; border: 1px solid var(--line, #e5e7eb); border-radius: 6px; }
+.leaflet-container.picking-point { cursor: crosshair; }
+.sig-hint { flex-basis: 100%; }

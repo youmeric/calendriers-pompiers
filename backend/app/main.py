@@ -27,7 +27,7 @@ from .models import (AvancementIn, CodeIn, ConfirmIn, DonIn, DonStatutIn, Equipe
                      PersonnesIn, RemiseIn, RenfortIn, SectorsIn, SettingsIn, StatusUpdate, SumupRetourIn,
                      NoteIn, SignalementIn, SignalementActionIn, EnvoiAccesIn, RoleIn, CompteIn,
                      CompteUpdateIn, MotDePasseIn, DepotIn, ClotureIn, ReouvertureIn,
-                     SuperviseurIn, LogementsIn)
+                     SuperviseurIn, LogementsIn, AdresseCorrectionIn)
 from .resume import build_resume, commune_voie_counts
 
 DATA_DIR = Path(os.environ.get("SECTORS_DATA_DIR") or (Path(__file__).resolve().parent / "data"))
@@ -133,8 +133,30 @@ def _load_commune(slug: str) -> dict:
 
 
 def _addresses(slug: str, data: dict) -> list[dict]:
-    """Adresses de la commune : Base Adresse + maisons ajoutées par l'admin. Une maison ajoutée
-    prend le hameau (groupe) de l'adresse connue la plus proche."""
+    """Adresses de la commune : Base Adresse + maisons ajoutées par l'admin, avec les corrections
+    de l'admin (numéro, rue, position)."""
+    out = _base_and_added(slug, data)
+    fixes = db.list_corrections(slug)
+    if not fixes:
+        return out
+    return [_corrected(a, fixes[a["id"]]) if a["id"] in fixes else a for a in out]
+
+
+def _corrected(a: dict, fix: dict) -> dict:
+    """Adresse corrigée : même identifiant (l'historique suit), nouveau numéro / rue / position.
+    L'adresse d'origine reste jointe pour pouvoir revenir en arrière."""
+    numero, voie = fix["numero"], fix["nom_voie"]
+    same_num = numero == a.get("numero", "")
+    rep = a.get("rep", "") if same_num else ""  # « 12 bis » : on peut aussi taper « 12 bis » comme numéro
+    label = " ".join(x for x in (numero, rep, voie) if x) or a["label"]
+    return {**a, "numero": numero, "rep": rep, "nom_voie": voie, "label": label,
+            "lat": fix["lat"], "lon": fix["lon"], "corrigee": True,
+            "origine": {"label": a["label"], "numero": a.get("numero", ""), "nom_voie": a.get("nom_voie", ""), "lat": a["lat"], "lon": a["lon"]}}
+
+
+def _base_and_added(slug: str, data: dict) -> list[dict]:
+    """Base Adresse + maisons ajoutées par l'admin. Une maison ajoutée prend le hameau (groupe)
+    de l'adresse connue la plus proche."""
     added = db.list_added_addresses(slug)
     if not added:
         return data["addresses"]
@@ -810,6 +832,9 @@ def admin_reports():
         a = labels.get(f"{x['commune_slug']}/{x['address_id']}") if x["address_id"] else None
         out.append({**_sig_view(x), "slug": x["commune_slug"], "sector_id": x["sector_id"],
                     "secteur": sectors.get(x["sector_id"], ""), "adresse": a["label"] if a else "",
+                    "numero_actuel": " ".join(v for v in ((a or {}).get("numero", ""), (a or {}).get("rep", "")) if v),
+                    "voie_actuelle": (a or {}).get("nom_voie", "") or (a or {}).get("lieu_dit", ""),
+                    "corrigee": bool(a and a.get("corrigee")),
                     "lat": x["lat"] if x["lat"] is not None else (a or {}).get("lat"),
                     "lon": x["lon"] if x["lon"] is not None else (a or {}).get("lon"),
                     "exclue": bool(a and a["id"] in excluded.get(x["commune_slug"], set())),
@@ -829,6 +854,12 @@ def admin_handle_report(sig_id: int, payload: SignalementActionIn, request: Requ
         _load_commune(sig["commune_slug"])
         added = db.add_address(sig["commune_slug"], payload.numero or sig["numero"], payload.nom_voie or sig["nom_voie"],
                                sig["lat"], sig["lon"])
+    elif payload.action == "corriger":
+        if not sig["address_id"]:
+            raise HTTPException(status_code=409, detail="Aucune adresse à corriger")
+        if not payload.nom_voie:
+            raise HTTPException(status_code=422, detail="Indiquez la rue ou le lieu-dit")
+        _correct_address(request, sig["commune_slug"], sig["address_id"], payload.numero, payload.nom_voie)
     elif payload.action == "exclure":
         if not sig["address_id"]:
             raise HTTPException(status_code=409, detail="Aucune adresse à exclure")
@@ -836,9 +867,64 @@ def admin_handle_report(sig_id: int, payload: SignalementActionIn, request: Requ
     statut = {"rouvrir": "nouveau", "ignore": "ignore"}.get(payload.action, "traite")
     where = _addr_label(sig["commune_slug"], sig["address_id"]) if sig["address_id"] else " ".join(x for x in (payload.numero or sig["numero"], payload.nom_voie or sig["nom_voie"]) if x)
     _log(request, "signalement.traite", f"{_sector_label(sig['sector_id'])} · {where}",
-         {"ajouter": "maison ajoutée", "exclure": "adresse exclue", "traite": "marqué traité", "ignore": "ignoré", "rouvrir": "rouvert"}[payload.action]
+         {"ajouter": "maison ajoutée", "exclure": "adresse exclue", "corriger": "adresse corrigée", "traite": "marqué traité", "ignore": "ignoré", "rouvrir": "rouvert"}[payload.action]
          + f" (signalé par {sig['personne_nom']})")
     return {**_sig_view(db.set_signalement_statut(sig_id, statut)), "adresse_ajoutee": added}
+
+
+# ---- Correction d'une adresse fausse ----------------------------------------------------
+
+def _distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    import math
+    k = math.pi / 180
+    x = (lon2 - lon1) * k * math.cos((lat1 + lat2) / 2 * k)
+    return math.hypot(x, (lat2 - lat1) * k) * 6371000
+
+
+def _correct_address(request: Request, slug: str, address_id: str, numero: str, nom_voie: str,
+                     lat: float | None = None, lon: float | None = None) -> dict:
+    """Corrige numéro / rue / position d'une adresse. Même identifiant : statut, note, logements
+    et dons restent attachés à la maison. Revenir exactement à l'origine efface la correction."""
+    data = _load_commune(slug)
+    a = next((x for x in _addresses(slug, data) if x["id"] == address_id), None)
+    if not a:
+        raise HTTPException(status_code=404, detail="Adresse inconnue")
+    orig = a.get("origine") or a
+    if a.get("rep") and numero == f"{a.get('numero', '')} {a['rep']}":
+        numero = a.get("numero", "")  # « 12 bis » inchangé : le « bis » reste à part
+    lat = a["lat"] if lat is None else lat
+    lon = a["lon"] if lon is None else lon
+    if _distance_m(orig["lat"], orig["lon"], lat, lon) > 3000:
+        raise HTTPException(status_code=422, detail="Le nouveau point est à plus de 3 km de l'adresse d'origine : vérifiez la position")
+    before = a["label"]
+    moved = _distance_m(a["lat"], a["lon"], lat, lon)
+    if numero == orig.get("numero", "") and nom_voie == orig.get("nom_voie", "") and _distance_m(orig["lat"], orig["lon"], lat, lon) < 0.5:
+        db.delete_correction(slug, address_id)
+    else:
+        db.set_correction(slug, address_id, numero, nom_voie, lat, lon, _actor(request)[0])
+    after = next(x for x in _addresses(slug, data) if x["id"] == address_id)
+    details = f"{before} → {after['label']}" + (f" · point déplacé de {round(moved)} m" if moved >= 1 else "")
+    if not after.get("corrigee"):
+        details += " (retour à l'adresse d'origine)"
+    _log(request, "adresse.corrigee", f"{data['commune']['nom']} · {after['label']}", details)
+    return after
+
+
+@app.put("/api/admin/communes/{slug}/addresses/{address_id}/correction", dependencies=[Depends(auth.require("secteurs", "suivi"))])
+def admin_correct_address(slug: str, address_id: str, payload: AdresseCorrectionIn, request: Request):
+    return _correct_address(request, slug, address_id, payload.numero, payload.nom_voie, payload.lat, payload.lon)
+
+
+@app.delete("/api/admin/communes/{slug}/addresses/{address_id}/correction", dependencies=[Depends(auth.require("secteurs", "suivi"))])
+def admin_uncorrect_address(slug: str, address_id: str, request: Request):
+    data = _load_commune(slug)
+    a = next((x for x in _addresses(slug, data) if x["id"] == address_id), None)
+    if not a:
+        raise HTTPException(status_code=404, detail="Adresse inconnue")
+    if a.get("corrigee"):
+        o = a["origine"]
+        return _correct_address(request, slug, address_id, o["numero"], o["nom_voie"], o["lat"], o["lon"])
+    return a
 
 
 # ---- Caisse : remise des espèces et chèques au trésorier ------------------------------

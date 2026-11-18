@@ -420,9 +420,22 @@ class SignalementIn(BaseModel):
 
 
 class SignalementActionIn(BaseModel):
-    action: Literal["ajouter", "exclure", "traite", "ignore", "rouvrir"]
-    numero: str = Field(default="", max_length=12)
+    action: Literal["ajouter", "exclure", "corriger", "traite", "ignore", "rouvrir"]
+    numero: str = Field(default="", max_length=20)
     nom_voie: str = Field(default="", max_length=120)
+
+    @field_validator("numero", "nom_voie")
+    @classmethod
+    def strip_text(cls, v: str) -> str:
+        return " ".join(v.split())
+
+
+class AdresseCorrectionIn(BaseModel):
+    """Correction d'une adresse fausse : numéro, rue et, si besoin, position sur la carte."""
+    numero: str = Field(default="", max_length=20)
+    nom_voie: str = Field(min_length=1, max_length=120)
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lon: float | None = Field(default=None, ge=-180, le=180)
 
     @field_validator("numero", "nom_voie")
     @classmethod

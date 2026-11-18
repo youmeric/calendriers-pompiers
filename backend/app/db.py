@@ -225,6 +225,19 @@ def init_db() -> None:
                 lon REAL NOT NULL,
                 created_at TEXT NOT NULL
             );
+            -- adresses corrigées par l'admin (numéro, rue, position) : la maison garde son identifiant,
+            -- donc son statut, sa note, ses logements et ses dons
+            CREATE TABLE IF NOT EXISTS adresses_corrigees (
+                commune_slug TEXT NOT NULL,
+                address_id TEXT NOT NULL,
+                numero TEXT NOT NULL DEFAULT '',
+                nom_voie TEXT NOT NULL DEFAULT '',
+                lat REAL NOT NULL,
+                lon REAL NOT NULL,
+                par TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (commune_slug, address_id)
+            );
             -- problèmes d'adresse signalés par les équipes, traités par l'admin
             CREATE TABLE IF NOT EXISTS signalements (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -869,6 +882,29 @@ def add_address(commune_slug: str, numero: str, nom_voie: str, lat: float, lon: 
                            "VALUES (?, ?, ?, ?, ?, ?)", (commune_slug, numero, nom_voie, lat, lon, _now())).lastrowid
         conn.commit()
     return f"{ADDED_PREFIX}{aid}"
+
+
+def list_corrections(commune_slug: str) -> dict[str, dict]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT address_id, numero, nom_voie, lat, lon, par, updated_at FROM adresses_corrigees "
+                            "WHERE commune_slug = ?", (commune_slug,)).fetchall()
+    return {r[0]: {"numero": r[1], "nom_voie": r[2], "lat": r[3], "lon": r[4], "par": r[5], "updated_at": r[6]} for r in rows}
+
+
+def set_correction(commune_slug: str, address_id: str, numero: str, nom_voie: str, lat: float, lon: float, par: str) -> None:
+    with get_conn() as conn:
+        conn.execute("INSERT INTO adresses_corrigees (commune_slug, address_id, numero, nom_voie, lat, lon, par, updated_at) "
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (commune_slug, address_id) DO UPDATE SET "
+                     "numero = excluded.numero, nom_voie = excluded.nom_voie, lat = excluded.lat, lon = excluded.lon, "
+                     "par = excluded.par, updated_at = excluded.updated_at",
+                     (commune_slug, address_id, numero, nom_voie, lat, lon, par, _now()))
+        conn.commit()
+
+
+def delete_correction(commune_slug: str, address_id: str) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM adresses_corrigees WHERE commune_slug = ? AND address_id = ?", (commune_slug, address_id))
+        conn.commit()
 
 
 SIGNAL_TYPES = ("manquante", "vide", "erreur", "autre")
