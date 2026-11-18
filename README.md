@@ -483,6 +483,9 @@ ADMIN_PASSWORD=test COOKIE_SECURE=false uvicorn backend.app.main:app --reload
 
 Puis ouvrir `http://localhost:8000` et `http://localhost:8000/admin`.
 
+
+Tests automatiques : voir [`tests/README.md`](tests/README.md) (`sh tests/run_tests.sh`).
+
 ## Organisation du code
 
 ```
