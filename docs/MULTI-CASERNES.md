@@ -36,6 +36,32 @@ Proposer le site à plusieurs casernes :
 5. **Migration de Courzieu** : la base actuelle devient telle quelle la première caserne de la
    plateforme (aucune donnée perdue, mêmes codes d'accès).
 
+## Avancement
+
+- [x] **Étape 1 — Socle « caserne »** : base plateforme (`backend/app/plateforme.py`), caserne choisie
+  d'après l'adresse (sous-domaine `<identifiant>.<domaine>` ou adresse enregistrée), base / données /
+  sauvegardes / sessions séparées par caserne, tâches de fond pour chaque caserne. Sans
+  `PLATFORM_DB_PATH`, rien ne change (installation actuelle).
+- [x] **Admin central, première version** (`backend/app/central.py`, page `/plateforme`) : créer une
+  caserne (nom, identifiant, adresses, premier compte administrateur, communes), télécharger les
+  communes (pipeline), suspendre / réactiver / archiver, compte administrateur de secours, journal.
+- [x] **Option abonnement** préparée : formule (gratuit, essai, actif, expiré) et date de fin par
+  caserne, activable dans les réglages de la plateforme ; une caserne expirée voit un avertissement dans
+  son admin (rien n'est bloqué pour l'instant — à décider).
+- [ ] Étape 2 — personnalisation (nom, logo, couleurs ; plus de « Courzieu » en dur).
+- [ ] Étapes 4 à 6.
+
+### Essayer en local
+
+```bash
+PLATFORM_DB_PATH=/tmp/pf/plateforme.db PLATFORM_DOMAIN=localhost PLATFORM_ADMIN_PASSWORD=secret \
+  python3 -m uvicorn backend.app.main:app --port 8000
+```
+
+Admin central : http://127.0.0.1:8000/plateforme — une caserne « vaugneray » :
+http://vaugneray.localhost:8000/admin (les navigateurs résolvent `*.localhost` tout seuls).
+Tests : `tests/api_multi_test.py` et `tests/ui_multi_plateforme.js` (lancés par `sh tests/run_tests.sh`).
+
 ## Étapes
 
 | # | Étape | Contenu |
@@ -50,8 +76,9 @@ Proposer le site à plusieurs casernes :
 Chaque étape est testée sur au moins deux casernes de test (les tests actuels de `tests/` doivent
 continuer à passer pour une caserne seule).
 
-## Questions ouvertes
+## Décisions et questions ouvertes
 
-- Nom de domaine de la plateforme (pour les sous-domaines).
-- Hébergement : toutes les casernes sur le serveur actuel ?
-- Les casernes paieront-elles (abonnement) ? Si oui, à prévoir plus tard (étape séparée).
+- Hébergement : sur le serveur actuel (décidé).
+- Nom de domaine de la plateforme : pas encore créé (à régler dans `PLATFORM_DOMAIN`).
+- Abonnement : option préparée, désactivée ; que faire d'une caserne expirée (simple avertissement,
+  lecture seule, blocage) reste à décider.

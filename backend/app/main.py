@@ -16,13 +16,13 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import auth, db
 from .geo import point_in_polys
 from .limits import RoadIndex, describe_limit_polys
-from . import offsite, whatsapp
+from . import central, offsite, plateforme, whatsapp
 from .models import (AvancementIn, CodeIn, ConfirmIn, DonIn, DonStatutIn, EquipeIn, ExclusionIn, LoginIn, PersonneIn,
                      PersonnesIn, RemiseIn, RenfortIn, SectorsIn, SettingsIn, StatusUpdate, SumupRetourIn,
                      NoteIn, SignalementIn, SignalementActionIn, EnvoiAccesIn, RoleIn, CompteIn,
@@ -31,6 +31,12 @@ from .models import (AvancementIn, CodeIn, ConfirmIn, DonIn, DonStatutIn, Equipe
 from .resume import build_resume, commune_voie_counts
 
 DATA_DIR = Path(os.environ.get("SECTORS_DATA_DIR") or (Path(__file__).resolve().parent / "data"))
+
+
+def _data_dir() -> Path:
+    """Données des communes : celles de la caserne en cours (multi-casernes), sinon SECTORS_DATA_DIR."""
+    cas = plateforme.current.get()
+    return Path(cas.data_dir) if cas is not None else DATA_DIR
 
 mimetypes.add_type("application/manifest+json", ".webmanifest")
 
@@ -52,30 +58,47 @@ FRONTEND_DIR = _resolve_frontend_dir()
 log = logging.getLogger("calendriers")
 
 
+def _each_caserne():
+    """Casernes actives pour les tâches de fond (une seule « caserne » hors version multi-casernes)."""
+    if not plateforme.enabled():
+        return [None]
+    return [c for c in plateforme.list_casernes() if c.statut != "archivee"]
+
+
 async def _daily_backups() -> None:
-    """Une sauvegarde de la base par jour (vérifié chaque heure), 30 gardées."""
+    """Pour chaque caserne : une sauvegarde de la base par jour (vérifié chaque heure), 30 gardées,
+    copie hors du serveur et nettoyage des données arrivées au bout de leur durée de conservation."""
     await asyncio.sleep(60)  # laisse le serveur démarrer
     while True:
-        try:
-            if not await asyncio.to_thread(db.backup_done_today):
-                name = await asyncio.to_thread(db.make_backup)
-                log.info("Sauvegarde créée : %s", name)
-                await asyncio.to_thread(_offsite_copy, name)
-        except Exception:  # une sauvegarde ratée ne doit jamais arrêter le site
-            log.exception("Sauvegarde automatique impossible")
-        try:
-            today = dt.date.today().isoformat()
-            if db.get_setting("purge_jour", "") != today:
-                await asyncio.to_thread(_purge, "Nettoyage automatique")
-                db.set_setting("purge_jour", today)
-        except Exception:
-            log.exception("Nettoyage des données impossible")
+        for cas in await asyncio.to_thread(_each_caserne):
+            with plateforme.use(cas):
+                await _daily_tasks()
         await asyncio.sleep(3600)
+
+
+async def _daily_tasks() -> None:
+    try:
+        if not await asyncio.to_thread(db.backup_done_today):
+            name = await asyncio.to_thread(db.make_backup)
+            log.info("Sauvegarde créée : %s", name)
+            await asyncio.to_thread(_offsite_copy, name)
+    except Exception:  # une sauvegarde ratée ne doit jamais arrêter le site
+        log.exception("Sauvegarde automatique impossible")
+    try:
+        today = dt.date.today().isoformat()
+        if db.get_setting("purge_jour", "") != today:
+            await asyncio.to_thread(_purge, "Nettoyage automatique")
+            db.set_setting("purge_jour", today)
+    except Exception:
+        log.exception("Nettoyage des données impossible")
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    db.init_db()
+    if plateforme.enabled():
+        plateforme.init()
+    else:
+        db.init_db()
     task = asyncio.create_task(_daily_backups()) if os.environ.get("AUTO_BACKUP", "1") != "0" else None
     yield
     if task:
@@ -117,18 +140,19 @@ _communes_cache: dict[str, dict] = {}
 
 
 def _load_commune(slug: str) -> dict:
-    path = DATA_DIR / f"{slug}.json"
+    path = _data_dir() / f"{slug}.json"
     if not slug.replace("-", "").isalnum() or not path.exists():
         raise HTTPException(status_code=404, detail=f"Commune inconnue: {slug}")
     mtime = str(path.stat().st_mtime)
-    cached = _communes_cache.get(slug)
+    key = str(path)  # une entrée par caserne et par commune
+    cached = _communes_cache.get(key)
     if cached and cached["_mtime"] == mtime:
         return cached
     with open(path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
     data["_mtime"] = mtime
     data["_address_ids"] = {a["id"] for a in data["addresses"]}
-    _communes_cache[slug] = data
+    _communes_cache[key] = data
     return data
 
 
@@ -306,7 +330,7 @@ def _check_open(annee: int) -> None:
 
 @app.get("/api/communes")
 def list_communes():
-    index_path = DATA_DIR / "index.json"
+    index_path = _data_dir() / "index.json"
     data = {"communes": []}
     if index_path.exists():
         with open(index_path, "r", encoding="utf-8") as fh:
@@ -402,10 +426,10 @@ def _sector_map(slug: str) -> tuple[dict, list[dict], dict[int, list[dict]]]:
 def _all_slugs() -> list[str]:
     """Toutes les communes : celles du site (index.json) et celles qui ont des secteurs."""
     slugs: list[str] = []
-    index_path = DATA_DIR / "index.json"
+    index_path = _data_dir() / "index.json"
     if index_path.exists():
         with open(index_path, "r", encoding="utf-8") as fh:
-            slugs = [c["slug"] for c in json.load(fh).get("communes", []) if (DATA_DIR / f"{c['slug']}.json").exists()]
+            slugs = [c["slug"] for c in json.load(fh).get("communes", []) if (_data_dir() / f"{c['slug']}.json").exists()]
     return slugs + [s for s in db.sector_communes() if s not in slugs]
 
 
@@ -1302,6 +1326,8 @@ def login(payload: LoginIn, request: Request, response: Response):
         raise HTTPException(status_code=429, detail="Trop d'essais : réessayez dans quelques minutes")
     ident = payload.identifiant.strip()
     if not ident:
+        if plateforme.current.get() is not None:
+            raise HTTPException(status_code=422, detail="Indiquez votre identifiant")
         if not auth.admin_password():
             raise HTTPException(status_code=503, detail="ADMIN_PASSWORD n'est pas configuré sur le serveur")
         if not auth.check_password(payload.password):
@@ -2377,6 +2403,66 @@ def receipt_page(token: str):
 @app.get("/fiscal.html", include_in_schema=False)
 def fiscal_page():
     return _page("fiscal.html")
+
+
+# ---- Version multi-casernes : admin central et choix de la caserne selon l'adresse --------
+
+app.include_router(central.router)
+
+
+@app.get("/plateforme", include_in_schema=False)
+def central_page():
+    return _page("plateforme.html")
+
+
+@app.get("/api/public/caserne")
+def public_caserne():
+    """Caserne du site (nom, état de l'abonnement si l'option est active)."""
+    cas = plateforme.current.get()
+    if cas is None:
+        return {"multi": False}
+    return {"multi": True, "slug": cas.slug, "nom": cas.nom, "abonnement": plateforme.abonnement_etat(cas)}
+
+
+STATIC_PREFIXES = ("/css/", "/js/", "/img/", "/icons/", "/vendor/", "/favicon")
+
+
+class CaserneMiddleware:
+    """Choisit la caserne d'après le nom d'hôte et la garde pour toute la requête (base, données, sessions).
+    Une adresse qui ne mène à aucune caserne ouvre l'admin central. Sans PLATFORM_DB_PATH : rien ne change."""
+
+    def __init__(self, app):
+        self.asgi = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not plateforme.enabled():
+            return await self.asgi(scope, receive, send)
+        host = dict(scope.get("headers") or []).get(b"host", b"").decode("latin-1")
+        path = scope.get("path", "")
+        central_path = path == "/plateforme" or path.startswith("/api/plateforme/")
+        cas = await asyncio.to_thread(plateforme.resolve, host)
+        if cas is None:
+            if central_path or path.startswith(STATIC_PREFIXES):
+                return await self.asgi(scope, receive, send)
+            if path in ("/", "/index.html", "/admin", "/admin.html"):
+                return await RedirectResponse("/plateforme")(scope, receive, send)
+            return await _plain(404, "Aucune caserne à cette adresse.")(scope, receive, send)
+        if central_path:
+            return await _plain(404, "Introuvable.")(scope, receive, send)
+        if cas.statut != "active":
+            return await _plain(503, "Le site de cette caserne est suspendu. Contactez l'administrateur de la plateforme.")(scope, receive, send)
+        token = plateforme.current.set(cas)
+        try:
+            await self.asgi(scope, receive, send)
+        finally:
+            plateforme.current.reset(token)
+
+
+def _plain(code: int, message: str):
+    return JSONResponse({"detail": message}, status_code=code)
+
+
+app.add_middleware(CaserneMiddleware)
 
 
 if FRONTEND_DIR.exists():

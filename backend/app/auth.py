@@ -11,24 +11,32 @@ import time
 
 from fastapi import HTTPException, Request
 
-from . import db
+from . import db, plateforme
 
 COOKIE_NAME = "admin_session"
 SESSION_SECONDS = 7 * 24 * 3600
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
 PRINCIPAL_NAME = "Administrateur principal"
 
-_secret: str | None = None
+_secrets: dict[str, str] = {}
 
 
 def _get_secret() -> bytes:
-    global _secret
-    if _secret is None:
-        _secret = os.environ.get("SECRET_KEY") or db.get_or_create_secret()
-    return _secret.encode()
+    """Clé de signature des sessions : une par base, donc une par caserne (version multi-casernes)."""
+    path = db.db_path()
+    if path not in _secrets:
+        env = os.environ.get("SECRET_KEY")
+        cas = plateforme.current.get()
+        if env and cas is not None:
+            env = hmac.new(env.encode(), f"caserne:{cas.slug}".encode(), hashlib.sha256).hexdigest()
+        _secrets[path] = env or db.get_or_create_secret()
+    return _secrets[path].encode()
 
 
 def admin_password() -> str | None:
+    # version multi-casernes : pas de compte principal commun, chaque caserne a ses comptes nominatifs
+    if plateforme.current.get() is not None:
+        return None
     return os.environ.get("ADMIN_PASSWORD") or None
 
 

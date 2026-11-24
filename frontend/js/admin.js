@@ -1450,6 +1450,20 @@
     me = await fetchJSON("/api/admin/me");
     window.Comptes.setMe(me);
     $("public-settings-card").hidden = !can("reglages");
+    showSubscription().catch(() => {});
+  }
+
+  /** Version multi-casernes : avertissement si l'abonnement de la caserne est expiré (option de la plateforme). */
+  async function showSubscription() {
+    const c = await fetchJSON("/api/public/caserne");
+    const old = document.getElementById("abo-banner");
+    if (old) old.remove();
+    if (!c.multi || !c.abonnement || c.abonnement.actif) return;
+    const div = document.createElement("div");
+    div.id = "abo-banner";
+    div.className = "abo-banner";
+    div.textContent = `Abonnement expiré${c.abonnement.fin ? ` depuis le ${new Date(c.abonnement.fin).toLocaleDateString("fr-FR")}` : ""} : contactez l'administrateur de la plateforme pour le renouveler.`;
+    document.querySelector(".topbar").after(div);
   }
 
   async function start() {

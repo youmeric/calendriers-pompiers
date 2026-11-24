@@ -26,8 +26,13 @@ done
   name=$(basename "$t" .js)
   case "$WANT" in all|ui|"$name") ;; *) continue ;; esac
   # serveur neuf (base vide) pour chaque test navigateur
-  rm -f "$TEST_DIR/ui.db"
-  (cd "$ROOT" && DB_PATH="$TEST_DIR/ui.db" SECTORS_DATA_DIR="$TEST_DIR/sectors" ADMIN_PASSWORD=secret123 AUTO_BACKUP=0 \
+  rm -rf "$TEST_DIR/ui.db" "$TEST_DIR/multi"
+  case "$name" in
+    ui_multi_*) # version multi-casernes : plateforme vide, domaine « localhost » (vaugneray.localhost…)
+      MULTI="PLATFORM_DB_PATH=$TEST_DIR/multi/plateforme.db CASERNES_DIR=$TEST_DIR/multi/casernes PLATFORM_DOMAIN=localhost PLATFORM_ADMIN_PASSWORD=central-secret PIPELINE_DIR=$HERE/fake_pipeline" ;;
+    *) MULTI="" ;;
+  esac
+  (cd "$ROOT" && env $MULTI DB_PATH="$TEST_DIR/ui.db" SECTORS_DATA_DIR="$TEST_DIR/sectors" ADMIN_PASSWORD=secret123 AUTO_BACKUP=0 \
     python3 -m uvicorn backend.app.main:app --host 127.0.0.1 --port "$PORT" > "$TEST_DIR/uvicorn.log" 2>&1) &
   SERVER=$!
   i=0; until curl -s -o /dev/null "$TEST_URL/api/communes" || [ $i -ge 50 ]; do sleep 0.2; i=$((i + 1)); done

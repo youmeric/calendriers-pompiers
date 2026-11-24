@@ -28,6 +28,10 @@ COMMUNES = [
     {"nom": "Courzieu", "code_postal": "69690"},
     {"nom": "Brussieu", "code_postal": "69690"},
 ]
+# version multi-casernes : l'admin central passe les communes de la caserne
+# (PIPELINE_COMMUNES='[{"nom": "Vaugneray", "code_postal": "69670"}]')
+if os.environ.get("PIPELINE_COMMUNES"):
+    COMMUNES = json.loads(os.environ["PIPELINE_COMMUNES"])
 
 OUTPUT_DIR = Path(os.environ.get("SECTORS_OUTPUT_DIR") or
                    (Path(__file__).resolve().parent.parent / "backend" / "app" / "data"))

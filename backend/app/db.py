@@ -8,6 +8,7 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
+from . import plateforme
 from .geo import normalize_polys
 
 DB_PATH = os.environ.get("DB_PATH", "db/status.db")
@@ -15,9 +16,22 @@ DB_PATH = os.environ.get("DB_PATH", "db/status.db")
 VALID_STATUSES = {"fait", "absent", "refus"}
 
 
+_initialized: set[str] = set()
+
+
+def db_path() -> str:
+    """Base de la caserne en cours (version multi-casernes), sinon la base unique (DB_PATH)."""
+    cas = plateforme.current.get()
+    return cas.db_path if cas is not None else DB_PATH
+
+
 @contextmanager
 def get_conn():
-    conn = sqlite3.connect(DB_PATH)
+    path = db_path()
+    if path not in _initialized:  # première utilisation de cette base : tables et migrations
+        _initialized.add(path)
+        init_db()
+    conn = sqlite3.connect(path)
     try:
         yield conn
     finally:
@@ -25,7 +39,9 @@ def get_conn():
 
 
 def init_db() -> None:
-    os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
+    path = db_path()
+    _initialized.add(path)
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with get_conn() as conn:
         conn.executescript(
             """
@@ -1244,6 +1260,8 @@ BACKUP_KEEP = 30
 
 
 def backup_dir() -> str:
+    if plateforme.current.get() is not None:  # chaque caserne garde ses sauvegardes à côté de sa base
+        return os.path.join(os.path.dirname(db_path()), "sauvegardes")
     return os.environ.get("BACKUP_DIR") or os.path.join(os.path.dirname(DB_PATH) or ".", "sauvegardes")
 
 

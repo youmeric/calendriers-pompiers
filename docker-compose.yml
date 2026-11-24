@@ -33,6 +33,8 @@ services:
     volumes:
       - ./data/db:/app/db
       - ./data/sectors:/app/sectors
+      # version multi-casernes : base de la plateforme et un dossier par caserne (si PLATFORM_DB_PATH est réglé)
+      - ./data/plateforme:/app/plateforme
       # copie chiffrée vers un partage du NAS déjà monté sur le serveur (facultatif) :
       # décommentez, puis indiquez /mnt/nas dans l'admin (Réglages → Copie chiffrée hors du serveur → Dossier)
       # - /mnt/nas-sauvegardes:/mnt/nas
