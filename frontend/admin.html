@@ -353,6 +353,24 @@
             <tbody id="bilan-body"></tbody>
           </table>
         </div>
+        <section class="caisse-section annexes-section" id="annexes-section">
+          <h3 class="panel-title">📮 Dons hors tournée</h3>
+          <p class="hint">Don reçu après la tournée sans savoir où habite la personne, enveloppe déposée dans la boîte aux lettres de la caserne… Il compte dans tous les totaux et entre au registre (numéroté) ; l'argent est déjà chez le trésorier, il n'y a pas de remise de caisse.</p>
+          <form id="annexe-form" class="annexe-form">
+            <label class="field">Montant (€)<input id="ax-montant" type="text" inputmode="decimal" required placeholder="10" autocomplete="off" /></label>
+            <label class="field">Moyen<select id="ax-mode"><option value="especes">Espèces</option><option value="cheque">Chèque</option><option value="cb">Carte</option></select></label>
+            <label class="field">Origine<select id="ax-origine">
+              <option value="boite">Boîte aux lettres de la caserne</option>
+              <option value="decale">Reçu après la tournée (adresse inconnue)</option>
+              <option value="caserne">Remis à la caserne</option>
+              <option value="autre">Autre</option>
+            </select></label>
+            <label class="field" id="ax-cheque-box" hidden>N° du chèque<input id="ax-tx" maxlength="64" autocomplete="off" /></label>
+            <label class="field ax-note">Précisions (facultatif)<input id="ax-note" maxlength="200" placeholder="Nom du donateur, date, enveloppe…" /></label>
+            <button type="submit" class="btn primary">Ajouter le don</button>
+          </form>
+          <div id="annexes-list"></div>
+        </section>
         <section class="caisse-section">
           <h3 class="panel-title">Caisse : remises au trésorier</h3>
           <p class="hint">Le responsable de chaque secteur déclare dans son appli les espèces et chèques comptés et à qui il les a remis. Confirmez ici quand vous les avez bien reçus.</p>

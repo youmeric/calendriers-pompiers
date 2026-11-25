@@ -125,6 +125,7 @@
       line("Encaissé sur le terrain (dons saisis)", c.encaisse),
       line("Remis au trésorier", c.remis),
       line("… dont réception confirmée", c.remis_confirme, "sub"),
+      ...(c.direct && (c.direct.especes || c.direct.cheques) ? [line("… dont dons hors tournée reçus directement", c.direct, "sub")] : []),
       line("Déposé en banque", c.depose),
       line("Reste chez les équipes (encaissé − remis)", c.reste_terrain, `reste${flag(c.reste_terrain)}`),
       line("Reste chez le trésorier (remis − déposé)", c.reste_tresorier, `reste${flag(c.reste_tresorier)}`),

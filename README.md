@@ -131,6 +131,13 @@ sur Courzieu et Brussieu (69690).
   - **Bilan** : maisons faites, dons et totaux (espèces / chèques / carte) par
     secteur et au total, export de tous les dons (Excel). Les dons sont classés
     par année de tournée.
+  - **📮 Dons hors tournée** (« Suivi & dons », droit *Dons et caisse*) : don reçu
+    après la tournée sans savoir où habite la personne, enveloppe déposée dans la
+    boîte aux lettres de la caserne… Montant, moyen (n° de chèque), origine et
+    précisions. Il entre au registre (numéroté) et dans tous les totaux (suivi,
+    bilan de l'année, dossier comptable) ; l'argent étant déjà chez le trésorier,
+    il compte comme « remis » dans la chaîne espèces / chèques. Une erreur se
+    corrige par une annulation avec motif.
   - **🧾 Dossier comptable** (`/fiscal.html`, bouton dans « Suivi & dons », droit
     *Dons et caisse*) — de quoi répondre à un contrôle :
     - **registre des dons inaltérable** : chaque don reçoit un **numéro d'ordre**

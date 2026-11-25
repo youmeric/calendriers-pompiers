@@ -129,7 +129,11 @@
       `<b>${escapeHtml(codes.get(s.sector_id) || "")}</b> ${escapeHtml(s.nom)}<small>${escapeHtml(s.commune)}</small>`,
       escapeHtml(s.responsables.join(", ") || "—"), s.annees[Y], P ? s.annees[P] : null,
     )).join("");
-    $("rp-table").innerHTML = `${head}<tbody>${body}${line("<b>Total</b>", "", r.totaux[Y], P ? r.totaux[P] : null, "total")}</tbody>`;
+    const ax = r.annexes || {};
+    const annexe = ax[Y] && ax[Y].nb ? `<tr><td>📮 Dons hors tournée<small>boîte aux lettres, reçus après…</small></td><td>—</td><td></td><td></td><td></td><td></td>
+      <td>${ax[Y].nb}</td><td><b>${euros2(ax[Y].total)}</b></td><td>${euros2(ax[Y].total / ax[Y].nb)}</td>
+      ${P ? `<td>${ax[P] ? euros2(ax[P].total) : "—"}</td><td>${ax[P] ? evolution(ax[Y].total, ax[P].total) || "—" : "—"}</td>` : ""}</tr>` : "";
+    $("rp-table").innerHTML = `${head}<tbody>${body}${annexe}${line("<b>Total</b>", "", r.totaux[Y], P ? r.totaux[P] : null, "total")}</tbody>`;
     $("rp-note").textContent = P
       ? `Pour comparer à surface égale, les maisons et les dons de ${P} sont rangés dans le secteur où se trouve aujourd'hui leur adresse.`
       : "Première tournée enregistrée : la comparaison apparaîtra l'an prochain.";

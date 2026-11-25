@@ -23,7 +23,7 @@ from . import auth, db
 from .geo import point_in_polys
 from .limits import RoadIndex, describe_limit_polys
 from . import central, offsite, plateforme, whatsapp
-from .models import (AvancementIn, CodeIn, ConfirmIn, DonIn, DonStatutIn, EquipeIn, ExclusionIn, LoginIn, PersonneIn,
+from .models import (AvancementIn, CodeIn, ConfirmIn, DonAnnexeIn, DonIn, DonStatutIn, EquipeIn, ExclusionIn, LoginIn, PersonneIn,
                      PersonnesIn, RemiseIn, RenfortIn, SectorsIn, SettingsIn, StatusUpdate, SumupRetourIn,
                      NoteIn, SignalementIn, SignalementActionIn, EnvoiAccesIn, RoleIn, CompteIn,
                      CompteUpdateIn, MotDePasseIn, DepotIn, ClotureIn, ReouvertureIn,
@@ -1307,6 +1307,11 @@ def _euros(cents: int) -> str:
 
 STATUT_FR = {"a_faire": "à faire", "en_cours": "en cours", "termine": "terminé"}
 MODE_FR = {"especes": "espèces", "cheque": "chèque", "cb": "carte"}
+# dons hors tournée : sans adresse ni secteur (secteur 0), reçus directement par le trésorier
+ANNEXE = 0
+ANNEXE_LABEL = "Dons hors tournée"
+ORIGINES = {"boite": "Boîte aux lettres de la caserne", "decale": "Reçu après la tournée (adresse inconnue)",
+            "caserne": "Remis à la caserne", "autre": "Autre"}
 STATUS_FR = {"fait": "fait", "absent": "absent", "refus": "refus", None: "à faire"}
 
 
@@ -1685,7 +1690,7 @@ def _bot() -> tuple[str, str]:
 
 
 def _sector_labels() -> dict[int, str]:
-    out = {}
+    out = {ANNEXE: ANNEXE_LABEL}
     for slug in _all_slugs():
         nom = _load_commune(slug)["commune"]["nom"]
         for i, s in enumerate(db.list_sectors(slug)):
@@ -1839,6 +1844,7 @@ def admin_bilan():
                      "totaux": _totaux([d for d in dons if d["sector_id"] == s["id"]]),
                      "caisse": _caisse(s["id"])})
     return {"annee": annee, "secteurs": rows, "totaux": _totaux(dons),
+            "annexes": _totaux([d for d in dons if d["sector_id"] == ANNEXE]),
             "attente": [_don_view(d, True, None) | {"sector_id": d["sector_id"], "slug": d["commune_slug"]}
                         for d in dons if d["statut"] == "attente"]}
 
@@ -1878,6 +1884,9 @@ def admin_year_report(annee: int | None = None):
                     per[sid][y]["dons"].append(d)
                 else:
                     totals[y]["dons"].append(d)  # secteur disparu : compté dans le total seulement
+    annexes = {y: [d for d in db.list_dons(y) if d["sector_id"] == ANNEXE and d["statut"] == "ok"] for y in years}
+    for y in years:  # dons hors tournée : sans adresse, comptés dans le total seulement
+        totals[y]["dons"].extend(annexes[y])
     for t in tours:  # chaque tournée une fois (la tournée des entreprises couvre plusieurs communes)
         s = t["sector"]
         team = teams.get(s["id"]) or {"membres": []}
@@ -1896,6 +1905,7 @@ def admin_year_report(annee: int | None = None):
     remises = db.list_remises(annee)
     return {
         "annee": annee, "precedente": prev, "annees": annees, "secteurs": rows,
+        "annexes": {str(y): _totaux(v) for y, v in annexes.items()},
         "totaux": {str(y): {**{k: t[k] for k in ("adresses", "fait", "absent", "refus")}, "dons": _totaux(t["dons"])}
                    for y, t in totals.items()},
         "remises": {"nb": len(remises), "total": sum(r["especes_cents"] + r["cheques_cents"] for r in remises) / 100,
@@ -1934,12 +1944,13 @@ def _registre(annee: int) -> list[dict]:
             "numero": d["numero"], "id": d["id"], "created_at": d["created_at"], "sector_id": d["sector_id"],
             "secteur": labels.get(d["sector_id"], f"secteur {d['sector_id']} (supprimé)"),
             "commune": communes.get(d["commune_slug"], d["commune_slug"]),
-            "adresse": addr.get(f"{d['commune_slug']}/{d['address_id']}", d["address_id"])
+            "adresse": (ORIGINES.get(d["origine"], "Hors tournée") if d["sector_id"] == ANNEXE else
+                        addr.get(f"{d['commune_slug']}/{d['address_id']}", d["address_id"]))
             + (f" · logement {d['logement']}" if d.get("logement") else "")
             + (f" ({unit_labels.get(d['commune_slug'], {}).get(d['address_id'], {}).get(d['logement'])})"
                if d.get("logement") and unit_labels.get(d["commune_slug"], {}).get(d["address_id"], {}).get(d["logement"]) else ""),
             "mode": d["mode"], "montant": d["montant_cents"] / 100, "reference": d["tx_code"],
-            "statut": "annule" if d["annule_le"] else d["statut"], "saisi_par": d["personne_nom"],
+            "statut": "annule" if d["annule_le"] else d["statut"], "saisi_par": d["personne_nom"], "annexe": d["sector_id"] == ANNEXE,
             "annule_le": d["annule_le"], "annule_par": d["annule_par"], "motif": d["motif"], "note": d["note"],
         })
     return out
@@ -2034,6 +2045,13 @@ def _fiscal(annee: int) -> dict:
             "reste": (esp + chq - r_esp - r_chq) / 100,
         })
     # dons rattachés à un secteur supprimé depuis : comptés à part pour que les totaux tombent juste
+    annexes = [r for r in ok if r["sector_id"] == ANNEXE]
+    if annexes:  # reçus directement par le trésorier : rien à remettre
+        a_esp, a_chq = cents([r for r in annexes if r["mode"] == "especes"]), cents([r for r in annexes if r["mode"] == "cheque"])
+        secteurs.append({"sector_id": ANNEXE, "secteur": f"{ANNEXE_LABEL} (reçus par le trésorier)", "responsables": [], "adresses": 0,
+                         "fait": 0, "absent": 0, "refus": 0, "nb": len(annexes), "especes": a_esp / 100, "cheque": a_chq / 100,
+                         "cb": cents([r for r in annexes if r["mode"] == "cb"]) / 100, "total": cents(annexes) / 100,
+                         "remis_especes": a_esp / 100, "remis_cheques": a_chq / 100, "reste": 0})
     known = {x["sector_id"] for x in secteurs}
     orphans = [r for r in ok if r["sector_id"] not in known]
     if orphans:
@@ -2055,10 +2073,15 @@ def _fiscal(annee: int) -> dict:
     depots = [d for d in depots_all if not d["annule_le"]]
     enc = {"especes": synth["especes"], "cheques": synth["cheque"], "nb_cheques": synth["nb_cheque"]}
     sumr = lambda rows, k: sum(x[k] for x in rows) / 100  # noqa: E731
-    remis = {"especes": sumr(remises, "especes_cents"), "cheques": sumr(remises, "cheques_cents"),
-             "nb_cheques": sum(r["nb_cheques"] for r in remises)}
+    # dons hors tournée : déjà entre les mains du trésorier, comptés comme remis (et confirmés)
+    direct = {"especes": cents([r for r in annexes if r["mode"] == "especes"]) / 100,
+              "cheques": cents([r for r in annexes if r["mode"] == "cheque"]) / 100,
+              "nb_cheques": sum(1 for r in annexes if r["mode"] == "cheque")}
+    remis = {"especes": round(sumr(remises, "especes_cents") + direct["especes"], 2), "cheques": round(sumr(remises, "cheques_cents") + direct["cheques"], 2),
+             "nb_cheques": sum(r["nb_cheques"] for r in remises) + direct["nb_cheques"]}
     conf = [r for r in remises if r["confirme_le"]]
-    remis_conf = {"especes": sumr(conf, "especes_cents"), "cheques": sumr(conf, "cheques_cents"), "nb_cheques": sum(r["nb_cheques"] for r in conf)}
+    remis_conf = {"especes": round(sumr(conf, "especes_cents") + direct["especes"], 2), "cheques": round(sumr(conf, "cheques_cents") + direct["cheques"], 2),
+                  "nb_cheques": sum(r["nb_cheques"] for r in conf) + direct["nb_cheques"]}
     depose = {"especes": sumr(depots, "especes_cents"), "cheques": sumr(depots, "cheques_cents"), "nb_cheques": sum(d["nb_cheques"] for d in depots)}
     diff = lambda a, b: {k: round(a[k] - b[k], 2) for k in a}  # noqa: E731
     ok_dates = [r["created_at"] for r in ok]
@@ -2068,7 +2091,7 @@ def _fiscal(annee: int) -> dict:
         "association": asso, "cloture": db.active_cloture(annee), "clotures": db.list_clotures(annee),
         "periode": {"debut": min(ok_dates) if ok_dates else None, "fin": max(ok_dates) if ok_dates else None},
         "synthese": synth, "maisons": maisons, "jours": jours, "secteurs": secteurs, "collecteurs": collecteurs,
-        "chaine": {"encaisse": enc, "remis": remis, "remis_confirme": remis_conf, "depose": depose,
+        "chaine": {"encaisse": enc, "remis": remis, "remis_confirme": remis_conf, "depose": depose, "direct": direct,
                    "reste_terrain": diff(enc, remis), "reste_tresorier": diff(remis, depose),
                    "carte": {"total": synth["cb"], "nb": synth["nb_cb"]}},
         "remises": [{**{k: r[k] for k in ("id", "remis_par", "recu_par", "note", "created_at", "confirme_le", "annule_le", "annule_par", "nb_cheques")},
@@ -2190,9 +2213,55 @@ def admin_dons():
         labels.update({a["id"]: _full_label(a) for a in _addresses(slug, _load_commune(slug))})
     return {"annee": _annee(), "dons": [
         {**_don_view(d, True, None), "sector_id": d["sector_id"], "slug": d["commune_slug"],
-         "adresse": labels.get(d["address_id"], d["address_id"])}
+         "adresse": ORIGINES.get(d["origine"], ANNEXE_LABEL) if d["sector_id"] == ANNEXE else labels.get(d["address_id"], d["address_id"])}
         for d in db.list_dons(_annee())
     ]}
+
+
+# ---- Dons hors tournée (adresse inconnue, boîte aux lettres de la caserne…) ----------------
+
+def _annexe_view(d: dict) -> dict:
+    return {"id": d["id"], "numero": d["numero"], "montant": d["montant_cents"] / 100, "mode": d["mode"],
+            "origine": d["origine"], "origine_label": ORIGINES.get(d["origine"], ""), "note": d["note"],
+            "tx_code": d["tx_code"], "par": d["personne_nom"], "created_at": d["created_at"],
+            "annule_le": d["annule_le"], "annule_par": d["annule_par"], "motif": d["motif"]}
+
+
+@app.get("/api/admin/dons-annexes", dependencies=[Depends(auth.require("dons"))])
+def admin_annex_list():
+    dons = [d for d in db.list_dons(_annee(), avec_annules=True) if d["sector_id"] == ANNEXE]
+    return {"annee": _annee(), "origines": ORIGINES, "dons": [_annexe_view(d) for d in reversed(dons)],
+            "totaux": _totaux([d for d in dons if not d["annule_le"]])}
+
+
+@app.post("/api/admin/dons-annexes", dependencies=[Depends(auth.require("dons"))])
+def admin_annex_add(payload: DonAnnexeIn, request: Request):
+    """Don reçu hors tournée : il entre au registre (numéroté) et dans tous les totaux ; l'argent
+    est déjà chez le trésorier (pas de remise de caisse)."""
+    _check_open(_annee())
+    qui = _actor(request)[0]
+    don, _ = db.add_don({
+        "annee": _annee(), "commune_slug": "", "address_id": "", "sector_id": ANNEXE,
+        "montant_cents": round(payload.montant * 100), "mode": payload.mode, "statut": "ok",
+        "tx_code": payload.tx_code, "note": payload.note, "personne_nom": qui, "origine": payload.origine,
+    })
+    _log(request, "don.annexe", f"{ANNEXE_LABEL} · {ORIGINES[payload.origine]}",
+         f"n° {don['numero']} · {_euros(don['montant_cents'])} {MODE_FR[don['mode']]}{' · ' + payload.note if payload.note else ''}")
+    return _annexe_view(don)
+
+
+@app.delete("/api/admin/dons-annexes/{don_id}", dependencies=[Depends(auth.require("dons"))])
+def admin_annex_cancel(don_id: int, request: Request, motif: str = ""):
+    """Annule un don hors tournée (erreur de saisie) : il reste au registre, avec le motif."""
+    don = db.get_don(don_id)
+    if not don or don["sector_id"] != ANNEXE or don["annule_le"]:
+        raise HTTPException(status_code=404, detail="Don inconnu")
+    _check_open(don["annee"])
+    motif = " ".join(motif.split())[:200] or "annulé sans motif"
+    db.cancel_don(don["id"], _actor(request)[0], motif)
+    _log(request, "don.suppression", f"{ANNEXE_LABEL} · {ORIGINES.get(don['origine'], '')}",
+         f"n° {don['numero']} · {_euros(don['montant_cents'])} {MODE_FR[don['mode']]} · motif : {motif}")
+    return {"ok": True}
 
 
 @app.put("/api/admin/secteurs/{sector_id}/equipe", dependencies=[Depends(auth.require("equipes"))])
