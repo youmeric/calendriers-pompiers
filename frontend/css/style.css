@@ -1389,7 +1389,7 @@ body.sumup-page { display: flex; align-items: center; justify-content: center; m
 .access-form { text-align: center; }
 .access-code { font-size: 30px; font-weight: 800; letter-spacing: 0.14em; padding: 10px; border-radius: 12px; background: var(--surface-2); font-family: ui-monospace, monospace; }
 #access-link { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: 12px; color: var(--muted); background: #fff; }
-.access-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.access-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
 .access-actions .btn { padding: 8px 6px; font-size: 13px; }
 .danger-link { color: var(--refus); align-self: center; font-size: 13px; }
 .key-btn { color: #b45309; }
