@@ -109,6 +109,15 @@ def init() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 at TEXT NOT NULL, qui TEXT NOT NULL, action TEXT NOT NULL, objet TEXT NOT NULL DEFAULT '', details TEXT NOT NULL DEFAULT ''
             );
+            -- comptes nominatifs de l'admin central (en plus du compte principal PLATFORM_ADMIN_PASSWORD)
+            CREATE TABLE IF NOT EXISTS comptes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                identifiant TEXT NOT NULL UNIQUE,
+                nom TEXT NOT NULL,
+                mdp TEXT NOT NULL,
+                actif INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL
+            );
             -- génération des données des communes (adresses, routes) d'une caserne
             CREATE TABLE IF NOT EXISTS generations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -234,6 +243,58 @@ def journal(limit: int = 200) -> list[dict]:
     with conn() as c:
         rows = c.execute("SELECT id, at, qui, action, objet, details FROM journal ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
     return [dict(zip(("id", "at", "qui", "action", "objet", "details"), r)) for r in rows]
+
+
+# ---- Comptes de l'admin central ------------------------------------------------------------
+
+_COMPTE = "id, identifiant, nom, mdp, actif, created_at"
+
+
+def _compte(r) -> dict:
+    return {"id": r[0], "identifiant": r[1], "nom": r[2], "mdp": r[3], "actif": bool(r[4]), "created_at": r[5]}
+
+
+def list_comptes() -> list[dict]:
+    with conn() as c:
+        return [{k: v for k, v in _compte(r).items() if k != "mdp"} for r in c.execute(f"SELECT {_COMPTE} FROM comptes ORDER BY nom COLLATE NOCASE")]
+
+
+def get_compte(compte_id: int) -> dict | None:
+    with conn() as c:
+        r = c.execute(f"SELECT {_COMPTE} FROM comptes WHERE id = ?", (compte_id,)).fetchone()
+    return _compte(r) if r else None
+
+
+def compte_par_identifiant(identifiant: str) -> dict | None:
+    with conn() as c:
+        r = c.execute(f"SELECT {_COMPTE} FROM comptes WHERE identifiant = ?", (identifiant.strip(),)).fetchone()
+    return _compte(r) if r else None
+
+
+def add_compte(identifiant: str, nom: str, mdp_hash: str) -> dict:
+    with conn() as c:
+        cid = c.execute("INSERT INTO comptes (identifiant, nom, mdp, created_at) VALUES (?, ?, ?, ?)",
+                        (identifiant.strip(), nom.strip(), mdp_hash, _now())).lastrowid
+        c.commit()
+    return get_compte(cid)
+
+
+def update_compte(compte_id: int, **fields) -> dict | None:
+    sets = {k: (int(v) if k == "actif" else v) for k, v in fields.items() if k in ("nom", "mdp", "actif") and v is not None}
+    if sets:
+        with conn() as c:
+            c.execute(f"UPDATE comptes SET {', '.join(f'{k} = ?' for k in sets)} WHERE id = ?", (*sets.values(), compte_id))
+            c.commit()
+    return get_compte(compte_id)
+
+
+def delete_caserne(caserne_id: int) -> None:
+    """Retire une caserne de la plateforme (ses fichiers sont effacés à part)."""
+    with conn() as c:
+        c.execute("DELETE FROM caserne_hosts WHERE caserne_id = ?", (caserne_id,))
+        c.execute("DELETE FROM generations WHERE caserne_id = ?", (caserne_id,))
+        c.execute("DELETE FROM casernes WHERE id = ?", (caserne_id,))
+        c.commit()
 
 
 # ---- Abonnement (option, désactivée par défaut) -------------------------------------------

@@ -8,13 +8,19 @@ import hashlib
 import hmac
 import json
 import os
+import shutil
+import sqlite3
 import subprocess
 import sys
+import tempfile
 import threading
 import time
+import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
 from . import auth, db, plateforme
@@ -41,24 +47,47 @@ def _secret() -> bytes:
     return hmac.new(s.encode(), b"plateforme", hashlib.sha256).digest()
 
 
-def _version() -> str:
-    return hashlib.sha256((_password() or "").encode()).hexdigest()[:10]
+PRINCIPAL = "Administrateur principal"
 
 
-def _sign(expires: int) -> str:
-    return hmac.new(_secret(), f"central:{_version()}:{expires}".encode(), hashlib.sha256).hexdigest()
+def _version(account: dict | None) -> str:
+    """Changer le mot de passe (ou désactiver le compte) déconnecte ses sessions."""
+    basis = (_password() or "") if account is None else f"{account['mdp']}:{account['actif']}"
+    return hashlib.sha256(basis.encode()).hexdigest()[:10]
+
+
+def _sign(aid: int, version: str, expires: int) -> str:
+    return hmac.new(_secret(), f"central:{aid}:{version}:{expires}".encode(), hashlib.sha256).hexdigest()
+
+
+def current_user(request: Request) -> dict | None:
+    """Compte de l'admin central connecté : {id (0 = principal), nom}."""
+    if hasattr(request.state, "central_user"):
+        return request.state.central_user
+    user = None
+    parts = (request.cookies.get(COOKIE) or "").split(".")
+    if len(parts) == 3 and parts[0].isdigit() and parts[1].isdigit() and int(parts[1]) > time.time():
+        aid, expires = int(parts[0]), int(parts[1])
+        account = None if aid == 0 else plateforme.get_compte(aid)
+        ok_account = (aid == 0 and _password()) or (account and account["actif"])
+        if ok_account and hmac.compare_digest(parts[2], _sign(aid, _version(account), expires)):
+            user = {"id": 0, "nom": PRINCIPAL} if aid == 0 else {"id": account["id"], "nom": account["nom"]}
+    request.state.central_user = user
+    return user
 
 
 def require_central(request: Request) -> None:
-    token = request.cookies.get(COOKIE) or ""
-    parts = token.split(".")
-    if len(parts) == 2 and parts[0].isdigit() and int(parts[0]) > time.time() and _password() \
-            and hmac.compare_digest(parts[1], _sign(int(parts[0]))):
-        return
-    raise HTTPException(status_code=401, detail="Connexion à l'admin central requise")
+    if not current_user(request):
+        raise HTTPException(status_code=401, detail="Connexion à l'admin central requise")
+
+
+def _who(request: Request) -> str:
+    u = current_user(request)
+    return u["nom"] if u else "?"
 
 
 class LoginIn(BaseModel):
+    identifiant: str = Field(default="", max_length=60)
     password: str = Field(min_length=1, max_length=200)
 
 
@@ -67,17 +96,27 @@ def login(payload: LoginIn, request: Request, response: Response):
     ip = request.client.host if request.client else "?"
     if auth.too_many_attempts(ip):
         raise HTTPException(status_code=429, detail="Trop d'essais : réessayez dans quelques minutes")
-    if not _password():
-        raise HTTPException(status_code=503, detail="PLATFORM_ADMIN_PASSWORD n'est pas configuré sur le serveur")
-    if not hmac.compare_digest(payload.password.encode(), _password().encode()):
+    ident = payload.identifiant.strip()
+    account = None
+    if not ident:  # compte principal (mot de passe de l'installation)
+        if not _password():
+            raise HTTPException(status_code=503, detail="PLATFORM_ADMIN_PASSWORD n'est pas configuré sur le serveur")
+        ok = hmac.compare_digest(payload.password.encode(), _password().encode())
+    else:
+        account = plateforme.compte_par_identifiant(ident)
+        ok = bool(account) and auth.verify_password(payload.password, account["mdp"])
+    if not ok:
         auth.record_failure(ip)
-        plateforme.log("?", "connexion.echec", "", f"adresse {ip}")
+        plateforme.log(ident or "?", "connexion.echec", "", f"adresse {ip}")
         time.sleep(1)
-        raise HTTPException(status_code=401, detail="Mot de passe incorrect")
+        raise HTTPException(status_code=401, detail="Identifiant ou mot de passe incorrect")
+    if account and not account["actif"]:
+        raise HTTPException(status_code=403, detail="Ce compte est désactivé")
+    aid = account["id"] if account else 0
     expires = int(time.time()) + SESSION_SECONDS
-    response.set_cookie(COOKIE, f"{expires}.{_sign(expires)}", max_age=SESSION_SECONDS, httponly=True,
-                        samesite="strict", secure=auth.COOKIE_SECURE)
-    plateforme.log("admin central", "connexion")
+    response.set_cookie(COOKIE, f"{aid}.{expires}.{_sign(aid, _version(account), expires)}", max_age=SESSION_SECONDS,
+                        httponly=True, samesite="strict", secure=auth.COOKIE_SECURE)
+    plateforme.log(account["nom"] if account else PRINCIPAL, "connexion")
     return {"ok": True}
 
 
@@ -88,8 +127,8 @@ def logout(response: Response):
 
 
 @router.get("/api/plateforme/moi", dependencies=[Depends(require_central)])
-def me():
-    return {"ok": True, "domaine": plateforme.PLATFORM_DOMAIN, "abonnements_actifs": plateforme.abonnements_actifs()}
+def me(request: Request):
+    return {"ok": True, "moi": current_user(request), "domaine": plateforme.PLATFORM_DOMAIN, "abonnements_actifs": plateforme.abonnements_actifs()}
 
 
 # ---- Casernes ----------------------------------------------------------------------------------
@@ -173,6 +212,8 @@ def _stats(cas: plateforme.Caserne) -> dict:
                 "derniere_activite": one("SELECT MAX(at) FROM journal"),
                 "annee": annee,
             }
+        backups = db.list_backups()
+        stats["derniere_sauvegarde"] = backups[0]["date"] if backups else None
         communes = []
         index = Path(cas.data_dir) / "index.json"
         if index.exists():
@@ -193,7 +234,7 @@ def list_casernes():
 
 
 @router.post("/api/plateforme/casernes", dependencies=[Depends(require_central)])
-def create_caserne(payload: CaserneIn):
+def create_caserne(payload: CaserneIn, request: Request):
     if plateforme.get_by_slug(payload.slug):
         raise HTTPException(status_code=409, detail="Une caserne a déjà cet identifiant")
     hosts = _check_hosts(payload.hosts, None)
@@ -204,8 +245,8 @@ def create_caserne(payload: CaserneIn):
         db.set_setting("caserne_nom", payload.nom.strip())
         role = next(r for r in db.list_roles() if r["fixe"])  # « Administrateur » : tous les droits
         db.add_compte(payload.admin_identifiant.strip(), payload.admin_nom.strip(), auth.hash_password(payload.admin_password), role["id"])
-        db.log("Admin central", "console", "caserne.creation", payload.nom, f"compte administrateur « {payload.admin_identifiant} »")
-    plateforme.log("admin central", "caserne.creation", payload.nom, f"{payload.slug} · {', '.join(hosts) or 'pas d’adresse'}")
+        db.log(f"Admin central ({_who(request)})", "console", "caserne.creation", payload.nom, f"compte administrateur « {payload.admin_identifiant} »")
+    plateforme.log(_who(request), "caserne.creation", payload.nom, f"{payload.slug} · {', '.join(hosts) or 'pas d’adresse'}")
     if payload.communes:
         _start_generation(cas, [c.model_dump() for c in payload.communes])
     return _view(plateforme.get(cas.id))
@@ -219,7 +260,7 @@ def _get(caserne_id: int) -> plateforme.Caserne:
 
 
 @router.put("/api/plateforme/casernes/{caserne_id}", dependencies=[Depends(require_central)])
-def update_caserne(caserne_id: int, payload: CaserneUpdate):
+def update_caserne(caserne_id: int, payload: CaserneUpdate, request: Request):
     cas = _get(caserne_id)
     fields = payload.model_dump(exclude_none=True)
     if "statut" in fields and fields["statut"] not in plateforme.STATUTS:
@@ -231,13 +272,13 @@ def update_caserne(caserne_id: int, payload: CaserneUpdate):
     if fields.get("abonnement_fin") == "":
         fields["abonnement_fin"] = None
     new = plateforme.update(caserne_id, **fields)
-    plateforme.log("admin central", "caserne.modification", new.nom,
+    plateforme.log(_who(request), "caserne.modification", new.nom,
                    " · ".join(f"{k} : {v}" for k, v in payload.model_dump(exclude_none=True).items()))
     return _view(new)
 
 
 @router.post("/api/plateforme/casernes/{caserne_id}/comptes", dependencies=[Depends(require_central)])
-def add_admin_account(caserne_id: int, payload: CompteIn):
+def add_admin_account(caserne_id: int, payload: CompteIn, request: Request):
     """Nouveau compte administrateur dans une caserne (ex. mot de passe perdu par son responsable)."""
     cas = _get(caserne_id)
     with plateforme.use(cas):
@@ -245,8 +286,8 @@ def add_admin_account(caserne_id: int, payload: CompteIn):
             raise HTTPException(status_code=409, detail="Cet identifiant existe déjà dans cette caserne")
         role = next(r for r in db.list_roles() if r["fixe"])
         acc = db.add_compte(payload.identifiant.strip(), payload.nom.strip(), auth.hash_password(payload.password), role["id"])
-        db.log("Admin central", "console", "compte.ajout", acc["nom"], f"identifiant {acc['identifiant']} · rôle Administrateur")
-    plateforme.log("admin central", "compte.ajout", cas.nom, payload.identifiant)
+        db.log(f"Admin central ({_who(request)})", "console", "compte.ajout", acc["nom"], f"identifiant {acc['identifiant']} · rôle Administrateur")
+    plateforme.log(_who(request), "compte.ajout", cas.nom, payload.identifiant)
     return {"ok": True}
 
 
@@ -298,13 +339,109 @@ class ReglagesIn(BaseModel):
 
 
 @router.put("/api/plateforme/reglages", dependencies=[Depends(require_central)])
-def save_settings(payload: ReglagesIn):
+def save_settings(payload: ReglagesIn, request: Request):
     if payload.abonnements_actifs is not None:
         plateforme.set_reglage("abonnements_actifs", "1" if payload.abonnements_actifs else "0")
-        plateforme.log("admin central", "reglages", "abonnements", "activés" if payload.abonnements_actifs else "désactivés")
+        plateforme.log(_who(request), "reglages", "abonnements", "activés" if payload.abonnements_actifs else "désactivés")
     return {"abonnements_actifs": plateforme.abonnements_actifs()}
 
 
 @router.get("/api/plateforme/journal", dependencies=[Depends(require_central)])
 def central_journal():
     return {"entrees": plateforme.journal()}
+
+
+# ---- Export et suppression d'une caserne ------------------------------------------------------
+
+@router.get("/api/plateforme/casernes/{caserne_id}/export", dependencies=[Depends(require_central)])
+def export_caserne(caserne_id: int, request: Request, background: BackgroundTasks):
+    """Tout ce qu'il faut pour rendre ses données à une caserne ou la réinstaller ailleurs :
+    sa base (copie cohérente), ses communes et ses informations sur la plateforme."""
+    cas = _get(caserne_id)
+    tmp = tempfile.mkdtemp(prefix="export-")
+    zpath = os.path.join(tmp, f"caserne-{cas.slug}-{datetime.now().strftime('%Y-%m-%d')}.zip")
+    snapshot = os.path.join(tmp, "status.db")
+    with plateforme.use(cas):
+        with db.get_conn() as src:
+            dest = sqlite3.connect(snapshot)
+            try:
+                src.backup(dest)
+            finally:
+                dest.close()
+    info = {"slug": cas.slug, "nom": cas.nom, "statut": cas.statut, "adresses": plateforme.hosts(cas.id),
+            "abonnement": cas.abonnement, "abonnement_fin": cas.abonnement_fin,
+            "exporte_le": datetime.now(timezone.utc).isoformat(), "exporte_par": _who(request)}
+    with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
+        z.write(snapshot, "base/status.db")
+        for f in sorted(Path(cas.data_dir).glob("*")) if os.path.isdir(cas.data_dir) else []:
+            if f.is_file():
+                z.write(f, f"communes/{f.name}")
+        z.writestr("caserne.json", json.dumps(info, ensure_ascii=False, indent=2))
+        z.writestr("LISEZMOI.txt", (
+            f"Export complet de la caserne « {cas.nom} » ({cas.slug}), {info['exporte_le'][:10]}.\n\n"
+            "base/status.db : toutes les données (secteurs, équipes, codes d'accès, suivi des maisons, dons,\n"
+            "  registre, caisse, dépôts, clôtures, journal, réglages et logo) — base SQLite.\n"
+            "communes/ : adresses et routes des communes (fichiers du pipeline).\n"
+            "caserne.json : informations de la plateforme (adresses du site, statut, abonnement).\n\n"
+            "Pour réinstaller : base/status.db comme DB_PATH et communes/ comme SECTORS_DATA_DIR d'une installation\n"
+            "simple, ou en tant que caserne d'une plateforme (dossier casernes/<identifiant>/db et /sectors).\n"))
+    background.add_task(shutil.rmtree, tmp, True)
+    plateforme.log(_who(request), "caserne.export", cas.nom, os.path.basename(zpath))
+    return FileResponse(zpath, media_type="application/zip", filename=os.path.basename(zpath))
+
+
+@router.delete("/api/plateforme/casernes/{caserne_id}", dependencies=[Depends(require_central)])
+def delete_caserne(caserne_id: int, request: Request, confirmation: str = ""):
+    """Suppression définitive : seulement une caserne archivée, en retapant son identifiant."""
+    cas = _get(caserne_id)
+    if cas.statut != "archivee":
+        raise HTTPException(status_code=409, detail="Archivez d'abord la caserne (et exportez ses données)")
+    if confirmation.strip().lower() != cas.slug:
+        raise HTTPException(status_code=422, detail=f"Tapez l'identifiant « {cas.slug} » pour confirmer")
+    plateforme.delete_caserne(cas.id)
+    shutil.rmtree(cas.dir, ignore_errors=True)
+    plateforme.log(_who(request), "caserne.suppression", cas.nom, f"{cas.slug} : données effacées")
+    return {"ok": True}
+
+
+# ---- Comptes de l'admin central -------------------------------------------------------------
+
+class CentralCompteIn(BaseModel):
+    identifiant: str = Field(min_length=2, max_length=60, pattern=r"^[A-Za-z0-9._@\-]+$")
+    nom: str = Field(min_length=1, max_length=80)
+    password: str = Field(min_length=10, max_length=200)
+
+
+class CentralCompteUpdate(BaseModel):
+    nom: str | None = Field(default=None, min_length=1, max_length=80)
+    password: str | None = Field(default=None, min_length=10, max_length=200)
+    actif: bool | None = None
+
+
+@router.get("/api/plateforme/comptes", dependencies=[Depends(require_central)])
+def central_accounts():
+    return {"comptes": plateforme.list_comptes()}
+
+
+@router.post("/api/plateforme/comptes", dependencies=[Depends(require_central)])
+def central_add_account(payload: CentralCompteIn, request: Request):
+    if plateforme.compte_par_identifiant(payload.identifiant):
+        raise HTTPException(status_code=409, detail="Cet identifiant existe déjà")
+    acc = plateforme.add_compte(payload.identifiant, payload.nom, auth.hash_password(payload.password))
+    plateforme.log(_who(request), "admin.ajout", acc["nom"], f"identifiant {acc['identifiant']}")
+    return {k: v for k, v in acc.items() if k != "mdp"}
+
+
+@router.put("/api/plateforme/comptes/{compte_id}", dependencies=[Depends(require_central)])
+def central_update_account(compte_id: int, payload: CentralCompteUpdate, request: Request):
+    acc = plateforme.get_compte(compte_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Compte inconnu")
+    if payload.actif is False and current_user(request)["id"] == compte_id:
+        raise HTTPException(status_code=409, detail="Vous ne pouvez pas désactiver votre propre compte")
+    new = plateforme.update_compte(compte_id, nom=payload.nom, actif=payload.actif,
+                                   mdp=auth.hash_password(payload.password) if payload.password else None)
+    what = [x for x, v in (("nom", payload.nom), ("mot de passe", payload.password)) if v] + \
+           (["activé" if payload.actif else "désactivé"] if payload.actif is not None else [])
+    plateforme.log(_who(request), "admin.modification", new["nom"], ", ".join(what))
+    return {k: v for k, v in new.items() if k != "mdp"}

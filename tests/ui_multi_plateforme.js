@@ -36,6 +36,7 @@ function check(c, m) { console.log(`${c ? "OK  " : "FAIL"} ${m}`); if (!c) proce
   await c.goto(`${CASERNE}/admin`); await c.waitForTimeout(800);
   await c.fill("#login-id", "chef.vaugneray"); await c.fill("#password", "motdepasse1"); await c.click("#login-form button");
   await c.waitForSelector("#editor-view:not([hidden])", { timeout: 10000 }).catch(() => {});
+  await c.waitForFunction(() => document.querySelector("#commune-select").options.length > 0, null, { timeout: 10000 }).catch(() => {});
   check(await c.isVisible("#editor-view") && (await c.textContent("#commune-select")).includes("Courzieu"), "admin de la caserne : connexion et communes (données de test)");
   await c.screenshot({ path: `${SP}/pf-caserne-admin.png` });
   check((await c.getAttribute(".brand-logo", "src")) === "/img/logo-generique.svg" && (await c.textContent(".topbar-sub")) === "Sapeurs-pompiers de Vaugneray",
@@ -91,6 +92,26 @@ function check(c, m) { console.log(`${c ? "OK  " : "FAIL"} ${m}`); if (!c) proce
   await p.click(".pf-caserne .pf-edit summary").catch(() => {});
   await p.click('.pf-caserne [data-act="active"]'); await p.waitForTimeout(800);
   check(await status() === 200, "réactivée");
+  // exploitation : comptes de l'admin central, export, archivage et suppression
+  await p.fill("#pf-a-ident", "marie"); await p.fill("#pf-a-nom", "Marie Durand"); await p.fill("#pf-a-pwd", "un-long-mot-de-passe");
+  await p.click('#pf-compte-form button[type="submit"]'); await p.waitForTimeout(800);
+  check((await p.textContent("#pf-comptes")).includes("Marie Durand"), "compte de l'admin central ajouté");
+  const m = await (await browser.newContext()).newPage(); watch(m, "marie");
+  await m.goto(`${CENTRAL}/plateforme`); await m.fill("#pf-ident", "marie"); await m.fill("#pf-password", "un-long-mot-de-passe");
+  await m.click('#pf-login-form button[type="submit"]'); await m.waitForTimeout(900);
+  check((await m.textContent("#pf-me")) === "Marie Durand" && await m.isVisible("#pf-list"), "Marie se connecte avec son compte");
+  await p.click(".pf-caserne .pf-edit summary").catch(() => {});
+  const [download] = await Promise.all([p.waitForEvent("download"), p.click('.pf-caserne a[href$="/export"]')]);
+  check(/^caserne-vaugneray-.*\.zip$/.test(download.suggestedFilename()), `export téléchargé (${download.suggestedFilename()})`);
+  await p.screenshot({ path: `${SP}/pf-exploitation.png`, fullPage: true });
+  await p.click('.pf-caserne [data-act="archivee"]'); await p.waitForTimeout(800);
+  p.removeAllListeners("dialog");
+  p.on("dialog", (d) => d.accept(d.type() === "prompt" ? "vaugneray" : undefined));
+  await p.click(".pf-caserne .pf-edit summary").catch(() => {});
+  await p.click('.pf-caserne [data-act="supprimer"]'); await p.waitForTimeout(900);
+  check((await p.textContent("#pf-summary")).includes("Aucune caserne"), "caserne archivée puis supprimée");
+  const jr = await p.textContent("#pf-journal");
+  check(jr.includes("caserne.suppression") && jr.includes("— Administrateur principal") && jr.includes("— Marie Durand"), "journal de la plateforme : qui a fait quoi");
   check(errors.length === 0, `aucune erreur JS ${errors.join(" | ")}`);
   await browser.close();
 })();

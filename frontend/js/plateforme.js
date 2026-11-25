@@ -26,6 +26,9 @@
     try {
       const me = await fetchJSON("/api/plateforme/moi");
       state.domaine = me.domaine;
+      state.moi = me.moi;
+      $("pf-me").textContent = me.moi.nom;
+      $("pf-me").hidden = false;
     } catch { showLogin(); return; }
     $("pf-login").hidden = true;
     $("pf-app").hidden = false;
@@ -39,10 +42,16 @@
     state.abos = r.abonnements_actifs;
     $("pf-abos").checked = state.abos;
     render();
+    const cp = await api("/api/plateforme/comptes");
+    $("pf-comptes").innerHTML = cp.comptes.length ? cp.comptes.map((a) => `<div class="pf-compte${a.actif ? "" : " off"}" data-id="${a.id}">
+        <span><b>${escapeHtml(a.nom)}</b> <small class="hint">${escapeHtml(a.identifiant)}${a.actif ? "" : " · désactivé"}</small></span>
+        <span><button type="button" class="btn small" data-cpt="pwd">Nouveau mot de passe</button>
+        ${state.moi && state.moi.id === a.id ? "" : `<button type="button" class="btn small" data-cpt="${a.actif ? "off" : "on"}">${a.actif ? "Désactiver" : "Réactiver"}</button>`}</span></div>`).join("")
+      : `<p class="hint">Aucun compte nominatif : seul le compte principal existe.</p>`;
     const j = await api("/api/plateforme/journal");
     $("pf-journal").innerHTML = j.entrees.length ? j.entrees.slice(0, 50).map((e) => `<div class="pf-jr">
         <span>${new Date(e.at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}</span>
-        <b>${escapeHtml(e.action)}</b> ${escapeHtml(e.objet)} <small class="hint">${escapeHtml(e.details)}</small></div>`).join("")
+        <b>${escapeHtml(e.action)}</b> ${escapeHtml(e.objet)} <small class="hint">${escapeHtml(e.details)}</small> <small class="pf-qui">— ${escapeHtml(e.qui)}</small></div>`).join("")
       : `<p class="hint">Rien pour l'instant.</p>`;
     // une génération en cours : on revient voir dans un moment
     if (state.casernes.some((c) => c.generation && c.generation.statut === "en_cours")) setTimeout(() => refresh().catch(() => {}), 8000);
@@ -67,7 +76,8 @@
         <p class="hint">${escapeHtml(c.slug)} · ${c.url ? `<a href="${escapeHtml(c.url)}" target="_blank" rel="noopener">${escapeHtml(c.url)}</a>` : "aucune adresse : à régler"}</p>
         <p>${genLine(c.generation)}${s.communes.length && !(c.generation && c.generation.statut === "en_cours") ? ` <small class="hint">(${s.communes.map(escapeHtml).join(", ")})</small>` : ""}</p>
         <p class="pf-stats">${s.comptes} compte(s) console · ${s.personnes} personne(s) · ${s.secteurs} secteur(s) · ${s.dons} don(s) ${s.annee} : <b>${euros(s.total)}</b>
-          ${s.derniere_activite ? ` · dernière activité ${new Date(s.derniere_activite).toLocaleDateString("fr-FR")}` : ""}</p>
+          ${s.derniere_activite ? ` · dernière activité ${new Date(s.derniere_activite).toLocaleDateString("fr-FR")}` : ""}
+          · ${s.derniere_sauvegarde ? `dernière sauvegarde ${new Date(s.derniere_sauvegarde).toLocaleDateString("fr-FR")}` : `<span class="pf-warn">pas encore de sauvegarde</span>`}</p>
         ${state.abos ? `<p class="pf-abo ${abo.actif ? "" : "pf-ko"}">Abonnement : <b>${FORMULE[c.abonnement_formule]}</b>${c.abonnement_fin ? ` jusqu'au ${new Date(c.abonnement_fin).toLocaleDateString("fr-FR")}` : ""}${abo.actif ? "" : " — expiré"}</p>` : ""}
         <details class="pf-edit"><summary>Gérer</summary>
           <label class="field">Nom<input data-f="nom" value="${escapeHtml(c.nom)}" maxlength="120" /></label>
@@ -79,6 +89,8 @@
             <button type="button" class="btn small primary" data-act="save">Enregistrer</button>
             ${c.statut === "active" ? `<button type="button" class="btn small" data-act="suspendue">Suspendre</button>` : `<button type="button" class="btn small" data-act="active">Réactiver</button>`}
             ${c.statut !== "archivee" ? `<button type="button" class="btn small danger" data-act="archivee">Archiver</button>` : ""}
+            <a class="btn small" href="/api/plateforme/casernes/${c.id}/export" download>⬇ Exporter toutes les données</a>
+            ${c.statut === "archivee" ? `<button type="button" class="btn small danger" data-act="supprimer">Supprimer définitivement</button>` : ""}
           </div>
           <label class="field">Communes à télécharger (une par ligne : Nom, code postal)<textarea data-f="communes" rows="2" placeholder="Courzieu, 69690"></textarea></label>
           <button type="button" class="btn small" data-act="communes">Télécharger les communes</button>
@@ -124,6 +136,12 @@
       } else if (act === "communes") {
         await api(`/api/plateforme/casernes/${id}/communes`, { method: "POST", body: { communes: parseCommunes(v("communes")) } });
         showToast("Téléchargement lancé : quelques minutes…");
+      } else if (act === "supprimer") {
+        const { slug } = state.casernes.find((x) => String(x.id) === id);
+        const typed = prompt(`Suppression DÉFINITIVE de toutes les données de cette caserne (base, communes, sauvegardes).\nExportez-les d'abord.\n\nTapez son identifiant pour confirmer : ${slug}`);
+        if (typed === null) return;
+        await api(`/api/plateforme/casernes/${id}?confirmation=${encodeURIComponent(typed)}`, { method: "DELETE" });
+        showToast("Caserne supprimée");
       } else if (act === "compte") {
         await api(`/api/plateforme/casernes/${id}/comptes`, { method: "POST", body: { identifiant: v("a_ident").trim(), nom: v("a_nom").trim(), password: v("a_pwd") } });
         showToast("Compte administrateur créé ✓");
@@ -165,6 +183,32 @@
     }
   });
 
+  $("pf-compte-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await api("/api/plateforme/comptes", { method: "POST", body: { identifiant: $("pf-a-ident").value.trim(), nom: $("pf-a-nom").value.trim(), password: $("pf-a-pwd").value } });
+      $("pf-compte-form").reset();
+      showToast("Compte créé ✓");
+      await refresh();
+    } catch (err) { showToast(err.message, true); }
+  });
+  $("pf-comptes").addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-cpt]");
+    if (!btn) return;
+    const id = btn.closest(".pf-compte").dataset.id;
+    try {
+      if (btn.dataset.cpt === "pwd") {
+        const pwd = prompt("Nouveau mot de passe (10 caractères au moins) :");
+        if (!pwd) return;
+        await api(`/api/plateforme/comptes/${id}`, { method: "PUT", body: { password: pwd } });
+        showToast("Mot de passe changé ✓");
+      } else {
+        await api(`/api/plateforme/comptes/${id}`, { method: "PUT", body: { actif: btn.dataset.cpt === "on" } });
+      }
+      await refresh();
+    } catch (err) { showToast(err.message, true); }
+  });
+
   $("pf-abos").addEventListener("change", async () => {
     try {
       await api("/api/plateforme/reglages", { method: "PUT", body: { abonnements_actifs: $("pf-abos").checked } });
@@ -175,7 +219,8 @@
   $("pf-login-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     try {
-      await fetchJSON("/api/plateforme/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: $("pf-password").value }) });
+      await fetchJSON("/api/plateforme/login", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifiant: $("pf-ident").value.trim(), password: $("pf-password").value }) });
       $("pf-password").value = "";
       $("pf-login-error").hidden = true;
       await start();

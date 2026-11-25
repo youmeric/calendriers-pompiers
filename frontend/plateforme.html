@@ -18,6 +18,7 @@
       </span>
     </span>
     <div class="topbar-actions">
+      <span id="pf-me" class="topbar-link" hidden></span>
       <button id="pf-logout" class="topbar-link" type="button" hidden>Déconnexion</button>
     </div>
   </header>
@@ -26,6 +27,8 @@
     <form id="pf-login-form" class="card login-card">
       <h2>Admin central</h2>
       <p class="hint">Création et gestion des casernes de la plateforme.</p>
+      <label for="pf-ident">Identifiant</label>
+      <input id="pf-ident" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="60" placeholder="vide = compte principal" />
       <label for="pf-password">Mot de passe</label>
       <input id="pf-password" type="password" autocomplete="current-password" required />
       <button type="submit" class="btn primary">Se connecter</button>
@@ -50,6 +53,18 @@
         <span><b>Abonnements</b> : suivre une formule et une date de fin pour chaque caserne. Désactivé : toutes les casernes sont libres.
           Activé : une caserne dont l'abonnement est expiré voit un avertissement dans son admin.</span>
       </label>
+    </section>
+
+    <section class="card pf-card">
+      <h2>Comptes de l'admin central</h2>
+      <p class="hint">Chaque personne qui gère la plateforme a son compte (le journal dit qui a fait quoi). Le mot de passe de l'installation (PLATFORM_ADMIN_PASSWORD) reste le compte principal, à garder pour le secours.</p>
+      <div id="pf-comptes"></div>
+      <form id="pf-compte-form" class="pf-compte-form">
+        <input id="pf-a-ident" required maxlength="60" placeholder="Identifiant" autocapitalize="none" spellcheck="false" />
+        <input id="pf-a-nom" required maxlength="80" placeholder="Prénom Nom" />
+        <input id="pf-a-pwd" required minlength="10" maxlength="200" placeholder="Mot de passe (10 caractères au moins)" autocomplete="new-password" />
+        <button type="submit" class="btn small primary">Ajouter</button>
+      </form>
     </section>
 
     <section class="card pf-card">

@@ -2234,3 +2234,14 @@ body.terrain.theme-dark .ent-name { color: #cbd5e1; }
 .dm-next li.done { color: #166534; }
 .dm-actions { align-items: center; }
 .dm-spacer { flex: 1; }
+.pf-compte { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line, #e5e7eb); flex-wrap: wrap; }
+.pf-compte.off { opacity: .6; }
+.pf-compte-form { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.pf-compte-form input { flex: 1 1 160px; height: 36px; padding: 0 10px; border: 1px solid var(--line, #e5e7eb); border-radius: 8px; font: inherit; }
+.pf-qui { color: var(--muted, #6b7280); }
+.pf-edit .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted, #6b7280); }
+.pf-edit .field input, .pf-edit .field textarea, .pf-edit .field select { font: inherit; font-size: 14px; font-weight: 400; color: var(--text, #111827);
+  padding: 8px 10px; border: 1px solid var(--line, #e5e7eb); border-radius: 8px; background: var(--card, #fff); width: 100%; box-sizing: border-box; }
+.pf-edit .field-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.pf-edit .field-row .field { flex: 1 1 200px; }
+.pf-edit > .btn, .pf-edit fieldset .btn { margin-top: 8px; }

@@ -62,7 +62,12 @@ Proposer le site à plusieurs casernes :
   téléchargement, création des secteurs proposés automatiquement dans chaque commune qui n'en a pas),
   *Lancer la tournée* (année, suivi, dons, étapes suivantes). Chaque étape cochée quand elle est faite ;
   le guide reste accessible par « 🚀 Guide de démarrage » ; jamais affiché dans l'installation simple.
-- [ ] Étape 5 — Exploitation (export complet d'une caserne, comptes de l'admin central, limites).
+- [x] **Étape 5 — Exploitation** : comptes nominatifs de l'admin central (le mot de passe de
+  l'installation reste le compte principal de secours ; changer un mot de passe ou désactiver un compte
+  coupe ses sessions ; le journal dit qui a fait quoi) ; **export complet** d'une caserne en un zip (copie
+  cohérente de sa base avec logo et réglages, ses communes, `caserne.json`, notice) ; **suppression
+  définitive** seulement d'une caserne archivée, en retapant son identifiant ; date de la dernière
+  sauvegarde de chaque caserne. Limites déjà en place : logo 1 Mo, 20 communes par téléchargement.
 - [ ] Étape 6 — Migration de Courzieu et mise en service.
 
 ### Essayer en local
