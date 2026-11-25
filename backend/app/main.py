@@ -17,7 +17,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import auth, db
@@ -2711,9 +2711,13 @@ class CaserneMiddleware:
         central_path = path == "/plateforme" or path.startswith("/api/plateforme/")
         if path == "/api/sante":
             return await self.asgi(scope, receive, send)
+        if path == "/robots.txt":  # seul le site vitrine est à référencer, jamais l'espace d'une caserne
+            return await _robots(plateforme.vitrine_host(host))(scope, receive, send)
         if plateforme.vitrine_host(host):  # almaneo.fr : le site vitrine
             if path in ("/", "/index.html"):
                 return await _vitrine_page()(scope, receive, send)
+            if path == "/sitemap.xml":
+                return await _sitemap()(scope, receive, send)
             if path.startswith(STATIC_PREFIXES) or path == "/api/vitrine/demande":
                 return await self.asgi(scope, receive, send)
             if path == "/plateforme" and plateforme.PLATFORM_DOMAIN:
@@ -2746,10 +2750,63 @@ def _vitrine_page() -> HTMLResponse:
     html = (FRONTEND_DIR / "vitrine.html").read_text(encoding="utf-8").replace("__V__", ASSET_VERSION)
     html = (html.replace("__NOM__", esc(name))
             .replace("__CONTACT__", f'<a href="mailto:{esc(mail)}">{esc(mail)}</a>' if mail else "le formulaire ci-dessus")
+            .replace("__CONTACT_DIRECT__", f'<p class="v-direct">Vous préférez écrire directement ? <a href="mailto:{esc(mail)}">{esc(mail)}</a></p>' if mail else "")
             .replace("__EDITEUR__", esc(editeur) if editeur else esc(name))
             .replace("__DOMAINE__", esc(plateforme.PLATFORM_DOMAIN or "almaneo.fr"))
             .replace("__ADMIN__", f"https://admin.{esc(plateforme.PLATFORM_DOMAIN)}/plateforme" if plateforme.PLATFORM_DOMAIN else "/plateforme"))
     return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+
+def _site_url() -> str:
+    return f"https://{plateforme.PLATFORM_DOMAIN or 'almaneo.fr'}/"
+
+
+def _robots(vitrine: bool) -> PlainTextResponse:
+    body = (f"User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: {_site_url()}sitemap.xml\n" if vitrine
+            else "User-agent: *\nDisallow: /\n")
+    return PlainTextResponse(body, headers={"Cache-Control": "public, max-age=3600"})
+
+
+def _sitemap() -> Response:
+    body = ('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+            f"<url><loc>{_site_url()}</loc><changefreq>monthly</changefreq></url></urlset>\n")
+    return Response(body, media_type="application/xml", headers={"Cache-Control": "public, max-age=3600"})
+
+
+class SecurityHeadersMiddleware:
+    """En-têtes de sécurité sur toutes les réponses (y compris celles servies directement par CaserneMiddleware).
+    - nosniff, referrer limité, fonctions du navigateur inutiles coupées (la position reste permise : carte terrain) ;
+    - pas d'affichage du site dans un cadre d'un autre site (hameçonnage) ;
+    - HSTS quand la page arrive en HTTPS par le proxy ;
+    - en version multi-casernes, l'espace d'une caserne et l'admin central ne sont pas référencés par les moteurs."""
+
+    BASE = ((b"x-content-type-options", b"nosniff"),
+            (b"referrer-policy", b"strict-origin-when-cross-origin"),
+            (b"permissions-policy", b"camera=(), microphone=(), payment=(), usb=(), geolocation=(self)"),
+            (b"x-frame-options", b"SAMEORIGIN"))
+
+    def __init__(self, app):
+        self.asgi = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.asgi(scope, receive, send)
+        req = dict(scope.get("headers") or [])
+        extra = list(self.BASE)
+        if req.get(b"x-forwarded-proto", b"").split(b",")[0].strip() == b"https":
+            extra.append((b"strict-transport-security", b"max-age=31536000"))
+        if plateforme.enabled() and not plateforme.vitrine_host(req.get(b"host", b"").decode("latin-1")):
+            extra.append((b"x-robots-tag", b"noindex, nofollow"))
+
+        async def send_with_headers(message):
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers") or [])
+                present = {k.lower() for k, _ in headers}
+                headers += [(k, v) for k, v in extra if k not in present]
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.asgi(scope, receive, send_with_headers)
 
 
 def _plain(code: int, message: str):
@@ -2757,6 +2814,7 @@ def _plain(code: int, message: str):
 
 
 app.add_middleware(CaserneMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)  # ajouté en dernier : enveloppe tout, y compris le site vitrine
 
 
 if FRONTEND_DIR.exists():

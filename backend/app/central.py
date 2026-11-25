@@ -93,7 +93,7 @@ class LoginIn(BaseModel):
 
 @router.post("/api/plateforme/login")
 def login(payload: LoginIn, request: Request, response: Response):
-    ip = request.client.host if request.client else "?"
+    ip = auth.client_ip(request)
     if auth.too_many_attempts(ip):
         raise HTTPException(status_code=429, detail="Trop d'essais : réessayez dans quelques minutes")
     ident = payload.identifiant.strip()
@@ -495,10 +495,12 @@ class DemandeIn(BaseModel):
     caserne: str = Field(min_length=2, max_length=120)
     email: str = Field(min_length=5, max_length=150, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
     telephone: str = Field(default="", max_length=30)
+    commune: str = Field(default="", max_length=120)
+    equipiers: str = Field(default="", max_length=20)
     message: str = Field(default="", max_length=1500)
     site: str = Field(default="", max_length=200)  # piège à robots : champ caché, doit rester vide
 
-    @field_validator("nom", "caserne", "email", "telephone")
+    @field_validator("nom", "caserne", "email", "telephone", "commune", "equipiers")
     @classmethod
     def strip(cls, v: str) -> str:
         return " ".join(v.split())
@@ -510,7 +512,7 @@ _demandes_ip: dict[str, list[float]] = {}
 @router.post("/api/vitrine/demande")
 def vitrine_request(payload: DemandeIn, request: Request):
     """Demande de démonstration depuis almaneo.fr : enregistrée pour l'admin central."""
-    ip = request.client.host if request.client else "?"
+    ip = auth.client_ip(request)
     now = time.time()
     recent = [t for t in _demandes_ip.get(ip, []) if now - t < 3600]
     if len(recent) >= 5:

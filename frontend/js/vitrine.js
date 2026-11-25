@@ -20,7 +20,7 @@
         throw new Error(typeof d === "string" ? d : "Vérifiez les champs du formulaire.");
       }
       form.reset();
-      show("Merci ! Votre demande est bien partie : nous vous recontactons très vite.", true);
+      show("Merci ! Votre demande est bien partie. Nous vous recontactons par e-mail (ou par téléphone si vous l'avez indiqué) pour convenir d'une démonstration.", true);
     } catch (err) {
       show(err.message || "Envoi impossible, réessayez.", false);
     } finally {

@@ -247,6 +247,7 @@
         <div><b>${escapeHtml(d.caserne)}</b> — ${escapeHtml(d.nom)}
           <small class="hint">${new Date(d.created_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}</small><br>
           <a href="mailto:${encodeURIComponent(d.email).replace(/%40/g, "@")}">${escapeHtml(d.email)}</a>${d.telephone ? ` · ${escapeHtml(d.telephone)}` : ""}
+          ${d.commune || d.equipiers ? `<br><small>${[d.commune && `📍 ${escapeHtml(d.commune)}`, d.equipiers && `👥 ${escapeHtml(d.equipiers)} équipiers`].filter(Boolean).join(" · ")}</small>` : ""}
           ${d.message ? `<p class="pf-dem-msg">${escapeHtml(d.message)}</p>` : ""}</div>
         <button type="button" class="btn small" data-dem="${d.traitee ? "0" : "1"}">${d.traitee ? "Rouvrir" : "✓ Traitée"}</button></div>`).join("")
       : `<p class="hint">Aucune demande pour l'instant.</p>`;

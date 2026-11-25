@@ -3,8 +3,14 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>__NOM__ — la tournée des calendriers des sapeurs-pompiers, simplement</title>
-<meta name="description" content="__NOM__ accompagne les amicales de sapeurs-pompiers dans la tournée des calendriers : secteurs sur la carte, équipes, suivi des maisons sur téléphone (même sans réseau), dons, reçus et dossier comptable." />
+<title>__NOM__ — application pour la tournée des calendriers des sapeurs-pompiers</title>
+<meta name="description" content="__NOM__ simplifie la tournée des calendriers des sapeurs-pompiers : secteurs sur la carte, suivi sur téléphone même sans réseau, dons, reçus, caisse et bilan comptable pour les amicales." />
+<link rel="canonical" href="https://__DOMAINE__/" />
+<meta name="robots" content="index, follow" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://__DOMAINE__/" />
+<meta property="og:locale" content="fr_FR" />
+<meta property="og:site_name" content="__NOM__" />
 <meta property="og:title" content="__NOM__ — la tournée des calendriers, simplement" />
 <meta property="og:description" content="Secteurs, équipes, suivi des maisons, dons et dossier comptable : tout pour la tournée des calendriers des sapeurs-pompiers." />
 <meta property="og:image" content="https://__DOMAINE__/img/almaneo/partage.png" />
@@ -17,6 +23,19 @@
 <meta name="theme-color" content="#0B1F44" />
 <link rel="preload" href="/vendor/inter/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="stylesheet" href="/css/vitrine.css?v=__V__" />
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    { "@type": "Organization", "name": "__NOM__", "url": "https://__DOMAINE__/", "logo": "https://__DOMAINE__/img/almaneo/icone-512.png" },
+    { "@type": "SoftwareApplication", "name": "__NOM__", "url": "https://__DOMAINE__/",
+      "applicationCategory": "BusinessApplication", "operatingSystem": "Navigateur web (téléphone, tablette, ordinateur)",
+      "inLanguage": "fr",
+      "description": "Application web pour la tournée des calendriers des amicales de sapeurs-pompiers : secteurs sur la carte, suivi des maisons sur téléphone même sans réseau, dons, reçus, caisse et dossier comptable.",
+      "image": "https://__DOMAINE__/img/almaneo/partage.png" }
+  ]
+}
+</script>
 </head>
 <body>
   <header class="v-top">
@@ -24,6 +43,7 @@
     <nav class="v-nav" aria-label="Sommaire">
       <a href="#fonctions">Fonctions</a>
       <a href="#comment">Comment ça marche</a>
+      <a href="#securite">Sécurité</a>
       <a href="#questions">Questions</a>
       <a class="v-btn small" href="#contact">Demander une démo</a>
     </nav>
@@ -45,6 +65,7 @@
           <li>✓ Fonctionne même sans réseau</li>
           <li>✓ Vos données restent les vôtres</li>
         </ul>
+        <p class="v-origin">Né et utilisé sur le terrain chez les sapeurs-pompiers de Courzieu (Rhône).</p>
       </div>
       <div class="v-hero-shots" aria-hidden="true">
         <img class="v-phone back" src="/img/vitrine/phone-maisons.jpg" alt="" width="280" height="476" />
@@ -84,6 +105,18 @@
       <img class="v-wide" src="/img/vitrine/admin-secteurs.jpg" alt="L'éditeur des secteurs : quatre secteurs colorés sur la carte et l'équilibre entre eux" width="700" height="438" loading="lazy" />
     </section>
 
+    <section class="v-section v-story">
+      <div class="v-story-card">
+        <p class="v-kicker">Pourquoi __NOM__ ?</p>
+        <h2>Né dans une caserne, pensé pour toutes les amicales.</h2>
+        <p>Chaque année, les mêmes difficultés revenaient : des plans papier à refaire, des secteurs difficiles à équilibrer,
+          des listes de rues à recopier, et de longues soirées pour recompter les enveloppes.</p>
+        <p>__NOM__ est né de cette expérience, chez les sapeurs-pompiers de Courzieu, et a été construit et éprouvé pendant la tournée,
+          avec celles et ceux qui la font. Une seule ambition : moderniser la tournée des calendriers sans compliquer
+          la vie des bénévoles. Si un équipier sait envoyer un message, il sait utiliser __NOM__.</p>
+      </div>
+    </section>
+
     <section class="v-section" id="comment">
       <h2>Comment ça marche</h2>
       <ol class="v-steps">
@@ -93,12 +126,39 @@
       </ol>
     </section>
 
+    <section class="v-section v-secu" id="securite">
+      <h2>Vos données, protégées</h2>
+      <p class="v-sub">Adresses, équipes, dons : des informations qui méritent d'être bien gardées. Voici ce que fait __NOM__, concrètement.</p>
+      <div class="v-grid">
+        <article><span class="v-ico">🏠</span><h3>Un espace par caserne</h3>
+          <p>Chaque amicale a sa propre adresse et sa propre base de données, séparée de celles des autres. Aucune autre amicale ne peut y accéder.</p></article>
+        <article><span class="v-ico">🔒</span><h3>Connexions chiffrées</h3>
+          <p>Tout passe en HTTPS. Les mots de passe ne sont jamais stockés en clair et les essais de connexion répétés sont freinés.</p></article>
+        <article><span class="v-ico">🔑</span><h3>Chacun ses droits</h3>
+          <p>Chaque équipier a son code personnel et ne voit que son secteur. Les accès administrateurs se règlent fonction par fonction. Un code perdu se remplace en un clic : l'ancien ne marche plus.</p></article>
+        <article><span class="v-ico">💾</span><h3>Sauvegardes quotidiennes</h3>
+          <p>Une sauvegarde automatique chaque jour, gardée 30 jours, et une copie chiffrée hors du serveur si vous le souhaitez.</p></article>
+        <article><span class="v-ico">🧹</span><h3>Le strict nécessaire</h3>
+          <p>Les données personnelles sont limitées au nécessaire et effacées automatiquement au bout des durées que vous choisissez.</p></article>
+        <article><span class="v-ico">📦</span><h3>Vos données restent les vôtres</h3>
+          <p>Vous exportez tout quand vous voulez. Si vous arrêtez, votre espace et ses données sont supprimés sur simple demande.</p></article>
+      </div>
+    </section>
+
     <section class="v-section" id="questions">
       <h2>Questions fréquentes</h2>
       <div class="v-faq">
         <details><summary>Faut-il installer une application ?</summary><p>Non. Tout se passe dans le navigateur du téléphone ; on peut l'ajouter à l'écran d'accueil comme une appli, sans passer par un magasin d'applications.</p></details>
         <details><summary>Et sans réseau dans les hameaux ?</summary><p>Le téléphone garde une copie du secteur : on continue de marquer les maisons et les dons, tout part dès que le réseau revient.</p></details>
         <details><summary>À qui appartiennent les données ?</summary><p>À votre amicale. Vous pouvez tout exporter à tout moment (secteurs, équipes, dons, registre). Les données personnelles sont limitées au nécessaire et effacées automatiquement au bout des durées que vous choisissez.</p></details>
+        <details><summary>Combien de temps faut-il pour démarrer ?</summary><p>Nous créons votre espace avec vos communes : les adresses et les routes sont récupérées automatiquement. Ensuite, un guide vous accompagne à la première connexion ; comptez une soirée pour préparer les secteurs et les équipes.</p></details>
+        <details><summary>Peut-on gérer plusieurs communes ?</summary><p>Oui. Chaque commune a ses secteurs, et une tournée peut même couvrir plusieurs communes (par exemple la tournée des entreprises).</p></details>
+        <details><summary>Plusieurs équipes peuvent-elles travailler en même temps ?</summary><p>Oui, chacune sur son secteur, depuis son téléphone. Vous suivez l'avancement de toutes les tournées en direct sur la carte.</p></details>
+        <details><summary>Et si un don est saisi sans réseau, puis renvoyé deux fois ?</summary><p>Chaque saisie porte un identifiant unique : même renvoyée plusieurs fois après une coupure, elle n'est comptée qu'une seule fois.</p></details>
+        <details><summary>Que se passe-t-il si un téléphone est perdu ?</summary><p>Vous créez un nouveau code pour l'équipier en un clic : l'ancien ne fonctionne plus. Tout ce qui avait déjà été envoyé est en sécurité sur le serveur.</p></details>
+        <details><summary>Et l'année suivante ?</summary><p>Rien à refaire : les adresses, les secteurs et les équipes restent d'une année sur l'autre, vous ajustez seulement ce qui change. Le bilan compare chaque année à la précédente.</p></details>
+        <details><summary>Peut-on imprimer les secteurs ?</summary><p>Oui : chaque secteur a son plan imprimable, avec un QR code qui ouvre le secteur sur le téléphone.</p></details>
+        <details><summary>Une autre amicale peut-elle voir nos données ?</summary><p>Non. Chaque caserne a sa propre base de données, à sa propre adresse : les espaces sont complètement séparés.</p></details>
         <details><summary>Les reçus sont-ils des reçus fiscaux ?</summary><p>Non : ce sont des reçus de paiement simples, que l'habitant peut garder. Le dossier comptable, lui, rassemble tout ce qu'il faut pour vos comptes.</p></details>
         <details><summary>Combien ça coûte ?</summary><p>__NOM__ est en phase pilote : contactez-nous pour en parler.</p></details>
       </div>
@@ -112,12 +172,15 @@
         <label>Caserne / amicale<input name="caserne" required maxlength="120" placeholder="Amicale des sapeurs-pompiers de …" /></label>
         <label>E-mail<input name="email" type="email" required maxlength="150" autocomplete="email" /></label>
         <label>Téléphone (facultatif)<input name="telephone" maxlength="30" autocomplete="tel" /></label>
-        <label class="v-full">Message (facultatif)<textarea name="message" rows="4" maxlength="1500" placeholder="Nombre de communes, d'équipes, date de votre tournée…"></textarea></label>
+        <label>Commune(s) (facultatif)<input name="commune" maxlength="120" placeholder="Les communes de votre tournée" /></label>
+        <label>Nombre d'équipiers, environ (facultatif)<input name="equipiers" maxlength="20" inputmode="numeric" placeholder="Ex. : 25" /></label>
+        <label class="v-full">Message (facultatif)<textarea name="message" rows="4" maxlength="1500" placeholder="Date de votre tournée, vos questions…"></textarea></label>
         <label class="v-hp" aria-hidden="true">Site<input name="site" tabindex="-1" autocomplete="off" /></label>
         <p class="v-full v-legal">Vos coordonnées servent uniquement à vous recontacter au sujet de __NOM__ ; elles ne sont ni revendues ni utilisées pour autre chose.</p>
         <button type="submit" class="v-btn v-full">Envoyer la demande</button>
         <p id="v-msg" class="v-full v-msg" role="status" hidden></p>
       </form>
+      __CONTACT_DIRECT__
     </section>
   </main>
 

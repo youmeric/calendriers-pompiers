@@ -145,6 +145,10 @@ def init() -> None:
                           ("whatsapp_key", "TEXT NOT NULL DEFAULT ''")):
             if col not in cols:  # bot WhatsApp : géré par l'admin central, activé caserne par caserne
                 c.execute(f"ALTER TABLE casernes ADD COLUMN {col} {decl}")
+        dcols = {r[1] for r in c.execute("PRAGMA table_info(demandes)")}
+        for col in ("commune", "equipiers"):  # précisions facultatives du formulaire de démo
+            if col not in dcols:
+                c.execute(f"ALTER TABLE demandes ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
         c.commit()
 
 
@@ -348,13 +352,15 @@ def delete_caserne(caserne_id: int) -> None:
 
 # ---- Demandes de démonstration (site vitrine) ---------------------------------------------
 
-_DEMANDE = ("id", "nom", "caserne", "email", "telephone", "message", "created_at", "traitee")
+_DEMANDE = ("id", "nom", "caserne", "email", "telephone", "message", "created_at", "traitee", "commune", "equipiers")
 
 
 def add_demande(d: dict) -> int:
     with conn() as c:
-        did = c.execute("INSERT INTO demandes (nom, caserne, email, telephone, message, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                        (d["nom"], d["caserne"], d["email"], d.get("telephone", ""), d.get("message", ""), _now())).lastrowid
+        did = c.execute("INSERT INTO demandes (nom, caserne, email, telephone, message, commune, equipiers, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        (d["nom"], d["caserne"], d["email"], d.get("telephone", ""), d.get("message", ""),
+                         d.get("commune", ""), d.get("equipiers", ""), _now())).lastrowid
         c.commit()
     return did
 
