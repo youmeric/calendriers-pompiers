@@ -78,7 +78,13 @@ Proposer le site à plusieurs casernes :
   cohérente de sa base avec logo et réglages, ses communes, `caserne.json`, notice) ; **suppression
   définitive** seulement d'une caserne archivée, en retapant son identifiant ; date de la dernière
   sauvegarde de chaque caserne. Limites déjà en place : logo 1 Mo, 20 communes par téléchargement.
-- [ ] Étape 6 — Migration de Courzieu et mise en service.
+- [x] **Étape 6 — Bascule et mise en service (préparée)** : script `python -m app.basculer` (essai avec
+  `--essai`) qui fait de l'installation actuelle une caserne de la plateforme — copie cohérente de la base
+  (jamais modifiée : retour arrière immédiat), communes, sauvegardes, écusson, nom ; compte nominatif à la
+  place du compte principal ; **mêmes codes, téléphones et comptes toujours connectés** (chaque caserne
+  signe ses sessions avec la clé gardée dans sa base). Guide pas à pas : **`docs/MISE-EN-SERVICE.md`**
+  (DNS, certificat joker, Nginx Proxy Manager, jour J, vérifications, retour arrière).
+  Testé par `tests/api_bascule_test.py`. Reste : fusion dans `main` (accord nécessaire) et le jour J.
 
 ### Essayer en local
 

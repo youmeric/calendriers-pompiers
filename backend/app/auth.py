@@ -25,10 +25,9 @@ def _get_secret() -> bytes:
     """Clé de signature des sessions : une par base, donc une par caserne (version multi-casernes)."""
     path = db.db_path()
     if path not in _secrets:
-        env = os.environ.get("SECRET_KEY")
-        cas = plateforme.current.get()
-        if env and cas is not None:
-            env = hmac.new(env.encode(), f"caserne:{cas.slug}".encode(), hashlib.sha256).hexdigest()
+        # caserne de la plateforme : toujours la clé de sa base (unique, et elle la suit si on la déplace :
+        # après la bascule d'une installation, téléphones et admins restent connectés)
+        env = None if plateforme.current.get() is not None else os.environ.get("SECRET_KEY")
         _secrets[path] = env or db.get_or_create_secret()
     return _secrets[path].encode()
 
