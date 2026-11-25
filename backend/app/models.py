@@ -170,6 +170,9 @@ class SettingsIn(BaseModel):
     retention_connexions_mois: float | None = Field(default=None, ge=1, le=120)
     retention_journal_ans: float | None = Field(default=None, ge=1, le=30)
     recus_actifs: bool | None = None
+    # identité de la caserne : nom affiché partout et couleur principale du site
+    caserne_nom: str | None = Field(default=None, max_length=120)
+    caserne_couleur: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     # pourcentage d'avancement : maisons passées (avec les absents à repasser), terminées (faites + refus) ou faites seulement
     avancement: Literal["passees", "terminees", "faites"] | None = None
     # copie chiffrée hors du serveur
@@ -477,6 +480,12 @@ class EntrepriseAjoutIn(BaseModel):
     @classmethod
     def strip_text(cls, v: str) -> str:
         return " ".join(v.split())
+
+
+class LogoIn(BaseModel):
+    """Logo de la caserne, envoyé par l'admin (image en base64, 1 Mo au plus)."""
+    type: Literal["image/png", "image/jpeg", "image/webp", "image/svg+xml"]
+    data: str = Field(min_length=10, max_length=1_400_000)
 
 
 class AdresseCorrectionIn(BaseModel):

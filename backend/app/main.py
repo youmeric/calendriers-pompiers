@@ -4,6 +4,7 @@ import datetime as dt
 import hashlib
 import json
 import asyncio
+import base64
 import logging
 import mimetypes
 import re
@@ -27,7 +28,7 @@ from .models import (AvancementIn, CodeIn, ConfirmIn, DonAnnexeIn, DonIn, DonSta
                      PersonnesIn, RemiseIn, RenfortIn, SectorsIn, SettingsIn, StatusUpdate, SumupRetourIn,
                      NoteIn, SignalementIn, SignalementActionIn, EnvoiAccesIn, RoleIn, CompteIn,
                      CompteUpdateIn, MotDePasseIn, DepotIn, ClotureIn, ReouvertureIn,
-                     SuperviseurIn, LogementsIn, AdresseCorrectionIn, EntrepriseIn, EntrepriseAjoutIn)
+                     SuperviseurIn, LogementsIn, AdresseCorrectionIn, LogoIn, EntrepriseIn, EntrepriseAjoutIn)
 from .resume import build_resume, commune_voie_counts
 
 DATA_DIR = Path(os.environ.get("SECTORS_DATA_DIR") or (Path(__file__).resolve().parent / "data"))
@@ -130,9 +131,56 @@ async def no_stale_files(request: Request, call_next):
     return response
 
 
-def _page(name: str) -> HTMLResponse:
-    """Page HTML dont les liens vers scripts/styles portent la version courante."""
+# ---- Identité de la caserne (nom, logo, couleur) ------------------------------------------
+# Sans réglage, l'installation simple garde exactement l'apparence de Courzieu ; une caserne de la
+# plateforme prend son nom et un logo neutre, qu'elle personnalise dans son admin.
+
+DEFAULT_NOM = os.environ.get("CASERNE_NOM") or "Sapeurs-pompiers de Courzieu"
+DEFAULT_COULEUR = "#e5383b"
+LOGO_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/svg+xml": "svg"}
+
+
+def _mix(hex_color: str, other: tuple[int, int, int], t: float) -> str:
+    r, g, b = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
+    return "#" + "".join(f"{round(c + (o - c) * t):02x}" for c, o in zip((r, g, b), other))
+
+
+def _branding() -> dict:
+    cas = plateforme.current.get()
+    nom = db.get_setting("caserne_nom", "") or (cas.nom if cas else DEFAULT_NOM)
+    couleur = db.get_setting("caserne_couleur", "") or DEFAULT_COULEUR
+    logo_v = db.get_setting("caserne_logo_v", "")
+    if logo_v:
+        logo = f"/logo?v={logo_v}"
+    else:
+        logo = "/img/logo-generique.svg" if cas is not None else "/img/logo-courzieu.png"
+    return {"nom": nom, "couleur": couleur, "logo": logo, "logo_perso": bool(logo_v),
+            "communes": [c["nom"] for c in list_communes().get("communes", [])]}
+
+
+def _theme_css(couleur: str) -> str:
+    if couleur.lower() == DEFAULT_COULEUR:
+        return ""  # couleurs de la feuille de style
+    return (f"<style>:root{{--accent:{couleur};--accent-dark:{_mix(couleur, (0, 0, 0), .14)};"
+            f"--accent-soft:{_mix(couleur, (255, 255, 255), .93)}}}</style>")
+
+
+def _page(name: str, brand: bool = True) -> HTMLResponse:
+    """Page HTML dont les liens vers scripts/styles portent la version courante, aux couleurs de la caserne."""
     html = (FRONTEND_DIR / name).read_text(encoding="utf-8").replace("__V__", ASSET_VERSION)
+    if brand:
+        b = _branding()
+        esc = lambda v: v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")  # noqa: E731
+        communes = " &amp; ".join(esc(c) for c in b["communes"])
+        own = b["logo_perso"] or plateforme.current.get() is not None  # sinon : icônes de Courzieu
+        html = (html.replace("__CASERNE__", esc(b["nom"])).replace("__LOGO__", esc(b["logo"]))
+                .replace("__COMMUNES__", communes)
+                .replace("__FAVICON__", esc(b["logo"]) if own else "/icons/favicon-64.png")
+                .replace("__APPLEICON__", esc(b["logo"]) if own else "/icons/apple-touch-icon.png")
+                .replace("__ICON__", esc(b["logo"]) if own else "/icons/icon-192.png"))
+        data = json.dumps({"nom": b["nom"], "logo": b["logo"], "couleur": b["couleur"], "communes": b["communes"]},
+                          ensure_ascii=False).replace("</", "<\\/")
+        html = html.replace("</head>", f"{_theme_css(b['couleur'])}<script>window.CASERNE={data};</script>\n</head>", 1)
     return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 # fichiers produits par le pipeline, rechargés s'ils sont régénérés
@@ -1448,6 +1496,8 @@ def admin_get_settings(request: Request):
             **{k: db.get_setting(k, "") or "" for k in ("editeur", "contact_email", "contact_tel", "hebergeur")},
             **{k: float(db.get_setting(k, "") or d) for k, d in RETENTION_DEFAULTS.items()},
             "recus_actifs": _flag("recus_actifs", True),
+            "caserne_nom": _branding()["nom"], "caserne_couleur": _branding()["couleur"],
+            "caserne_logo": _branding()["logo"], "caserne_logo_perso": _branding()["logo_perso"],
             "avancement": _avancement(),
             "purge_derniere": json.loads(db.get_setting("purge_derniere", "") or "null"),
             # copie hors du serveur : les mots de passe ne sont jamais renvoyés
@@ -1484,7 +1534,7 @@ def admin_save_settings(payload: SettingsIn, request: Request):
             db.set_setting(key, "1" if value else "0")
     for key in ("sumup_affiliate_key", "sumup_app_id", "whatsapp_bot_url", "whatsapp_bot_key", "asso_nom", "asso_adresse", "asso_siret",
                 "editeur", "contact_email", "contact_tel", "hebergeur", "offsite_mode", "offsite_url", "offsite_user",
-                "offsite_password", "offsite_dossier", "offsite_passphrase", "avancement"):
+                "offsite_password", "offsite_dossier", "offsite_passphrase", "avancement", "caserne_couleur"):
         value = getattr(payload, key)
         if value is not None:
             db.set_setting(key, value)
@@ -1492,6 +1542,8 @@ def admin_save_settings(payload: SettingsIn, request: Request):
         value = getattr(payload, key)
         if value is not None:
             db.set_setting(key, str(value))
+    if payload.caserne_nom is not None:
+        db.set_setting("caserne_nom", " ".join(payload.caserne_nom.split()))
     if payload.whatsapp_message is not None:
         msg = payload.whatsapp_message.strip()
         db.set_setting("whatsapp_message", "" if msg == whatsapp.DEFAULT_MESSAGE.strip() else msg)
@@ -1709,7 +1761,7 @@ def _access_message(p: dict, origin: str, template: str | None) -> str:
     return whatsapp.render(template or db.get_setting("whatsapp_message", "") or whatsapp.DEFAULT_MESSAGE, {
         "prenom": p["nom"].split(" ")[0], "nom": p["nom"], "code": f"{code[:4]}-{code[4:]}",
         "lien": f"{origin}/equipe#acces={code}", "annee": str(annee),
-        "tournee": f"tournée des calendriers {annee}",
+        "tournee": f"tournée des calendriers {annee}", "caserne": _branding()["nom"],
         "secteurs": ", avec accès à toutes les tournées (superviseur)" if p.get("superviseur")
         else f", secteur {', '.join(where)}" if where else "",
     })
@@ -2481,7 +2533,62 @@ app.include_router(central.router)
 
 @app.get("/plateforme", include_in_schema=False)
 def central_page():
-    return _page("plateforme.html")
+    return _page("plateforme.html", brand=False)
+
+
+@app.get("/logo", include_in_schema=False)
+def caserne_logo():
+    """Logo envoyé par la caserne (gardé dans sa base, donc dans ses sauvegardes)."""
+    data = db.get_setting("caserne_logo", "")
+    if not data:
+        return RedirectResponse(_branding()["logo"])
+    kind = db.get_setting("caserne_logo_type", "image/png")
+    headers = {"Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"}
+    if kind == "image/svg+xml":  # une image SVG ne doit jamais exécuter de script
+        headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+    return Response(base64.b64decode(data), media_type=kind, headers=headers)
+
+
+@app.put("/api/admin/logo", dependencies=[Depends(auth.require("reglages"))])
+def admin_set_logo(payload: LogoIn, request: Request):
+    try:
+        raw = base64.b64decode(payload.data, validate=True)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Image illisible")
+    if len(raw) > 1_000_000:
+        raise HTTPException(status_code=413, detail="Image trop lourde (1 Mo au plus)")
+    signatures = {"image/png": raw[:8] == b"\x89PNG\r\n\x1a\n", "image/jpeg": raw[:3] == b"\xff\xd8\xff",
+                  "image/webp": raw[:4] == b"RIFF" and raw[8:12] == b"WEBP",
+                  "image/svg+xml": b"<svg" in raw[:2000].lower()}
+    if not signatures[payload.type]:
+        raise HTTPException(status_code=422, detail="Le fichier ne correspond pas à une image PNG, JPEG, WebP ou SVG")
+    db.set_setting("caserne_logo", base64.b64encode(raw).decode())
+    db.set_setting("caserne_logo_type", payload.type)
+    db.set_setting("caserne_logo_v", hashlib.sha1(raw).hexdigest()[:10])
+    _log(request, "reglages", "logo", f"nouveau logo ({payload.type}, {len(raw) // 1024} Ko)")
+    return {"logo": _branding()["logo"]}
+
+
+@app.delete("/api/admin/logo", dependencies=[Depends(auth.require("reglages"))])
+def admin_delete_logo(request: Request):
+    for k in ("caserne_logo", "caserne_logo_type", "caserne_logo_v"):
+        db.set_setting(k, "")
+    _log(request, "reglages", "logo", "logo d'origine rétabli")
+    return {"logo": _branding()["logo"]}
+
+
+@app.get("/manifest.webmanifest", include_in_schema=False)
+def web_manifest():
+    """Application installable aux nom et logo de la caserne."""
+    b = _branding()
+    base = json.loads((FRONTEND_DIR / "manifest.webmanifest").read_text(encoding="utf-8"))
+    base["name"] = f"Tournée des calendriers — {b['nom']}"
+    base["description"] = f"Secteurs de la tournée des calendriers — {b['nom']}" + (f" ({', '.join(b['communes'])})" if b["communes"] else "")
+    base["theme_color"] = b["couleur"] if b["couleur"] != DEFAULT_COULEUR else base.get("theme_color", DEFAULT_COULEUR)
+    if b["logo_perso"] or plateforme.current.get() is not None:
+        kind = db.get_setting("caserne_logo_type", "image/svg+xml") if b["logo_perso"] else "image/svg+xml"
+        base["icons"] = [{"src": b["logo"], "sizes": "any", "type": kind, "purpose": "any"}]
+    return JSONResponse(base, media_type="application/manifest+json", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/public/caserne")

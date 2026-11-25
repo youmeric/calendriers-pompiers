@@ -44,7 +44,7 @@
 
   function header(f) {
     const a = f.association;
-    $("fx-asso-line").textContent = [a.nom || "Sapeurs-pompiers de Courzieu", a.adresse, a.siret && `RNA / SIRET ${a.siret}`].filter(Boolean).join(" · ");
+    $("fx-asso-line").textContent = [a.nom || (window.CASERNE || {}).nom || "", a.adresse, a.siret && `RNA / SIRET ${a.siret}`].filter(Boolean).join(" · ");
     $("fx-title").textContent = `Dossier comptable — Tournée des calendriers ${f.annee}`;
     const p = f.periode;
     $("fx-sub").textContent = `${p.debut ? `Dons du ${dateFr(p.debut)} au ${dateFr(p.fin)}` : "Aucun don encaissé"} · édité le ${dateTimeFr(f.edite_le)}`;
@@ -53,7 +53,7 @@
       ? `<div class="fx-badge closed"><b>🔒 Tournée clôturée</b> le ${dateTimeFr(c.cloture_le)} par ${escapeHtml(c.par)} : ${c.nb_dons} dons, ${eur(c.total_cents / 100)}.
           <span>Empreinte SHA-256 du registre archivé : <code>${c.sha256}</code></span></div>`
       : `<div class="fx-badge open"><b>Tournée en cours</b> : chiffres provisoires, ils évoluent avec les saisies. Clôturez l'année une fois la tournée et la caisse terminées.</div>`;
-    document.title = `Dossier comptable ${f.annee} — Sapeurs-pompiers de Courzieu`;
+    document.title = `Dossier comptable ${f.annee} — ${(window.CASERNE || {}).nom || ""}`;
   }
 
   function kpis(f) {

@@ -48,7 +48,14 @@ Proposer le site à plusieurs casernes :
 - [x] **Option abonnement** préparée : formule (gratuit, essai, actif, expiré) et date de fin par
   caserne, activable dans les réglages de la plateforme ; une caserne expirée voit un avertissement dans
   son admin (rien n'est bloqué pour l'instant — à décider).
-- [ ] Étape 2 — personnalisation (nom, logo, couleurs ; plus de « Courzieu » en dur).
+- [x] **Étape 2 — Personnalisation** : plus aucun « Courzieu » en dur dans les pages. Chaque caserne
+  règle dans son admin (Suivi & dons → Réglages → *Identité de la caserne*) son **nom affiché**, sa
+  **couleur principale** et son **logo** (PNG, JPEG, WebP ou SVG, 1 Mo ; gardé dans sa base, donc dans
+  ses sauvegardes ; SVG servi sans aucun script possible). Le serveur remplit les pages (`__CASERNE__`,
+  `__LOGO__`, `__COMMUNES__`, icônes) et `window.CASERNE` ; l'appli installable (manifest) et le message
+  WhatsApp d'accès (`{caserne}`) suivent. Une nouvelle caserne démarre avec son nom et un logo neutre
+  (`img/logo-generique.svg`). **Sans réglage, l'installation simple reste exactement celle de Courzieu**
+  (nom, écusson, icônes, couleurs) — vérifié par `tests/api_identite_test.py`.
 - [ ] Étapes 4 à 6.
 
 ### Essayer en local

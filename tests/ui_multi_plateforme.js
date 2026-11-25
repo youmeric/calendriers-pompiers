@@ -38,6 +38,27 @@ function check(c, m) { console.log(`${c ? "OK  " : "FAIL"} ${m}`); if (!c) proce
   await c.waitForSelector("#editor-view:not([hidden])", { timeout: 10000 }).catch(() => {});
   check(await c.isVisible("#editor-view") && (await c.textContent("#commune-select")).includes("Courzieu"), "admin de la caserne : connexion et communes (données de test)");
   await c.screenshot({ path: `${SP}/pf-caserne-admin.png` });
+  check((await c.getAttribute(".brand-logo", "src")) === "/img/logo-generique.svg" && (await c.textContent(".topbar-sub")) === "Sapeurs-pompiers de Vaugneray",
+    "admin de la caserne : son nom et un logo neutre");
+  // identité : nom, couleur, logo
+  await c.click('.admin-tab[data-tab="bilan"]'); await c.waitForTimeout(1200);
+  await c.evaluate(() => { document.getElementById("brand-group").open = true; });
+  await c.fill('[data-setting="caserne_nom"]', "Centre de secours de Vaugneray"); await c.press('[data-setting="caserne_nom"]', "Tab");
+  await c.locator('[data-setting="caserne_couleur"]').fill("#0f766e"); await c.waitForTimeout(400);
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+  await c.setInputFiles("#brand-logo-file", { name: "ecusson.png", mimeType: "image/png", buffer: png }); await c.waitForTimeout(900);
+  check((await c.getAttribute("#brand-logo-preview", "src")).startsWith("/logo?v=") && await c.isVisible("#brand-logo-reset"), "logo envoyé depuis l'admin");
+  await c.screenshot({ path: `${SP}/pf-identite.png`, fullPage: false });
+  const pub = await (await browser.newContext({ viewport: { width: 400, height: 800 } })).newPage(); watch(pub, "public");
+  await pub.route(/tile\.openstreetmap\.org|data\.geopf\.fr|fonts\.g/, (r) => r.abort());
+  await pub.goto(`${CASERNE}/`); await pub.waitForTimeout(1200);
+  const accent = await pub.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
+  check((await pub.textContent(".topbar-sub")) === "Centre de secours de Vaugneray" && (await pub.getAttribute(".brand-logo", "src")).startsWith("/logo?v=") && accent === "#0f766e",
+    "site public : nouveau nom, logo et couleur");
+  await pub.goto(`${CASERNE}/equipe`); await pub.waitForTimeout(1200);
+  const html = await pub.content();
+  check(html.includes('alt="Centre de secours de Vaugneray"') && !html.includes("Sapeurs-pompiers de Courzieu"), "espace équipe : identité de la caserne");
+  await pub.screenshot({ path: `${SP}/pf-equipe-login.png` });
   const other = await (await browser.newContext()).newPage();
   await other.goto(`${CENTRAL}/plateforme`); // la session de la caserne ne donne pas accès à l'admin central
   check(await other.isVisible("#pf-login"), "l'admin central reste protégé");

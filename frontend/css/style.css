@@ -2204,3 +2204,9 @@ body.terrain.theme-dark .ent-name { color: #cbd5e1; }
 .annexe-form input, .annexe-form select { font: inherit; font-size: 14px; font-weight: 400; color: var(--text, #111827); height: 40px; padding: 0 10px;
   border: 1px solid var(--line, #e5e7eb); border-radius: 8px; background: var(--card, #fff); width: 100%; box-sizing: border-box; }
 .annexe-form .btn { height: 40px; }
+
+/* Identité de la caserne (admin) */
+.brand-logo-row { display: flex; gap: 12px; align-items: flex-start; margin: 8px 0; }
+.brand-logo-row img { width: 58px; height: 80px; object-fit: contain; border: 1px solid var(--line, #e5e7eb); border-radius: 8px; background: #fff; padding: 4px; }
+.brand-upload { cursor: pointer; display: inline-flex; }
+.brand-color input[type="color"] { width: 64px; height: 36px; padding: 2px; border-radius: 8px; }

@@ -9,7 +9,7 @@ import urllib.request
 
 DEFAULT_MESSAGE = (
     "Bonjour {prenom} 👋\n\n"
-    "Voici ton accès personnel à l'espace équipe de la *{tournee}* des pompiers de Courzieu{secteurs} :\n"
+    "Voici ton accès personnel à l'espace équipe de la *{tournee}* ({caserne}){secteurs} :\n"
     "{lien}\n\n"
     "Ou bien saisis le code *{code}* dans « Espace équipe ».\n"
     "Il est personnel : ne le transfère pas."
@@ -32,7 +32,7 @@ def whatsapp_id(telephone: str) -> str | None:
 
 
 def render(template: str, values: dict[str, str]) -> str:
-    """Remplace {prenom}, {nom}, {code}, {lien}, {secteurs}, {tournee}, {annee} ; le reste est laissé tel quel."""
+    """Remplace {prenom}, {nom}, {code}, {lien}, {secteurs}, {tournee}, {annee}, {caserne} ; le reste est laissé tel quel."""
     return re.sub(r"\{(\w+)\}", lambda m: values.get(m.group(1), m.group(0)), template)
 
 

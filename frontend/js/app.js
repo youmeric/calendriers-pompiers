@@ -657,7 +657,7 @@
     document.getElementById("communes-names").textContent = communes.map((c) => c.nom).join(" · ");
     if (index.annee) {
       document.getElementById("brand-title").textContent = tourneeTitle(index.annee);
-      document.title = `${tourneeTitle(index.annee)} — Sapeurs-pompiers de Courzieu`;
+      document.title = `${tourneeTitle(index.annee)} — ${(window.CASERNE || {}).nom || ""}`;
     }
     if (!communes.length) {
       els.noSectors.hidden = false;

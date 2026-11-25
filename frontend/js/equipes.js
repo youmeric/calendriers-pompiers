@@ -596,7 +596,7 @@
     const first = p.nom.split(" ")[0];
     const where = p.superviseur ? "toutes les tournées (superviseur)"
       : assignmentsOf(p.id).map((a) => `${a.sector.code} ${a.sector.nom}${a.role === "responsable" ? " (responsable)" : ""}`).join(", ");
-    return `Bonjour ${first}, voici ton accès personnel pour la ${window.Common.tourneeTitle(state.annee).toLowerCase()} des pompiers de Courzieu${where ? `, ${p.superviseur ? "" : "secteur "}${where}` : ""} :\n${accessLink(p)}\n\nOu bien saisis le code ${formatCode(p.code)} dans « Espace équipe ». Il est personnel : ne le transfère pas.`;
+    return `Bonjour ${first}, voici ton accès personnel pour la ${window.Common.tourneeTitle(state.annee).toLowerCase()} (${(window.CASERNE || {}).nom || "pompiers"})${where ? `, ${p.superviseur ? "" : "secteur "}${where}` : ""} :\n${accessLink(p)}\n\nOu bien saisis le code ${formatCode(p.code)} dans « Espace équipe ». Il est personnel : ne le transfère pas.`;
   }
 
   function fillAccess() {

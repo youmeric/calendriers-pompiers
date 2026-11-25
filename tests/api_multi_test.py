@@ -94,6 +94,24 @@ with central:
         with plateforme.use(cas):
             asyncio.run(main._daily_tasks())
     check(all(os.listdir(os.path.join(TMP, "casernes", s, "db", "sauvegardes")) for s in ("courzieu", "vaugneray")), "sauvegarde quotidienne faite pour chaque caserne")
+    # identité : chaque caserne a son nom, son logo, sa couleur ; plus rien de Courzieu ailleurs
+    import base64
+    hb = b.get("/").text
+    check("Sapeurs-pompiers de Vaugneray" in hb and "/img/logo-generique.svg" in hb and "Sapeurs-pompiers de Courzieu" not in hb and "logo-courzieu" not in hb,
+          "nouvelle caserne : son nom et un logo neutre, rien de Courzieu")
+    check(b.get("/manifest.webmanifest").json()["name"] == "Tournée des calendriers — Sapeurs-pompiers de Vaugneray", "appli installable au nom de la caserne")
+    b.put("/api/admin/settings", json={"caserne_couleur": "#0f766e", "caserne_nom": "Centre de secours de Vaugneray"})
+    png = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\x01" * 32).decode()
+    check(b.put("/api/admin/logo", json={"type": "image/png", "data": png}).status_code == 200, "Vaugneray envoie son logo")
+    hb, ha = b.get("/").text, a.get("/").text
+    check("Centre de secours de Vaugneray" in hb and "--accent:#0f766e" in hb and "/logo?v=" in hb, "Vaugneray : nom, couleur et logo à elle")
+    check("Sapeurs-pompiers de Courzieu" in ha and "--accent:#0f766e" not in ha and "/logo?v=" not in ha, "Courzieu : inchangée par les réglages de Vaugneray")
+    check(a.get("/logo", follow_redirects=False).status_code in (302, 307) and b.get("/logo").content.startswith(b"\x89PNG"), "chaque caserne sert son propre logo")
+    pb = b.post("/api/admin/personnes", json={"personnes": [{"nom": "Paul Martin", "telephone": "0612345678"}]}).json()["personnes"][0]
+    msg = b.post("/api/admin/whatsapp/apercu", json={"personne_id": pb["id"], "origin": "https://pompiers-vaugneray.fr"})
+    check(msg.status_code == 200 and "Centre de secours de Vaugneray" in msg.json()["message"] and "Courzieu" not in msg.json()["message"],
+          "message d'accès WhatsApp au nom de la caserne")
+    check(central.get("/plateforme").text.count("__CASERNE__") == 0 and "window.CASERNE" not in central.get("/plateforme").text, "admin central : sans identité de caserne")
     jr = central.get("/api/plateforme/journal").json()["entrees"]
     check(any(x["action"] == "caserne.creation" for x in jr) and any(x["action"] == "communes.generation" for x in jr), "journal de la plateforme")
 print("ÉCHECS :", fails)

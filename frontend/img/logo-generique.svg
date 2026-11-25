@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 100" role="img" aria-label="Sapeurs-pompiers">
+  <path d="M36 3 L68 14 V48 C68 72 54 88 36 97 C18 88 4 72 4 48 V14 Z" fill="#c81e2a" stroke="#7f1d1d" stroke-width="2.5"/>
+  <path d="M36 9 L62 18 V48 C62 68 51 81 36 89 C21 81 10 68 10 48 V18 Z" fill="#e5383b"/>
+  <path d="M36 24 C42 34 50 40 48 54 C47 64 41 70 36 71 C31 70 25 64 24 54 C23 46 28 42 30 36 C32 42 34 44 36 44 C34 36 34 30 36 24 Z" fill="#fde68a"/>
+  <path d="M36 44 C40 50 43 54 42 60 C41 65 39 67 36 67 C33 67 31 65 30 60 C30 55 33 52 36 44 Z" fill="#f59e0b"/>
+</svg>

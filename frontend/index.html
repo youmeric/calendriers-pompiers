@@ -7,9 +7,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-title" content="Calendriers" />
 <link rel="manifest" href="manifest.webmanifest" />
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-<title>Tournée des calendriers — Sapeurs-pompiers de Courzieu</title>
+<link rel="icon" type="image/png" sizes="192x192" href="__ICON__" />
+<link rel="apple-touch-icon" href="__APPLEICON__" />
+<title>Tournée des calendriers — __CASERNE__</title>
 <link rel="preload" href="vendor/inter/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
 <link rel="stylesheet" href="css/style.css?v=__V__" />
@@ -17,10 +17,10 @@
 <body class="public">
   <header class="topbar">
     <a class="brand" href="#/">
-      <img class="brand-logo" src="img/logo-courzieu.png" alt="Sapeurs-pompiers de Courzieu" width="31" height="44" />
+      <img class="brand-logo" src="__LOGO__" alt="__CASERNE__" width="31" height="44" />
       <span class="brand-text">
         <span id="brand-title" class="brand-title">Tournée des calendriers</span>
-        <span class="topbar-sub">Sapeurs-pompiers de Courzieu</span>
+        <span class="topbar-sub">__CASERNE__</span>
       </span>
     </a>
   </header>
@@ -41,7 +41,7 @@
         <!-- Vue d'ensemble : tous les secteurs -->
         <section id="home-panel" class="panel">
           <div id="install-card" class="install-card" hidden>
-            <img src="icons/icon-192.png" alt="" width="44" height="44" />
+            <img src="__ICON__" alt="" width="44" height="44" />
             <span class="install-text">
               <strong>Installer l'application</strong>
               <span>Sur l'écran d'accueil, ouverture en un geste</span>
@@ -111,7 +111,7 @@
   </main>
 
   <dialog id="install-dialog" class="install-dialog" aria-labelledby="install-title">
-    <img src="img/logo-courzieu.png" alt="" width="43" height="60" />
+    <img src="__LOGO__" alt="" width="43" height="60" />
     <h3 id="install-title">Installer l'application</h3>
     <ol id="install-steps"></ol>
     <button id="install-ok" class="btn primary" type="button">J'ai compris</button>
@@ -120,7 +120,7 @@
   <!-- Espace équipe : connexion avec le code personnel -->
   <dialog id="code-dialog" class="app-dialog" aria-labelledby="code-title">
     <form id="code-form" method="dialog">
-      <img src="img/logo-courzieu.png" alt="" width="43" height="60" />
+      <img src="__LOGO__" alt="" width="43" height="60" />
       <h3 id="code-title">Espace équipe</h3>
       <p class="hint">Entrez le code personnel reçu du chef de tournée (8 lettres ou chiffres).</p>
       <input id="code-input" type="text" inputmode="text" autocomplete="one-time-code" autocapitalize="characters"

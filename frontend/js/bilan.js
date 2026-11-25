@@ -59,6 +59,10 @@
         el.placeholder = st[`${k}_set`] ? "réglé (laisser vide pour le garder)" : "";
       } else if (fields && st[k] !== undefined) el.value = st[k];
     });
+    if (st.caserne_logo !== undefined) {
+      $("brand-logo-preview").src = st.caserne_logo;
+      $("brand-logo-reset").hidden = !st.caserne_logo_perso;
+    }
     $("offsite-webdav").hidden = st.offsite_mode !== "webdav";
     $("offsite-dossier").hidden = st.offsite_mode !== "dossier";
     $("offsite-test").hidden = !st.offsite_mode;
@@ -79,6 +83,35 @@
     saveSetting({ [k]: v });
   }));
   $("recus-toggle").addEventListener("change", () => saveSetting({ recus_actifs: $("recus-toggle").checked }));
+  // logo de la caserne : lu dans le navigateur, envoyé en base64
+  $("brand-logo-file").addEventListener("change", async () => {
+    const file = $("brand-logo-file").files[0];
+    $("brand-logo-file").value = "";
+    if (!file) return;
+    if (file.size > 1_000_000) { showToast("Image trop lourde (1 Mo au plus).", true); return; }
+    const data = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(",")[1] || "");
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+    try {
+      const res = await api("/api/admin/logo", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: file.type, data }) });
+      $("brand-logo-preview").src = res.logo;
+      $("brand-logo-reset").hidden = false;
+      document.querySelectorAll(".brand-logo, .login-logo").forEach((img) => { img.src = res.logo; });
+      showToast("Logo enregistré ✓");
+    } catch (err) { showToast(err.message, true); }
+  });
+  $("brand-logo-reset").addEventListener("click", async () => {
+    try {
+      const res = await api("/api/admin/logo", { method: "DELETE" });
+      $("brand-logo-preview").src = res.logo;
+      $("brand-logo-reset").hidden = true;
+      document.querySelectorAll(".brand-logo, .login-logo").forEach((img) => { img.src = res.logo; });
+      showToast("Logo d'origine rétabli");
+    } catch (err) { showToast(err.message, true); }
+  });
   $("avancement-select").addEventListener("change", async () => {
     await saveSetting({ avancement: $("avancement-select").value });
     render().catch(() => {});

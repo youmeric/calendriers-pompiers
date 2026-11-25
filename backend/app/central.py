@@ -201,6 +201,7 @@ def create_caserne(payload: CaserneIn):
     with plateforme.use(cas):
         db.init_db()
         db.set_setting("asso_nom", payload.nom.strip())
+        db.set_setting("caserne_nom", payload.nom.strip())
         role = next(r for r in db.list_roles() if r["fixe"])  # « Administrateur » : tous les droits
         db.add_compte(payload.admin_identifiant.strip(), payload.admin_nom.strip(), auth.hash_password(payload.admin_password), role["id"])
         db.log("Admin central", "console", "caserne.creation", payload.nom, f"compte administrateur « {payload.admin_identifiant} »")

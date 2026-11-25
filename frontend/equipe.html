@@ -8,8 +8,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-title" content="Calendriers" />
 <link rel="manifest" href="/manifest.webmanifest" />
-<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
-<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="__ICON__" />
+<link rel="apple-touch-icon" href="__APPLEICON__" />
 <title>Espace équipe — Tournée des calendriers</title>
 <link rel="preload" href="/vendor/inter/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
@@ -19,7 +19,7 @@
   <!-- Connexion -->
   <section id="t-login" class="t-login" hidden>
     <form id="t-login-form" class="t-login-card">
-      <img src="/img/logo-courzieu.png" alt="Sapeurs-pompiers de Courzieu" width="65" height="90" />
+      <img src="__LOGO__" alt="__CASERNE__" width="65" height="90" />
       <h1>Espace équipe</h1>
       <p id="t-login-title" class="hint">Tournée des calendriers</p>
       <input id="t-code" type="text" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false"
@@ -35,7 +35,7 @@
   <!-- Application -->
   <div id="t-app" class="t-app" hidden>
     <header class="t-top">
-      <img class="t-logo" src="/img/logo-courzieu.png" alt="" width="29" height="40" />
+      <img class="t-logo" src="__LOGO__" alt="" width="29" height="40" />
       <button id="t-sector" class="t-sector-btn" type="button" aria-label="Changer de secteur"></button>
       <span id="t-sync" class="t-sync" hidden title="Modifications en attente de réseau"></span>
     </header>

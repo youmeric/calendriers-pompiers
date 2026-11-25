@@ -157,7 +157,7 @@
     const years = [...new Set([...r.annees, r.annee])].sort((a, b) => b - a);
     $("rp-annee").innerHTML = years.map((y) => `<option value="${y}"${y === r.annee ? " selected" : ""}>${y}</option>`).join("");
     $("rp-title").textContent = `Bilan de la tournée des calendriers ${r.annee}`;
-    document.title = `Bilan ${r.annee} — Sapeurs-pompiers de Courzieu`;
+    document.title = `Bilan ${r.annee} — ${(window.CASERNE || {}).nom || ""}`;
     $("rp-sub").textContent = r.precedente ? `Comparé à la tournée ${r.precedente}` : "Première tournée enregistrée sur le site";
     kpis(r);
     modes(r.totaux[String(r.annee)]);
