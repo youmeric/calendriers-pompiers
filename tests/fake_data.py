@@ -40,12 +40,21 @@ def commune(slug, nom, code, lat0, lon0, n, voies, couleurs):
     return {"slug": slug, "nom": nom, "code": code, "nb_adresses": len(addrs)}
 
 
-communes = [
-    commune("courzieu", "Courzieu", "69067", 45.742, 4.570, 12,
-            ["Rue de la Mairie", "Route des Granges", "Chemin du Bois", "Impasse du Lavoir"],
-            ["#e6194b", "#3cb44b", "#4363d8", "#f58231"]),
-    commune("brussieu", "Brussieu", "69031", 45.715, 4.540, 6,
-            ["Route de Lyon", "Rue du Stade", "Chemin des Vignes", "Place de l'Église"], ["#911eb4", "#42d4f4"]),
-]
+if "--demo" in sys.argv:  # communes fictives, pour les captures du site vitrine
+    communes = [
+        commune("valmont", "Valmont", "99001", 45.742, 4.570, 12,
+                ["Rue des Tilleuls", "Route du Moulin", "Chemin des Prés", "Allée des Cerisiers"],
+                ["#e6194b", "#3cb44b", "#4363d8", "#f58231"]),
+        commune("les-aubiers", "Les Aubiers", "99002", 45.715, 4.540, 6,
+                ["Grande Rue", "Rue de la Fontaine", "Chemin des Vignes", "Place du Lavoir"], ["#911eb4", "#42d4f4"]),
+    ]
+else:
+    communes = [
+        commune("courzieu", "Courzieu", "69067", 45.742, 4.570, 12,
+                ["Rue de la Mairie", "Route des Granges", "Chemin du Bois", "Impasse du Lavoir"],
+                ["#e6194b", "#3cb44b", "#4363d8", "#f58231"]),
+        commune("brussieu", "Brussieu", "69031", 45.715, 4.540, 6,
+                ["Route de Lyon", "Rue du Stade", "Chemin des Vignes", "Place de l'Église"], ["#911eb4", "#42d4f4"]),
+    ]
 with open(f"{out}/index.json", "w", encoding="utf-8") as fh:
     json.dump({"communes": communes}, fh, ensure_ascii=False)

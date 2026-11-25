@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Almaneo">
+  <rect x="6" y="10" width="52" height="48" rx="11" fill="#e5383b"/>
+  <rect x="6" y="10" width="52" height="15" rx="11" fill="#c81e2a"/>
+  <rect x="6" y="19" width="52" height="6" fill="#c81e2a"/>
+  <rect x="18" y="4" width="6" height="14" rx="3" fill="#1f2937"/>
+  <rect x="40" y="4" width="6" height="14" rx="3" fill="#1f2937"/>
+  <path d="M32 29 C37 36 43 40 41 49 C40 54 36 56 32 56 C28 56 24 54 23 49 C22 44 26 41 27 37 C29 41 30 42 32 42 C31 37 31 33 32 29 Z" fill="#fde68a"/>
+  <path d="M32 43 C35 47 37 49 36 52 C35.5 54 34 55 32 55 C30 55 28.5 54 28 52 C27.5 49 30 47 32 43 Z" fill="#f59e0b"/>
+</svg>

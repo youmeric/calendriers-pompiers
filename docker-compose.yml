@@ -16,8 +16,9 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    image: calendriers-pompiers-backend
-    container_name: calendriers-pompiers
+    # noms réglables (.env) pour faire tourner une deuxième installation (Almaneo) sur le même serveur
+    image: ${IMAGE_NAME:-calendriers-pompiers-backend}
+    container_name: ${CONTAINER_NAME:-calendriers-pompiers}
     restart: unless-stopped
     # Nginx Proxy Manager joint l'app par le nom du conteneur
     # (http://calendriers-pompiers:8000) via le réseau Docker partagé.
@@ -45,7 +46,7 @@ services:
     networks:
       - proxy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/communes')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/sante')"]
       interval: 30s
       timeout: 5s
       retries: 3

@@ -2669,6 +2669,12 @@ def public_caserne():
 STATIC_PREFIXES = ("/css/", "/js/", "/img/", "/icons/", "/vendor/", "/favicon")
 
 
+@app.get("/api/sante", include_in_schema=False)
+def health():
+    """Contrôle de santé du conteneur (répond quelle que soit l'adresse)."""
+    return {"ok": True}
+
+
 class CaserneMiddleware:
     """Choisit la caserne d'après le nom d'hôte et la garde pour toute la requête (base, données, sessions).
     Une adresse qui ne mène à aucune caserne ouvre l'admin central. Sans PLATFORM_DB_PATH : rien ne change."""
@@ -2682,6 +2688,18 @@ class CaserneMiddleware:
         host = dict(scope.get("headers") or []).get(b"host", b"").decode("latin-1")
         path = scope.get("path", "")
         central_path = path == "/plateforme" or path.startswith("/api/plateforme/")
+        if path == "/api/sante":
+            return await self.asgi(scope, receive, send)
+        if plateforme.vitrine_host(host):  # almaneo.fr : le site vitrine
+            if path in ("/", "/index.html"):
+                return await _vitrine_page()(scope, receive, send)
+            if path.startswith(STATIC_PREFIXES) or path == "/api/vitrine/demande":
+                return await self.asgi(scope, receive, send)
+            if path == "/plateforme" and plateforme.PLATFORM_DOMAIN:
+                return await RedirectResponse(f"https://admin.{plateforme.PLATFORM_DOMAIN}/plateforme")(scope, receive, send)
+            return await _plain(404, "Page introuvable.")(scope, receive, send)
+        if path == "/api/vitrine/demande":
+            return await _plain(404, "Introuvable.")(scope, receive, send)
         cas = await asyncio.to_thread(plateforme.resolve, host)
         if cas is None:
             if central_path or path.startswith(STATIC_PREFIXES):
@@ -2698,6 +2716,19 @@ class CaserneMiddleware:
             await self.asgi(scope, receive, send)
         finally:
             plateforme.current.reset(token)
+
+
+def _vitrine_page() -> HTMLResponse:
+    """Site vitrine de la plateforme (almaneo.fr)."""
+    esc = lambda v: v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")  # noqa: E731
+    name, mail, editeur = plateforme.PLATFORM_NAME, plateforme.PLATFORM_CONTACT_EMAIL, plateforme.PLATFORM_EDITEUR
+    html = (FRONTEND_DIR / "vitrine.html").read_text(encoding="utf-8").replace("__V__", ASSET_VERSION)
+    html = (html.replace("__NOM__", esc(name))
+            .replace("__CONTACT__", f'<a href="mailto:{esc(mail)}">{esc(mail)}</a>' if mail else "le formulaire ci-dessus")
+            .replace("__EDITEUR__", esc(editeur) if editeur else esc(name))
+            .replace("__DOMAINE__", esc(plateforme.PLATFORM_DOMAIN or "almaneo.fr"))
+            .replace("__ADMIN__", f"https://admin.{esc(plateforme.PLATFORM_DOMAIN)}/plateforme" if plateforme.PLATFORM_DOMAIN else "/plateforme"))
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 
 def _plain(code: int, message: str):

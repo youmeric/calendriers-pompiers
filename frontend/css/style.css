@@ -2246,3 +2246,7 @@ body.terrain.theme-dark .ent-name { color: #cbd5e1; }
 .pf-edit .field-row .field { flex: 1 1 200px; }
 .pf-edit > .btn, .pf-edit fieldset .btn { margin-top: 8px; }
 .powered { margin: 6px 0 0; font-size: 11px; color: var(--muted, #6b7280); text-align: center; letter-spacing: .02em; }
+.pf-demande { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line, #e5e7eb); font-size: 14px; }
+.pf-demande.off { opacity: .6; }
+.pf-dem-msg { margin: 4px 0 0; white-space: pre-wrap; color: var(--text, #374151); }
+.pf-card h2 .pf-badge { vertical-align: middle; margin-left: 6px; background: #fee2e2; color: #991b1b; }

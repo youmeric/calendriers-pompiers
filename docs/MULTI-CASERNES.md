@@ -84,7 +84,16 @@ Proposer le site à plusieurs casernes :
   place du compte principal ; **mêmes codes, téléphones et comptes toujours connectés** (chaque caserne
   signe ses sessions avec la clé gardée dans sa base). Guide pas à pas : **`docs/MISE-EN-SERVICE.md`**
   (DNS, certificat joker, Nginx Proxy Manager, jour J, vérifications, retour arrière).
-  Testé par `tests/api_bascule_test.py`. Reste : fusion dans `main` (accord nécessaire) et le jour J.
+  Testé par `tests/api_bascule_test.py`.
+- [x] **Site vitrine** (`frontend/vitrine.html`, `css/vitrine.css`) sur `almaneo.fr` et `www.almaneo.fr` :
+  présentation, 8 fonctions, captures de l'appli (caserne fictive « Valmont », régénérables avec
+  `tests/captures_vitrine.js`), « Comment ça marche », questions, formulaire **« Demander une démo »**
+  (champ piège anti-robots, 5 demandes / heure / adresse) dont les demandes arrivent dans l'admin central.
+- [x] **Mise en service en deux temps** (décidé : pas de bascule de Courzieu pendant la tournée) :
+  Almaneo tourne dès maintenant comme **deuxième installation** sur le serveur (dossier `almaneo`, branche
+  `multi-casernes`, conteneur `almaneo` : `CONTAINER_NAME` / `IMAGE_NAME` / `HOST_PORT` réglables), Courzieu
+  reste sur `main` ; **en fin de saison**, bascule de Courzieu dans Almaneo et spcourzieu.fr pointé vers
+  `almaneo`. Guide : `docs/MISE-EN-SERVICE.md` (parties A et B). Contrôle de santé : `/api/sante`.
 
 ### Essayer en local
 

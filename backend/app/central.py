@@ -445,3 +445,54 @@ def central_update_account(compte_id: int, payload: CentralCompteUpdate, request
            (["activé" if payload.actif else "désactivé"] if payload.actif is not None else [])
     plateforme.log(_who(request), "admin.modification", new["nom"], ", ".join(what))
     return {k: v for k, v in new.items() if k != "mdp"}
+
+
+# ---- Site vitrine : demandes de démonstration ------------------------------------------------
+
+class DemandeIn(BaseModel):
+    nom: str = Field(min_length=2, max_length=80)
+    caserne: str = Field(min_length=2, max_length=120)
+    email: str = Field(min_length=5, max_length=150, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    telephone: str = Field(default="", max_length=30)
+    message: str = Field(default="", max_length=1500)
+    site: str = Field(default="", max_length=200)  # piège à robots : champ caché, doit rester vide
+
+    @field_validator("nom", "caserne", "email", "telephone")
+    @classmethod
+    def strip(cls, v: str) -> str:
+        return " ".join(v.split())
+
+
+_demandes_ip: dict[str, list[float]] = {}
+
+
+@router.post("/api/vitrine/demande")
+def vitrine_request(payload: DemandeIn, request: Request):
+    """Demande de démonstration depuis almaneo.fr : enregistrée pour l'admin central."""
+    ip = request.client.host if request.client else "?"
+    now = time.time()
+    recent = [t for t in _demandes_ip.get(ip, []) if now - t < 3600]
+    if len(recent) >= 5:
+        raise HTTPException(status_code=429, detail="Trop de demandes : réessayez plus tard")
+    _demandes_ip[ip] = recent + [now]
+    if payload.site:  # rempli par un robot : on fait comme si tout allait bien
+        return {"ok": True}
+    plateforme.add_demande(payload.model_dump(exclude={"site"}))
+    plateforme.log("site vitrine", "demande", payload.caserne, f"{payload.nom} · {payload.email}")
+    return {"ok": True}
+
+
+class DemandeUpdate(BaseModel):
+    traitee: bool
+
+
+@router.get("/api/plateforme/demandes", dependencies=[Depends(require_central)])
+def central_requests():
+    return {"demandes": plateforme.list_demandes()}
+
+
+@router.put("/api/plateforme/demandes/{demande_id}", dependencies=[Depends(require_central)])
+def central_request_done(demande_id: int, payload: DemandeUpdate):
+    if not plateforme.set_demande_traitee(demande_id, payload.traitee):
+        raise HTTPException(status_code=404, detail="Demande inconnue")
+    return {"ok": True}

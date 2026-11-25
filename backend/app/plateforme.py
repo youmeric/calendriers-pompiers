@@ -22,6 +22,9 @@ CASERNES_DIR = os.environ.get("CASERNES_DIR") or os.path.join(os.path.dirname(PL
 PLATFORM_DOMAIN = (os.environ.get("PLATFORM_DOMAIN") or "").lower().strip(".")
 # nom de la plateforme (marque), affiché discrètement sur les sites des casernes
 PLATFORM_NAME = os.environ.get("PLATFORM_NAME") or "Almaneo"
+# site vitrine (almaneo.fr) : contact et éditeur affichés en bas de page
+PLATFORM_CONTACT_EMAIL = os.environ.get("PLATFORM_CONTACT_EMAIL") or ""
+PLATFORM_EDITEUR = os.environ.get("PLATFORM_EDITEUR") or ""
 
 SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$")
 RESERVED = {"admin", "www", "api", "plateforme", "static", "mail"}
@@ -120,6 +123,12 @@ def init() -> None:
                 actif INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL
             );
+            -- demandes de démonstration envoyées depuis le site vitrine
+            CREATE TABLE IF NOT EXISTS demandes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nom TEXT NOT NULL, caserne TEXT NOT NULL, email TEXT NOT NULL, telephone TEXT NOT NULL DEFAULT '',
+                message TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, traitee INTEGER NOT NULL DEFAULT 0
+            );
             -- génération des données des communes (adresses, routes) d'une caserne
             CREATE TABLE IF NOT EXISTS generations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -182,6 +191,12 @@ def resolve(host: str) -> Caserne | None:
         if "." not in sub:
             return get_by_slug(sub)
     return None
+
+
+def vitrine_host(host: str) -> bool:
+    """Le site vitrine : le domaine de la plateforme lui-même (almaneo.fr) et www.almaneo.fr."""
+    host = clean_host(host)
+    return bool(PLATFORM_DOMAIN) and host in (PLATFORM_DOMAIN, f"www.{PLATFORM_DOMAIN}")
 
 
 def admin_host(host: str) -> bool:
@@ -297,6 +312,32 @@ def delete_caserne(caserne_id: int) -> None:
         c.execute("DELETE FROM generations WHERE caserne_id = ?", (caserne_id,))
         c.execute("DELETE FROM casernes WHERE id = ?", (caserne_id,))
         c.commit()
+
+
+# ---- Demandes de démonstration (site vitrine) ---------------------------------------------
+
+_DEMANDE = ("id", "nom", "caserne", "email", "telephone", "message", "created_at", "traitee")
+
+
+def add_demande(d: dict) -> int:
+    with conn() as c:
+        did = c.execute("INSERT INTO demandes (nom, caserne, email, telephone, message, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                        (d["nom"], d["caserne"], d["email"], d.get("telephone", ""), d.get("message", ""), _now())).lastrowid
+        c.commit()
+    return did
+
+
+def list_demandes() -> list[dict]:
+    with conn() as c:
+        rows = c.execute(f"SELECT {', '.join(_DEMANDE)} FROM demandes ORDER BY traitee, id DESC").fetchall()
+    return [{**dict(zip(_DEMANDE, r)), "traitee": bool(r[7])} for r in rows]
+
+
+def set_demande_traitee(demande_id: int, traitee: bool) -> bool:
+    with conn() as c:
+        n = c.execute("UPDATE demandes SET traitee = ? WHERE id = ?", (int(traitee), demande_id)).rowcount
+        c.commit()
+    return n > 0
 
 
 # ---- Abonnement (option, désactivée par défaut) -------------------------------------------

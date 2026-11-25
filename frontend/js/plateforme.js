@@ -42,6 +42,17 @@
     state.abos = r.abonnements_actifs;
     $("pf-abos").checked = state.abos;
     render();
+    const dm = (await api("/api/plateforme/demandes")).demandes;
+    const open = dm.filter((d) => !d.traitee).length;
+    $("pf-dem-count").hidden = !open;
+    $("pf-dem-count").textContent = `${open} nouvelle${open > 1 ? "s" : ""}`;
+    $("pf-demandes").innerHTML = dm.length ? dm.map((d) => `<div class="pf-demande${d.traitee ? " off" : ""}" data-id="${d.id}">
+        <div><b>${escapeHtml(d.caserne)}</b> — ${escapeHtml(d.nom)}
+          <small class="hint">${new Date(d.created_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}</small><br>
+          <a href="mailto:${encodeURIComponent(d.email).replace(/%40/g, "@")}">${escapeHtml(d.email)}</a>${d.telephone ? ` · ${escapeHtml(d.telephone)}` : ""}
+          ${d.message ? `<p class="pf-dem-msg">${escapeHtml(d.message)}</p>` : ""}</div>
+        <button type="button" class="btn small" data-dem="${d.traitee ? "0" : "1"}">${d.traitee ? "Rouvrir" : "✓ Traitée"}</button></div>`).join("")
+      : `<p class="hint">Aucune demande pour l'instant.</p>`;
     const cp = await api("/api/plateforme/comptes");
     $("pf-comptes").innerHTML = cp.comptes.length ? cp.comptes.map((a) => `<div class="pf-compte${a.actif ? "" : " off"}" data-id="${a.id}">
         <span><b>${escapeHtml(a.nom)}</b> <small class="hint">${escapeHtml(a.identifiant)}${a.actif ? "" : " · désactivé"}</small></span>
@@ -181,6 +192,15 @@
       $("pf-create-error").textContent = err.message;
       $("pf-create-error").hidden = false;
     }
+  });
+
+  $("pf-demandes").addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-dem]");
+    if (!btn) return;
+    try {
+      await api(`/api/plateforme/demandes/${btn.closest(".pf-demande").dataset.id}`, { method: "PUT", body: { traitee: btn.dataset.dem === "1" } });
+      await refresh();
+    } catch (err) { showToast(err.message, true); }
   });
 
   $("pf-compte-form").addEventListener("submit", async (e) => {
