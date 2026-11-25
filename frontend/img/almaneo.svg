@@ -1,9 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Almaneo">
-  <rect x="6" y="10" width="52" height="48" rx="11" fill="#e5383b"/>
-  <rect x="6" y="10" width="52" height="15" rx="11" fill="#c81e2a"/>
-  <rect x="6" y="19" width="52" height="6" fill="#c81e2a"/>
-  <rect x="18" y="4" width="6" height="14" rx="3" fill="#1f2937"/>
-  <rect x="40" y="4" width="6" height="14" rx="3" fill="#1f2937"/>
-  <path d="M32 29 C37 36 43 40 41 49 C40 54 36 56 32 56 C28 56 24 54 23 49 C22 44 26 41 27 37 C29 41 30 42 32 42 C31 37 31 33 32 29 Z" fill="#fde68a"/>
-  <path d="M32 43 C35 47 37 49 36 52 C35.5 54 34 55 32 55 C30 55 28.5 54 28 52 C27.5 49 30 47 32 43 Z" fill="#f59e0b"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Almaneo"><rect x="7" y="11" width="50" height="48" rx="13" fill="#E5383B"/><path d="M7 24 V24 A13 13 0 0 1 20 11 H44 A13 13 0 0 1 57 24 Z" fill="#B91C2C"/><rect x="18.5" y="5" width="6.5" height="13" rx="3.25" fill="#111827"/><rect x="39" y="5" width="6.5" height="13" rx="3.25" fill="#111827"/><g transform="translate(0 3.5) translate(32 36) scale(0.78) translate(-32 -36)"><path d="M32 17.5 C36.2 24.8 44.5 29.6 44.5 41 C44.5 48.9 38.8 54.5 32 54.5 C25.2 54.5 19.5 48.9 19.5 41 C19.5 35.2 22.6 31.6 25.8 28 C26.4 32.9 28.4 35.3 31 36.4 C29.4 30.2 29.9 23.6 32 17.5 Z" fill="#fff"/><path d="M32 37.5 C35.1 40.9 37.6 43.8 37.6 47.2 C37.6 50.5 35.1 52.8 32 52.8 C28.9 52.8 26.4 50.5 26.4 47.2 C26.4 43.8 29.3 41.2 32 37.5 Z" fill="#F59E0B"/></g></svg>
