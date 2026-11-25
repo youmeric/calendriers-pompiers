@@ -1,22 +1,28 @@
 # Almaneo — fichiers de la marque
 
-Logo « Almanach » : la page d'almanach à anneaux (le calendrier des pompiers) avec la flamme au cœur,
-et le nom **almaneo** en Inter très gras, en minuscules.
+Direction artistique : **bleu marine et rouge pompier**. Le symbole réunit un casque de sapeur-pompier et une
+page de calendrier avec un parcours (point de carte, maison) ; le nom **Almaneo** est en italique gras, le
+« o » final en rouge, souligné d'un trait rouge. Slogan : « La tournée calendrier des sapeurs-pompiers —
+simple • mobile • collaborative ».
 
 | Fichier | Usage |
 |---|---|
-| `almaneo-logo.svg` / `.png` | logo principal, sur fond clair |
-| `almaneo-logo-fond-fonce.svg` / `.png` | sur fond foncé (texte blanc, anneaux clairs) |
-| `almaneo-logo-blanc.svg` / `.png` | tout blanc, sur fond rouge ou photo |
-| `almaneo-logo-empile.svg` / `.png` | format carré (symbole au-dessus du nom) : profils de réseaux sociaux, affiches |
-| `almaneo-symbole.svg` | le symbole seul ; `almaneo-symbole-fond-fonce.svg` sur fond foncé |
-| `almaneo-icone-appli.svg`, `almaneo-icone-512.png`, `almaneo-apple-touch-180.png` | icône d'application |
-| `almaneo-favicon-32.png`, `-64.png` | onglet du navigateur |
+| `originaux/` | les fichiers tels que livrés (logo complet, icône, monochrome), fond blanc ou noir |
+| `almaneo-logo-complet-transparent.png` | logo avec slogan, fond transparent — pour fond clair |
+| `almaneo-logo-court-transparent.png` | symbole + nom sans slogan — en-têtes de site, petites tailles |
+| `almaneo-logo-monochrome-transparent.png` | version noire (tampon, impression une couleur) — sur fond clair |
+| `almaneo-symbole-transparent.png` | le symbole seul |
+| `almaneo-icone-carree.png` | icône d'application, carré plein (iOS et Android arrondissent eux-mêmes) |
+| `almaneo-icone-arrondie.png` | icône aux coins arrondis, fond transparent (présentations, réseaux sociaux) |
+| `almaneo-favicon-64.png` | onglet du navigateur : le symbole seul sur fond marine (le nom serait illisible) |
 | `almaneo-partage-1200x630.png` | image affichée quand on partage almaneo.fr (WhatsApp, Facebook, LinkedIn…) |
 
-**Couleurs** : rouge Almaneo `#E5383B`, rouge foncé `#B91C2C`, flamme `#F59E0B`, encre `#111827`.
-**Typographie** : Inter (police libre, SIL Open Font License) — titres en très gras, textes en normal.
+Sur le site, les fichiers servis sont dans `frontend/img/almaneo/` (logo d'en-tête, favicons, icônes, image de partage).
 
-Règles simples : garder de l'espace autour du logo (au moins la hauteur d'un anneau), ne pas déformer
-ni changer les couleurs, pas de logo en dessous de 16 px (utiliser alors le symbole seul).
-Les SVG sont vectoriels (le nom est en tracés, la police n'est pas nécessaire) : à préférer pour l'impression.
+**Couleurs** : marine `#0B1F44` (texte du logo ≈ `#011D43`), rouge `#E3141B`, rouge foncé `#B80F16`.
+**Fond foncé** : utiliser l'icône (nom en blanc sur marine) ; les logos transparents sont faits pour un fond clair.
+
+Les fichiers livrés sont des images (pixels), pas des vecteurs : pour de l'impression en grand format
+(banderole, véhicule), demander au graphiste une version **vectorielle** (SVG, AI ou PDF).
+
+`preparer.py` régénère les fichiers dérivés à partir des originaux (Python + Pillow).

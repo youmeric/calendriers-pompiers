@@ -21,7 +21,7 @@ with v:
     check("La tournée des calendriers" in h and "Almaneo" in h and "Demander une démo" in h and "__" not in h.replace("__V__", ""), "almaneo.fr : le site vitrine")
     check("votrecaserne.almaneo.test" in h and "mailto:contact@almaneo.test" in h, "domaine et contact de la plateforme")
     check(C("www.almaneo.test").get("/").text == h, "www.almaneo.fr : même page")
-    for img in ("/img/vitrine/phone-accueil.jpg", "/img/almaneo.svg", "/css/vitrine.css", "/js/vitrine.js"):
+    for img in ("/img/vitrine/phone-accueil.jpg", "/img/almaneo/logo.png", "/img/almaneo/favicon-32.png", "/img/almaneo/partage.png", "/css/vitrine.css", "/js/vitrine.js"):
         check(v.get(img).status_code == 200, f"ressource {img}")
     check(v.get("/api/communes").status_code == 404 and v.get("/admin").status_code == 404, "pas d'outil sur la vitrine")
     r = v.get("/plateforme", follow_redirects=False)
