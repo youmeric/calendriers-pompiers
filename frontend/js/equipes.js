@@ -676,7 +676,7 @@
       const st = await api("/api/admin/whatsapp/etat");
       el.classList.add(st.pret ? "ok" : "ko");
       el.textContent = st.pret ? "● Bot connecté" : `● ${st.erreur}`;
-      if (!st.configure) $("send-bot").open = true;
+      if (!st.configure && !st.plateforme) $("send-bot").open = true;
       send.ready = st.pret;
     } catch (err) {
       el.classList.add("ko");
@@ -766,11 +766,15 @@
     renderSendList();
     try {
       send.settings = await api("/api/admin/settings");
-      $("send-url").value = send.settings.whatsapp_bot_url;
-      $("send-key").value = "";
-      $("send-key").placeholder = send.settings.whatsapp_bot_key_set ? "réglée (laisser vide pour la garder)" : "aucune";
+      // plateforme : le bot est géré par l'admin central, rien à régler dans la caserne
+      $("send-bot").hidden = !!send.settings.whatsapp_plateforme;
+      if (!send.settings.whatsapp_plateforme) {
+        $("send-url").value = send.settings.whatsapp_bot_url;
+        $("send-key").value = "";
+        $("send-key").placeholder = send.settings.whatsapp_bot_key_set ? "réglée (laisser vide pour la garder)" : "aucune";
+        $("send-bot").open = !send.settings.whatsapp_bot_url;
+      }
       $("send-template").value = send.settings.whatsapp_message;
-      $("send-bot").open = !send.settings.whatsapp_bot_url;
     } catch (err) { showToast(err.message, true); }
     renderPreview();
     refreshBotState();

@@ -6,107 +6,142 @@
 <meta name="robots" content="noindex" />
 <title>Almaneo — Administration des casernes</title>
 <link rel="preload" href="vendor/inter/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
-<link rel="icon" type="image/png" href="icons/favicon-64.png" />
+<link rel="icon" type="image/svg+xml" href="/img/almaneo.svg" />
 <link rel="stylesheet" href="css/style.css?v=__V__" />
 </head>
 <body class="admin plateforme">
-  <header class="topbar">
-    <span class="brand">
-      <span class="brand-text">
-        <span class="brand-title">Almaneo <span class="brand-chip">Plateforme</span></span>
-        <span class="topbar-sub">Administration des casernes</span>
-      </span>
-    </span>
-    <div class="topbar-actions">
-      <span id="pf-me" class="topbar-link" hidden></span>
-      <button id="pf-logout" class="topbar-link" type="button" hidden>Déconnexion</button>
+  <header class="pf-top">
+    <a class="pf-brand" href="#"><img src="/img/almaneo.svg" alt="" width="32" height="32" /><span>Almaneo</span><span class="pf-chip">Admin central</span></a>
+    <nav class="pf-nav" id="pf-nav" hidden aria-label="Rubriques">
+      <a href="#casernes">Casernes</a>
+      <a href="#demandes">Demandes <span id="pf-nav-dem" class="pf-dot" hidden></span></a>
+      <a href="#reglages">Réglages</a>
+      <a href="#comptes">Comptes</a>
+      <a href="#journal">Journal</a>
+    </nav>
+    <div class="pf-user">
+      <span id="pf-me" class="pf-me" hidden></span>
+      <button id="pf-logout" class="btn small" type="button" hidden>Déconnexion</button>
     </div>
   </header>
 
-  <section id="pf-login" class="login-view" hidden>
-    <form id="pf-login-form" class="card login-card">
-      <h2>Almaneo — admin central</h2>
+  <section id="pf-login" class="pf-login" hidden>
+    <form id="pf-login-form" class="pf-login-card">
+      <img src="/img/almaneo.svg" alt="" width="64" height="64" />
+      <h1>Almaneo — admin central</h1>
       <p class="hint">Création et gestion des casernes de la plateforme.</p>
-      <label for="pf-ident">Identifiant</label>
-      <input id="pf-ident" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="60" placeholder="vide = compte principal" />
-      <label for="pf-password">Mot de passe</label>
-      <input id="pf-password" type="password" autocomplete="current-password" required />
-      <button type="submit" class="btn primary">Se connecter</button>
+      <label class="pf-field">Identifiant
+        <input id="pf-ident" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="60" placeholder="vide = compte principal" /></label>
+      <label class="pf-field">Mot de passe
+        <input id="pf-password" type="password" autocomplete="current-password" required /></label>
+      <button type="submit" class="btn primary pf-wide">Se connecter</button>
       <p id="pf-login-error" class="error-text" hidden></p>
     </form>
   </section>
 
   <main id="pf-app" class="pf-main" hidden>
-    <section class="pf-head">
+    <section class="pf-hello">
       <div>
-        <h1>Casernes</h1>
+        <h1 id="pf-hello-title">Bonjour</h1>
         <p class="hint" id="pf-summary"></p>
       </div>
       <button id="pf-new" class="btn primary" type="button">+ Nouvelle caserne</button>
     </section>
-    <div id="pf-list" class="pf-list"></div>
+    <div id="pf-kpis" class="pf-kpis"></div>
 
-    <section class="card pf-card">
-      <h2>Demandes de démo <span id="pf-dem-count" class="pf-badge" hidden></span></h2>
-      <p class="hint">Envoyées depuis le site vitrine (formulaire « Demander une démo »).</p>
+    <section id="casernes" class="pf-section">
+      <div class="pf-section-head"><h2>Casernes</h2></div>
+      <div id="pf-list" class="pf-grid"></div>
+    </section>
+
+    <section id="demandes" class="pf-section pf-card">
+      <div class="pf-section-head"><h2>Demandes de démo <span id="pf-dem-count" class="pf-badge new" hidden></span></h2>
+        <span class="hint">Envoyées depuis le site vitrine.</span></div>
       <div id="pf-demandes"></div>
     </section>
 
-    <section class="card pf-card">
-      <h2>Réglages de la plateforme</h2>
-      <label class="setting-row">
-        <input type="checkbox" id="pf-abos" />
-        <span><b>Abonnements</b> : suivre une formule et une date de fin pour chaque caserne. Désactivé : toutes les casernes sont libres.
-          Activé : une caserne dont l'abonnement est expiré voit un avertissement dans son admin.</span>
-      </label>
-    </section>
+    <div class="pf-two">
+      <section id="reglages" class="pf-section pf-card">
+        <div class="pf-section-head"><h2>Réglages de la plateforme</h2></div>
+        <h3 class="pf-sub">Bot WhatsApp</h3>
+        <p class="hint">Envoie les codes d'accès des équipes. Il est géré ici pour toutes les casernes : activez-le pour chaque caserne dans « Gérer » (une caserne peut aussi avoir son propre bot).</p>
+        <div class="pf-row">
+          <label class="pf-field">Adresse du bot<input id="pf-bot-url" type="url" maxlength="300" placeholder="http://host.docker.internal:3000" spellcheck="false" autocomplete="off" /></label>
+          <label class="pf-field">Clé (facultative)<input id="pf-bot-key" type="password" maxlength="200" autocomplete="new-password" /></label>
+        </div>
+        <div class="pf-actions"><button type="button" class="btn small primary" id="pf-bot-save">Enregistrer</button>
+          <button type="button" class="btn small" id="pf-bot-test">Tester</button><span id="pf-bot-state" class="pf-bot-state"></span></div>
+        <h3 class="pf-sub">Abonnements</h3>
+        <label class="setting-row">
+          <input type="checkbox" id="pf-abos" />
+          <span>Suivre une formule et une date de fin pour chaque caserne. Désactivé : toutes les casernes sont libres ; activé : une caserne dont l'abonnement est expiré voit un avertissement.</span>
+        </label>
+      </section>
 
-    <section class="card pf-card">
-      <h2>Comptes de l'admin central</h2>
-      <p class="hint">Chaque personne qui gère la plateforme a son compte (le journal dit qui a fait quoi). Le mot de passe de l'installation (PLATFORM_ADMIN_PASSWORD) reste le compte principal, à garder pour le secours.</p>
-      <div id="pf-comptes"></div>
-      <form id="pf-compte-form" class="pf-compte-form">
-        <input id="pf-a-ident" required maxlength="60" placeholder="Identifiant" autocapitalize="none" spellcheck="false" />
-        <input id="pf-a-nom" required maxlength="80" placeholder="Prénom Nom" />
-        <input id="pf-a-pwd" required minlength="10" maxlength="200" placeholder="Mot de passe (10 caractères au moins)" autocomplete="new-password" />
-        <button type="submit" class="btn small primary">Ajouter</button>
-      </form>
-    </section>
+      <section id="comptes" class="pf-section pf-card">
+        <div class="pf-section-head"><h2>Comptes de l'admin central</h2></div>
+        <p class="hint">Chaque personne qui gère la plateforme a son compte : le journal dit qui a fait quoi. Le mot de passe de l'installation reste le compte principal, pour le secours.</p>
+        <div id="pf-comptes"></div>
+        <form id="pf-compte-form" class="pf-compte-form">
+          <input id="pf-a-ident" required maxlength="60" placeholder="Identifiant" autocapitalize="none" spellcheck="false" />
+          <input id="pf-a-nom" required maxlength="80" placeholder="Prénom Nom" />
+          <input id="pf-a-pwd" required minlength="10" maxlength="200" placeholder="Mot de passe (10 caractères)" autocomplete="new-password" />
+          <button type="submit" class="btn small primary">Ajouter</button>
+        </form>
+      </section>
+    </div>
 
-    <section class="card pf-card">
-      <h2>Journal de la plateforme</h2>
+    <section id="journal" class="pf-section pf-card">
+      <div class="pf-section-head"><h2>Journal de la plateforme</h2></div>
       <div id="pf-journal" class="pf-journal"></div>
     </section>
   </main>
 
+  <!-- Nouvelle caserne -->
   <dialog id="pf-create" class="app-dialog pf-dialog" aria-labelledby="pf-create-title">
     <form id="pf-create-form" method="dialog">
-      <h3 id="pf-create-title">Nouvelle caserne</h3>
-      <div class="field-row">
-        <label class="field">Nom<input id="pf-c-nom" required maxlength="120" placeholder="Sapeurs-pompiers de Vaugneray" /></label>
-        <label class="field">Identifiant<input id="pf-c-slug" required maxlength="40" placeholder="vaugneray" pattern="[a-z0-9][a-z0-9\-]*[a-z0-9]" autocapitalize="none" spellcheck="false" /></label>
+      <header class="pf-dialog-head"><h2 id="pf-create-title">Nouvelle caserne</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Fermer">✕</button></header>
+      <div class="pf-dialog-body">
+        <section class="pf-block">
+          <h3>La caserne</h3>
+          <div class="pf-row">
+            <label class="pf-field">Nom<input id="pf-c-nom" required maxlength="120" placeholder="Sapeurs-pompiers de Vaugneray" /></label>
+            <label class="pf-field">Identifiant (adresse)<input id="pf-c-slug" required maxlength="40" placeholder="vaugneray" pattern="[a-z0-9][a-z0-9\-]*[a-z0-9]" autocapitalize="none" spellcheck="false" /></label>
+          </div>
+          <p class="hint" id="pf-c-hosts-hint"></p>
+          <label class="pf-field">Autre(s) adresse(s) du site (une par ligne, facultatif)
+            <textarea id="pf-c-hosts" rows="2" placeholder="pompiers-vaugneray.fr" spellcheck="false"></textarea></label>
+        </section>
+        <section class="pf-block">
+          <h3>Premier compte administrateur</h3>
+          <div class="pf-row">
+            <label class="pf-field">Identifiant<input id="pf-c-ident" required maxlength="60" autocapitalize="none" spellcheck="false" placeholder="chef.vaugneray" /></label>
+            <label class="pf-field">Nom<input id="pf-c-anom" required maxlength="80" placeholder="Prénom Nom" /></label>
+          </div>
+          <label class="pf-field">Mot de passe provisoire (8 caractères au moins)<input id="pf-c-pwd" required minlength="8" maxlength="200" autocomplete="new-password" /></label>
+        </section>
+        <section class="pf-block">
+          <h3>Communes</h3>
+          <label class="pf-field">Une par ligne : Nom, code postal
+            <textarea id="pf-c-communes" rows="3" placeholder="Vaugneray, 69670&#10;Grézieu-la-Varenne, 69290"></textarea></label>
+          <p class="hint">Adresses (Base Adresse Nationale) et routes (OpenStreetMap) téléchargées automatiquement, en quelques minutes.</p>
+        </section>
       </div>
-      <label class="field">Adresse(s) du site (une par ligne, facultatif)
-        <textarea id="pf-c-hosts" rows="2" placeholder="vaugneray.mondomaine.fr" spellcheck="false"></textarea>
-      </label>
-      <p class="hint" id="pf-c-hosts-hint"></p>
-      <fieldset class="pf-fieldset">
-        <legend>Premier compte administrateur de la caserne</legend>
-        <div class="field-row">
-          <label class="field">Identifiant<input id="pf-c-ident" required maxlength="60" autocapitalize="none" spellcheck="false" placeholder="chef.vaugneray" /></label>
-          <label class="field">Nom<input id="pf-c-anom" required maxlength="80" placeholder="Prénom Nom" /></label>
-        </div>
-        <label class="field">Mot de passe provisoire (8 caractères au moins)<input id="pf-c-pwd" required minlength="8" maxlength="200" autocomplete="new-password" /></label>
-      </fieldset>
-      <label class="field">Communes (une par ligne : Nom, code postal)
-        <textarea id="pf-c-communes" rows="3" placeholder="Vaugneray, 69670&#10;Grézieu-la-Varenne, 69290"></textarea>
-      </label>
-      <p class="hint">Les adresses (Base Adresse Nationale) et les routes (OpenStreetMap) sont téléchargées automatiquement ; cela prend quelques minutes.</p>
       <p id="pf-create-error" class="error-text" hidden></p>
-      <div class="dialog-actions">
+      <div class="dialog-actions pf-dialog-actions">
         <button type="button" class="btn" data-close>Annuler</button>
         <button type="submit" class="btn primary">Créer la caserne</button>
       </div>
+    </form>
+  </dialog>
+
+  <!-- Gérer une caserne -->
+  <dialog id="pf-manage" class="app-dialog pf-dialog" aria-labelledby="pf-m-title">
+    <form method="dialog" id="pf-manage-form">
+      <header class="pf-dialog-head"><div><h2 id="pf-m-title"></h2><p class="hint" id="pf-m-sub"></p></div>
+        <button type="button" class="icon-btn" data-close aria-label="Fermer">✕</button></header>
+      <div class="pf-dialog-body" id="pf-m-body"></div>
     </form>
   </dialog>
 

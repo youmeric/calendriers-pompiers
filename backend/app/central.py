@@ -163,6 +163,10 @@ class CaserneIn(BaseModel):
 
 class CaserneUpdate(BaseModel):
     nom: str | None = Field(default=None, min_length=1, max_length=120)
+    # bot WhatsApp : envoi des accès activé pour cette caserne, et bot propre (facultatif ; vide = celui de la plateforme)
+    whatsapp_actif: bool | None = None
+    whatsapp_url: str | None = Field(default=None, max_length=300)
+    whatsapp_key: str | None = Field(default=None, max_length=200)
     statut: str | None = None
     hosts: list[str] | None = Field(default=None, max_length=10)
     abonnement: str | None = None
@@ -222,7 +226,9 @@ def _stats(cas: plateforme.Caserne) -> dict:
 
 
 def _view(cas: plateforme.Caserne) -> dict:
+    bot = plateforme.bot_settings(cas.id)
     return {"id": cas.id, "slug": cas.slug, "nom": cas.nom, "statut": cas.statut, "hosts": plateforme.hosts(cas.id),
+            "whatsapp": {"actif": bot["actif"], "url": bot["url"], "key_set": bool(bot["key"])},
             "url": _url(cas), "abonnement": plateforme.abonnement_etat(cas),
             "abonnement_formule": cas.abonnement, "abonnement_fin": cas.abonnement_fin,
             "generation": plateforme.last_generation(cas.id), "stats": _stats(cas)}
@@ -271,9 +277,10 @@ def update_caserne(caserne_id: int, payload: CaserneUpdate, request: Request):
         fields["hosts"] = _check_hosts(fields["hosts"], caserne_id)
     if fields.get("abonnement_fin") == "":
         fields["abonnement_fin"] = None
+    plateforme.set_bot(caserne_id, fields.pop("whatsapp_actif", None), fields.pop("whatsapp_url", None), fields.pop("whatsapp_key", None))
     new = plateforme.update(caserne_id, **fields)
     plateforme.log(_who(request), "caserne.modification", new.nom,
-                   " · ".join(f"{k} : {v}" for k, v in payload.model_dump(exclude_none=True).items()))
+                   " · ".join(f"{k} : {'(modifiée)' if k == 'whatsapp_key' else v}" for k, v in payload.model_dump(exclude_none=True).items()))
     return _view(new)
 
 
@@ -336,6 +343,19 @@ def generate_communes(caserne_id: int, payload: CommunesIn):
 
 class ReglagesIn(BaseModel):
     abonnements_actifs: bool | None = None
+    whatsapp_bot_url: str | None = Field(default=None, max_length=300)
+    whatsapp_bot_key: str | None = Field(default=None, max_length=200)
+
+
+def _settings() -> dict:
+    return {"abonnements_actifs": plateforme.abonnements_actifs(),
+            "whatsapp_bot_url": plateforme.get_reglage("whatsapp_bot_url", ""),
+            "whatsapp_bot_key_set": bool(plateforme.get_reglage("whatsapp_bot_key", ""))}
+
+
+@router.get("/api/plateforme/reglages", dependencies=[Depends(require_central)])
+def get_settings():
+    return _settings()
 
 
 @router.put("/api/plateforme/reglages", dependencies=[Depends(require_central)])
@@ -343,7 +363,28 @@ def save_settings(payload: ReglagesIn, request: Request):
     if payload.abonnements_actifs is not None:
         plateforme.set_reglage("abonnements_actifs", "1" if payload.abonnements_actifs else "0")
         plateforme.log(_who(request), "reglages", "abonnements", "activés" if payload.abonnements_actifs else "désactivés")
-    return {"abonnements_actifs": plateforme.abonnements_actifs()}
+    if payload.whatsapp_bot_url is not None:
+        plateforme.set_reglage("whatsapp_bot_url", payload.whatsapp_bot_url.strip())
+        plateforme.log(_who(request), "reglages", "bot WhatsApp", payload.whatsapp_bot_url.strip() or "adresse effacée")
+    if payload.whatsapp_bot_key is not None:
+        plateforme.set_reglage("whatsapp_bot_key", payload.whatsapp_bot_key.strip())
+        plateforme.log(_who(request), "reglages", "bot WhatsApp", "clé modifiée")
+    return _settings()
+
+
+@router.post("/api/plateforme/whatsapp/test", dependencies=[Depends(require_central)])
+def test_bot():
+    """Le bot de la plateforme répond-il, et WhatsApp est-il connecté ?"""
+    from . import whatsapp
+    url = plateforme.get_reglage("whatsapp_bot_url", "")
+    if not url:
+        return {"ok": False, "message": "Adresse du bot non réglée"}
+    try:
+        h = whatsapp.health(url, plateforme.get_reglage("whatsapp_bot_key", ""))
+    except whatsapp.BotError as err:
+        return {"ok": False, "message": str(err)}
+    ready = bool(h.get("ready", h.get("ok")))
+    return {"ok": ready, "message": "Bot connecté" if ready else "Le bot répond mais WhatsApp n'est pas connecté (QR à rescanner ?)"}
 
 
 @router.get("/api/plateforme/journal", dependencies=[Depends(require_central)])

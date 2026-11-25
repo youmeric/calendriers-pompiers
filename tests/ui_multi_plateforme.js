@@ -83,15 +83,20 @@ function check(c, m) { console.log(`${c ? "OK  " : "FAIL"} ${m}`); if (!c) proce
   await other.goto(`${CENTRAL}/plateforme`); // la session de la caserne ne donne pas accès à l'admin central
   check(await other.isVisible("#pf-login"), "l'admin central reste protégé");
 
-  // suspension depuis l'admin central
-  await p.click(".pf-caserne .pf-edit summary");
-  await p.click('.pf-caserne [data-act="suspendue"]'); await p.waitForTimeout(800);
+  // suspension depuis l'admin central (fenêtre « Gérer »)
+  await p.click('.pf-caserne [data-act="gerer"]'); await p.waitForTimeout(300);
+  check(await p.isVisible("#pf-manage") && (await p.textContent("#pf-m-title")).includes("Vaugneray"), "fenêtre « Gérer » de la caserne");
+  await p.screenshot({ path: `${SP}/pf-gerer.png` });
+  await p.click('#pf-manage [data-act="suspendue"]'); await p.waitForTimeout(800);
   check((await p.textContent(".pf-caserne .pf-badge")).includes("Suspendue"), "caserne suspendue");
   const status = () => c.evaluate(() => fetch("/api/communes").then((r) => r.status));
   check(await status() === 503, "son site ne répond plus");
-  await p.click(".pf-caserne .pf-edit summary").catch(() => {});
-  await p.click('.pf-caserne [data-act="active"]'); await p.waitForTimeout(800);
+  await p.click('#pf-manage [data-act="active"]'); await p.waitForTimeout(800);
   check(await status() === 200, "réactivée");
+  // bot WhatsApp de la caserne, géré par l'admin central
+  await p.check('#pf-manage [data-f="whatsapp_actif"]'); await p.click('#pf-manage [data-act="bot"]'); await p.waitForTimeout(700);
+  check((await p.textContent(".pf-caserne .pf-chips")).includes("Bot WhatsApp"), "bot WhatsApp activé pour la caserne");
+  await p.keyboard.press("Escape"); await p.waitForTimeout(200);
   // exploitation : comptes de l'admin central, export, archivage et suppression
   await p.fill("#pf-a-ident", "marie"); await p.fill("#pf-a-nom", "Marie Durand"); await p.fill("#pf-a-pwd", "un-long-mot-de-passe");
   await p.click('#pf-compte-form button[type="submit"]'); await p.waitForTimeout(800);
@@ -100,15 +105,14 @@ function check(c, m) { console.log(`${c ? "OK  " : "FAIL"} ${m}`); if (!c) proce
   await m.goto(`${CENTRAL}/plateforme`); await m.fill("#pf-ident", "marie"); await m.fill("#pf-password", "un-long-mot-de-passe");
   await m.click('#pf-login-form button[type="submit"]'); await m.waitForTimeout(900);
   check((await m.textContent("#pf-me")) === "Marie Durand" && await m.isVisible("#pf-list"), "Marie se connecte avec son compte");
-  await p.click(".pf-caserne .pf-edit summary").catch(() => {});
-  const [download] = await Promise.all([p.waitForEvent("download"), p.click('.pf-caserne a[href$="/export"]')]);
+  await p.click('.pf-caserne [data-act="gerer"]'); await p.waitForTimeout(300);
+  const [download] = await Promise.all([p.waitForEvent("download"), p.click('#pf-manage a[href$="/export"]')]);
   check(/^caserne-vaugneray-.*\.zip$/.test(download.suggestedFilename()), `export téléchargé (${download.suggestedFilename()})`);
   await p.screenshot({ path: `${SP}/pf-exploitation.png`, fullPage: true });
-  await p.click('.pf-caserne [data-act="archivee"]'); await p.waitForTimeout(800);
+  await p.click('#pf-manage [data-act="archivee"]'); await p.waitForTimeout(800);
   p.removeAllListeners("dialog");
   p.on("dialog", (d) => d.accept(d.type() === "prompt" ? "vaugneray" : undefined));
-  await p.click(".pf-caserne .pf-edit summary").catch(() => {});
-  await p.click('.pf-caserne [data-act="supprimer"]'); await p.waitForTimeout(900);
+  await p.click('#pf-manage [data-act="supprimer"]'); await p.waitForTimeout(900);
   check((await p.textContent("#pf-summary")).includes("Aucune caserne"), "caserne archivée puis supprimée");
   const jr = await p.textContent("#pf-journal");
   check(jr.includes("caserne.suppression") && jr.includes("— Administrateur principal") && jr.includes("— Marie Durand"), "journal de la plateforme : qui a fait quoi");

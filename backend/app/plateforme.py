@@ -140,6 +140,11 @@ def init() -> None:
                 ended_at TEXT
             );
         """)
+        cols = {r[1] for r in c.execute("PRAGMA table_info(casernes)")}
+        for col, decl in (("whatsapp_actif", "INTEGER NOT NULL DEFAULT 0"), ("whatsapp_url", "TEXT NOT NULL DEFAULT ''"),
+                          ("whatsapp_key", "TEXT NOT NULL DEFAULT ''")):
+            if col not in cols:  # bot WhatsApp : géré par l'admin central, activé caserne par caserne
+                c.execute(f"ALTER TABLE casernes ADD COLUMN {col} {decl}")
         c.commit()
 
 
@@ -229,6 +234,33 @@ def update(caserne_id: int, **fields) -> Caserne:
                 c.execute("INSERT INTO caserne_hosts (host, caserne_id) VALUES (?, ?)", (clean_host(h), caserne_id))
         c.commit()
     return get(caserne_id)
+
+
+# ---- Bot WhatsApp (géré par l'admin central) ----------------------------------------------
+
+def bot_settings(caserne_id: int) -> dict:
+    with conn() as c:
+        r = c.execute("SELECT whatsapp_actif, whatsapp_url, whatsapp_key FROM casernes WHERE id = ?", (caserne_id,)).fetchone()
+    return {"actif": bool(r and r[0]), "url": (r[1] if r else "") or "", "key": (r[2] if r else "") or ""}
+
+
+def set_bot(caserne_id: int, actif: bool | None = None, url: str | None = None, key: str | None = None) -> None:
+    sets = {k: v for k, v in (("whatsapp_actif", None if actif is None else int(actif)), ("whatsapp_url", url), ("whatsapp_key", key)) if v is not None}
+    if sets:
+        with conn() as c:
+            c.execute(f"UPDATE casernes SET {', '.join(f'{k} = ?' for k in sets)} WHERE id = ?", (*sets.values(), caserne_id))
+            c.commit()
+
+
+def bot_for(cas: Caserne) -> tuple[str, str] | None:
+    """Bot qui envoie les accès de cette caserne : le sien si l'admin central lui en a réglé un, sinon celui
+    de la plateforme ; None si l'envoi par le bot n'est pas activé pour elle."""
+    b = bot_settings(cas.id)
+    if not b["actif"]:
+        return None
+    if b["url"]:
+        return b["url"], b["key"]
+    return get_reglage("whatsapp_bot_url", ""), get_reglage("whatsapp_bot_key", "")
 
 
 def host_owner(host: str) -> int | None:

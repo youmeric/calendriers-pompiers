@@ -1513,6 +1513,10 @@ def admin_get_settings(request: Request):
             "offsite_password_set": bool(db.get_setting("offsite_password", "")),
             "offsite_passphrase_set": bool(db.get_setting("offsite_passphrase", "")),
             "offsite_dernier": json.loads(db.get_setting("offsite_dernier", "") or "null")}
+    if plateforme.current.get() is not None:  # bot WhatsApp géré par l'admin central : rien à régler ici
+        for k in ("whatsapp_bot_url", "whatsapp_bot_key_set"):
+            full.pop(k, None)
+        full["whatsapp_plateforme"] = True
     if auth.has_perm(request, "reglages"):
         return full
     out = {k: full[k] for k in PUBLIC_SETTINGS}
@@ -1526,6 +1530,8 @@ def admin_get_settings(request: Request):
 @app.put("/api/admin/settings", dependencies=[Depends(auth.require_admin)])
 def admin_save_settings(payload: SettingsIn, request: Request):
     sent = payload.model_dump(exclude_none=True)
+    if plateforme.current.get() is not None and {"whatsapp_bot_url", "whatsapp_bot_key"} & set(sent):
+        raise HTTPException(status_code=403, detail="Le bot WhatsApp est géré par l'administrateur de la plateforme")
     for key in sent:
         if not auth.has_perm(request, *SETTING_PERMS.get(key, ("reglages",))):
             raise HTTPException(status_code=403, detail="Votre rôle ne permet pas de changer ce réglage")
@@ -1740,11 +1746,23 @@ _last_send = 0.0
 MIN_GAP = 1.5  # secondes entre deux messages, même si plusieurs onglets envoient (anti-spam WhatsApp)
 
 
+BOT_OFF = "L'envoi par le bot WhatsApp n'est pas activé pour votre caserne : demandez-le à l'administrateur de la plateforme."
+
+
+def _bot_conf() -> tuple[str, str]:
+    """Bot WhatsApp : réglé dans l'admin de l'installation simple ; sur la plateforme, géré par l'admin central."""
+    cas = plateforme.current.get()
+    if cas is not None:
+        conf = plateforme.bot_for(cas)
+        return conf if conf else ("", "")
+    return db.get_setting("whatsapp_bot_url", "") or "", db.get_setting("whatsapp_bot_key", "") or ""
+
+
 def _bot() -> tuple[str, str]:
-    url = db.get_setting("whatsapp_bot_url", "") or ""
+    url, key = _bot_conf()
     if not url:
-        raise HTTPException(status_code=409, detail="Adresse du bot WhatsApp non réglée")
-    return url, db.get_setting("whatsapp_bot_key", "") or ""
+        raise HTTPException(status_code=409, detail=BOT_OFF if plateforme.current.get() is not None else "Adresse du bot WhatsApp non réglée")
+    return url, key
 
 
 def _sector_labels() -> dict[int, str]:
@@ -1782,15 +1800,18 @@ def _person_or_404(personne_id: int) -> dict:
 
 @app.get("/api/admin/whatsapp/etat", dependencies=[Depends(auth.require("equipes", "reglages"))])
 def admin_bot_state():
-    url = db.get_setting("whatsapp_bot_url", "") or ""
+    url, key = _bot_conf()
+    managed = plateforme.current.get() is not None
     if not url:
-        return {"configure": False, "pret": False, "erreur": "Adresse du bot non réglée"}
+        return {"configure": False, "pret": False, "plateforme": managed,
+                "erreur": "Bot non activé pour votre caserne (géré par la plateforme)" if managed else "Adresse du bot non réglée"}
     try:
-        h = whatsapp.health(url, db.get_setting("whatsapp_bot_key", "") or "")
+        h = whatsapp.health(url, key)
     except whatsapp.BotError as err:
         return {"configure": True, "pret": False, "erreur": str(err)}
     ready = bool(h.get("ready", h.get("ok")))
-    return {"configure": True, "pret": ready, "erreur": "" if ready else "Le bot répond mais WhatsApp n'est pas connecté (QR à rescanner ?)"}
+    return {"configure": True, "pret": ready, "plateforme": managed,
+            "erreur": "" if ready else "Le bot répond mais WhatsApp n'est pas connecté (QR à rescanner ?)"}
 
 
 @app.post("/api/admin/whatsapp/apercu", dependencies=[Depends(auth.require("equipes"))])
