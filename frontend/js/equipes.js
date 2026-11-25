@@ -617,16 +617,17 @@
     accessDialog.showModal();
   }
 
-  $("access-copy").addEventListener("click", async () => {
-    const p = person(accessFor);
+  async function copyText(text, done) {
     try {
-      await navigator.clipboard.writeText(accessMessage(p));
-      showToast("Message avec le lien copié ✓");
+      await navigator.clipboard.writeText(text);
+      showToast(done);
     } catch {
       $("access-link").select();
       showToast("Sélectionnez puis copiez le lien.");
     }
-  });
+  }
+  $("access-copy").addEventListener("click", () => copyText(accessLink(person(accessFor)), "Lien copié ✓"));
+  $("access-copy-msg").addEventListener("click", () => copyText(accessMessage(person(accessFor)), "Message avec le lien copié ✓"));
 
   $("access-super").addEventListener("change", async () => {
     const p = person(accessFor);
