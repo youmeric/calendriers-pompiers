@@ -1,5 +1,9 @@
 # Almaneo — version multi-casernes, plan de travail
 
+> **En ligne depuis le 25/11/2026** (partie A de `docs/MISE-EN-SERVICE.md`) : almaneo.fr, admin.almaneo.fr,
+> *.almaneo.fr, servis par la deuxième installation `/opt/docker-compose/almaneo`. Reste : bascule de
+> Courzieu en fin de saison (partie B).
+
 **Almaneo** (de l'*almanach*, le nom historique du calendrier des pompiers) : nom retenu pour la
 plateforme, domaine `almaneo.fr` libre au moment du choix (à réserver, avec si possible `almaneo.com`,
 et à vérifier / déposer à l'INPI, classes 9 et 42).
