@@ -310,6 +310,8 @@ def init_db() -> None:
             conn.execute("ALTER TABLE dons ADD COLUMN logement INTEGER")
         if "recu_token" not in dcols:  # lien du reçu de paiement remis à l'habitant
             conn.execute("ALTER TABLE dons ADD COLUMN recu_token TEXT")
+        if "origine" not in dcols:  # don hors tournée (boîte aux lettres de la caserne, reçu après…) ; vide sinon
+            conn.execute("ALTER TABLE dons ADD COLUMN origine TEXT NOT NULL DEFAULT ''")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS dons_recu ON dons (recu_token) WHERE recu_token IS NOT NULL")
         scols = {row[1] for row in conn.execute("PRAGMA table_info(address_status)")}
         if "par" not in scols:  # qui a validé la maison
@@ -1041,7 +1043,7 @@ MODES = ("especes", "cheque", "cb")
 DON_STATUTS = ("ok", "attente", "echec")
 _DON_COLS = ("id", "annee", "commune_slug", "address_id", "sector_id", "montant_cents", "mode", "statut",
              "foreign_id", "tx_code", "note", "personne_id", "personne_nom", "created_at", "updated_at",
-             "numero", "annule_le", "annule_par", "motif", "logement")
+             "numero", "annule_le", "annule_par", "motif", "logement", "origine")
 
 
 def _don(row) -> dict:
@@ -1060,11 +1062,11 @@ def add_don(d: dict) -> tuple[dict, bool]:
         conn.execute("BEGIN IMMEDIATE")
         did = conn.execute(
             "INSERT INTO dons (annee, commune_slug, address_id, sector_id, montant_cents, mode, statut, foreign_id, "
-            "tx_code, note, personne_id, personne_nom, created_at, updated_at, client_id, logement, numero) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, (SELECT COALESCE(MAX(numero), 0) + 1 FROM dons WHERE annee = ?))",
+            "tx_code, note, personne_id, personne_nom, created_at, updated_at, client_id, logement, origine, numero) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, (SELECT COALESCE(MAX(numero), 0) + 1 FROM dons WHERE annee = ?))",
             (d["annee"], d["commune_slug"], d["address_id"], d["sector_id"], d["montant_cents"], d["mode"],
              d["statut"], d.get("foreign_id"), d.get("tx_code", ""), d.get("note", ""), d.get("personne_id"),
-             d.get("personne_nom", ""), now, now, d.get("client_id"), d.get("logement"), d["annee"]),
+             d.get("personne_nom", ""), now, now, d.get("client_id"), d.get("logement"), d.get("origine", ""), d["annee"]),
         ).lastrowid
         conn.commit()
     return get_don(did), True

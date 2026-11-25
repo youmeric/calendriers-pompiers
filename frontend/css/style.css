@@ -2165,3 +2165,15 @@ body.terrain.theme-dark .ent-name { color: #cbd5e1; }
 .tt-ent { display: block; font-size: 15px; margin-top: 4px; }
 .sig-ent-check { margin: 6px 0; }
 .t-row-label .ent-name { display: block; }
+
+/* Dons hors tournée (admin) */
+.annexe-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin: 8px 0 12px; }
+.annexe-form .field { flex: 1 1 140px; margin: 0; }
+.annexe-form .ax-note { flex: 2 1 240px; }
+.annexes-table tr.annule td { opacity: .55; text-decoration: line-through; }
+.annexes-table tr.annule td small { text-decoration: none; display: block; }
+.bilan-table tr.annexe-row td { background: var(--surface-2, #f3f4f6); }
+.annexe-form .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted, #6b7280); }
+.annexe-form input, .annexe-form select { font: inherit; font-size: 14px; font-weight: 400; color: var(--text, #111827); height: 40px; padding: 0 10px;
+  border: 1px solid var(--line, #e5e7eb); border-radius: 8px; background: var(--card, #fff); width: 100%; box-sizing: border-box; }
+.annexe-form .btn { height: 40px; }

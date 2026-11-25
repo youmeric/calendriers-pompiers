@@ -252,6 +252,50 @@
     }
   });
 
+  // ---- dons hors tournée (boîte aux lettres de la caserne, reçus après la tournée…) ----
+  const MODE_AX = { especes: "espèces", cheque: "chèque", cb: "carte" };
+
+  async function loadAnnexes() {
+    const r = await api("/api/admin/dons-annexes");
+    const actifs = r.dons.filter((d) => !d.annule_le);
+    $("annexes-list").innerHTML = r.dons.length ? `<p class="hint">${actifs.length} don${actifs.length > 1 ? "s" : ""} hors tournée en ${r.annee} : <b>${euros(r.totaux.total)}</b></p>
+      <table class="bilan-table annexes-table"><thead><tr><th>N°</th><th>Date</th><th>Origine</th><th>Montant</th><th>Précisions</th><th>Saisi par</th><th></th></tr></thead><tbody>
+      ${r.dons.map((d) => `<tr data-id="${d.id}" class="${d.annule_le ? "annule" : ""}"><td>${d.numero}</td>
+        <td>${new Date(d.created_at).toLocaleDateString("fr-FR")}</td><td>${escapeHtml(d.origine_label)}</td>
+        <td><b>${euros(d.montant)}</b> ${MODE_AX[d.mode]}${d.tx_code ? ` <small>n° ${escapeHtml(d.tx_code)}</small>` : ""}</td>
+        <td>${escapeHtml(d.note)}${d.annule_le ? `<small class="hint">annulé : ${escapeHtml(d.motif || "")}</small>` : ""}</td><td>${escapeHtml(d.par)}</td>
+        <td>${d.annule_le ? "" : `<button type="button" class="icon-btn danger" data-act="annuler" aria-label="Annuler ce don">✕</button>`}</td></tr>`).join("")}
+      </tbody></table>` : `<p class="hint">Aucun don hors tournée pour l'instant.</p>`;
+  }
+
+  $("ax-mode").addEventListener("change", () => { $("ax-cheque-box").hidden = $("ax-mode").value !== "cheque"; });
+  $("annexe-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const montant = Number(String($("ax-montant").value).replace(",", ".").replace(/[^0-9.]/g, ""));
+    if (!(montant > 0)) { showToast("Indiquez le montant du don.", true); return; }
+    try {
+      const d = await api("/api/admin/dons-annexes", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ montant, mode: $("ax-mode").value, origine: $("ax-origine").value, note: $("ax-note").value.trim(),
+          tx_code: $("ax-mode").value === "cheque" ? $("ax-tx").value.trim() : "" }) });
+      showToast(`Don de ${euros(d.montant)} ajouté (n° ${d.numero}) ✓`);
+      $("ax-montant").value = ""; $("ax-note").value = ""; $("ax-tx").value = "";
+      await render();
+      await loadAnnexes();
+    } catch (err) { showToast(err.message, true); }
+  });
+  $("annexes-list").addEventListener("click", async (e) => {
+    const btn = e.target.closest('[data-act="annuler"]');
+    if (!btn) return;
+    const motif = prompt("Motif de l'annulation (le don reste au registre, marqué annulé) :", "erreur de saisie");
+    if (motif === null) return;
+    try {
+      await api(`/api/admin/dons-annexes/${btn.closest("tr").dataset.id}?motif=${encodeURIComponent(motif)}`, { method: "DELETE" });
+      showToast("Don annulé");
+      await render();
+      await loadAnnexes();
+    } catch (err) { showToast(err.message, true); }
+  });
+
   // ---- caisse ----
   function renderRemises(rows) {
     const items = rows.flatMap((s) => s.caisse.remises.map((r) => ({ ...r, sector_id: s.sector_id })))
@@ -350,7 +394,10 @@
         <td><b>${euros(s.totaux.total)}</b></td>
         <td>${reste(s.caisse.reste)}</td>
       </tr>`;
-    }).join("") + `<tr class="bilan-total-row"><td>Total</td><td>${maisons ? Math.round((passees / maisons) * 100) : 0} % · ${passees} ${AVANCEMENT[avancement].court} / ${maisons}</td><td>${t.nb}</td>
+    }).join("") + (bilan.annexes && bilan.annexes.nb ? `<tr class="annexe-row">
+        <td><span class="bilan-sector">📮 Dons hors tournée</span><small class="hint">boîte aux lettres, reçus après…</small></td><td></td>
+        <td>${bilan.annexes.nb}</td><td>${euros(bilan.annexes.especes)}</td><td>${euros(bilan.annexes.cheque)}</td><td>${euros(bilan.annexes.cb)}</td>
+        <td><b>${euros(bilan.annexes.total)}</b></td><td><span class="hint">chez le trésorier</span></td></tr>` : "") + `<tr class="bilan-total-row"><td>Total</td><td>${maisons ? Math.round((passees / maisons) * 100) : 0} % · ${passees} ${AVANCEMENT[avancement].court} / ${maisons}</td><td>${t.nb}</td>
       <td>${euros(t.especes)}</td><td>${euros(t.cheque)}</td><td>${euros(t.cb)}</td><td><b>${euros(t.total)}</b></td>
       <td>${reste(bilan.secteurs.reduce((acc, s) => ({ especes: acc.especes + s.caisse.reste.especes, cheques: acc.cheques + s.caisse.reste.cheques }), { especes: 0, cheques: 0 }))}</td></tr>`;
   }
@@ -437,6 +484,7 @@
       show("#bilan-view .bilan-main", can("suivi", "dons"));
       show("#sig-section", can("suivi"));
       show("#bilan-export, #bilan-print, #bilan-fiscal, #bilan-view .caisse-section, #bilan-attente", can("dons"));
+      if (can("dons")) loadAnnexes().catch(() => {});
       await loadCodes();
       await render();
     },

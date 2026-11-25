@@ -325,6 +325,21 @@ class DonIn(BaseModel):
         return v.strip()
 
 
+class DonAnnexeIn(BaseModel):
+    """Don hors tournée, saisi par le trésorier : adresse inconnue (don reçu après la tournée),
+    déposé dans la boîte aux lettres de la caserne… Compté dans tous les totaux."""
+    montant: float = Field(gt=0, le=10000)
+    mode: Literal["especes", "cheque", "cb"]
+    origine: Literal["boite", "decale", "caserne", "autre"]
+    note: str = Field(default="", max_length=200)  # nom du donateur, précisions (facultatif)
+    tx_code: str = Field(default="", max_length=64)  # n° du chèque
+
+    @field_validator("note", "tx_code")
+    @classmethod
+    def strip_text(cls, v: str) -> str:
+        return " ".join(v.split())
+
+
 class DonStatutIn(BaseModel):
     statut: Literal["ok", "echec"]
     tx_code: str = Field(default="", max_length=64)
