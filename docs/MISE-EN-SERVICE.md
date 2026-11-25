@@ -19,10 +19,13 @@ Dossiers sur le serveur :
 
 ## A. Lancer Almaneo maintenant
 
-### A1. DNS (chez le registraire d'almaneo.fr)
+### A1. DNS chez OVH
 
-Dans la zone DNS d'`almaneo.fr`, des enregistrements **A** vers l'adresse IP publique du serveur
-(la même que spcourzieu.fr) :
+Espace client OVH → **Web Cloud** → **Noms de domaine** → `almaneo.fr` → onglet **Zone DNS**.
+OVH crée souvent par défaut des entrées **A** pour le domaine et `www` qui pointent vers une page
+d'attente OVH : **modifiez-les** (crayon) plutôt que d'en ajouter d'autres, et supprimez une éventuelle
+**redirection** web OVH sur `www` (onglet *Redirection*). Puis *Ajouter une entrée* → **A** pour les autres.
+Les entrées **A** vers l'adresse IP publique du serveur (la même que spcourzieu.fr) :
 
 | Sous-domaine | Type | Cible | Rôle |
 |---|---|---|---|
@@ -37,10 +40,27 @@ Dans la zone DNS d'`almaneo.fr`, des enregistrements **A** vers l'adresse IP pub
 
 Un certificat `*.almaneo.fr` s'obtient par **défi DNS** :
 
-1. Chez le registraire, créer une **clé d'API DNS** (OVH : `api.ovh.com/createToken`, droits
-   GET/POST/PUT/DELETE sur `/domain/zone/almaneo.fr/*`).
-2. NPM → **SSL Certificates** → *Add SSL Certificate* → *Let's Encrypt* : domaines `almaneo.fr` et
-   `*.almaneo.fr`, cocher **Use a DNS Challenge**, choisir le registraire, coller les identifiants.
+1. Créer une **clé d'API OVH** : https://eu.api.ovh.com/createToken/ (se connecter avec le compte OVH).
+   - *Application name* : `npm-almaneo` ; *Application description* : `Certificat Let's Encrypt`
+   - *Validity* : **Unlimited**
+   - *Rights* : ajouter 4 lignes, chacune sur le chemin `/domain/zone/*` : **GET**, **POST**, **PUT**, **DELETE**
+   - Valider : OVH affiche **Application Key**, **Application Secret** et **Consumer Key** (à garder, ne s'affichent qu'une fois).
+2. NPM → **SSL Certificates** → *Add SSL Certificate* → *Let's Encrypt* :
+   - Domain Names : `almaneo.fr` puis `*.almaneo.fr`
+   - cocher **Use a DNS Challenge**, DNS Provider : **OVH**
+   - *Credentials File Content* : remplacer le modèle par vos trois clés :
+
+     ```
+     dns_ovh_endpoint = ovh-eu
+     dns_ovh_application_key = (Application Key)
+     dns_ovh_application_secret = (Application Secret)
+     dns_ovh_consumer_key = (Consumer Key)
+     ```
+
+   - *Propagation Seconds* : `120` (la zone OVH met un peu de temps à se mettre à jour)
+   - accepter les conditions de Let's Encrypt → *Save* (une à deux minutes).
+
+   Le certificat se renouvelle ensuite tout seul (NPM garde les clés).
 
 ### A3. La deuxième installation
 
