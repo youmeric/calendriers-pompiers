@@ -1451,6 +1451,7 @@
     window.Comptes.setMe(me);
     $("public-settings-card").hidden = !can("reglages");
     showSubscription().catch(() => {});
+    window.Demarrage.init({ can, onSectors: () => start().catch(() => {}) }).catch(() => {});
   }
 
   /** Version multi-casernes : avertissement si l'abonnement de la caserne est expiré (option de la plateforme). */
@@ -1473,7 +1474,10 @@
     if (!state.map) initMap();
     const { communes } = await fetchJSON("/api/communes");
     if (!communes.length) {
-      els.warnings.innerHTML = `<div class="warning danger">Aucune donnée de commune : lancez d'abord le pipeline (<code>docker compose run --rm pipeline</code>).</div>`;
+      const cas = await fetchJSON("/api/public/caserne").catch(() => ({}));
+      els.warnings.innerHTML = cas.multi
+        ? `<div class="warning warn">Vos communes sont en cours de préparation par l'administrateur de la plateforme (adresses et routes). Revenez dans quelques minutes.</div>`
+        : `<div class="warning danger">Aucune donnée de commune : lancez d'abord le pipeline (<code>docker compose run --rm pipeline</code>).</div>`;
       return;
     }
     els.select.innerHTML = communes.map((c) => `<option value="${escapeHtml(c.slug)}">${escapeHtml(c.nom)}</option>`).join("");

@@ -56,7 +56,14 @@ Proposer le site à plusieurs casernes :
   WhatsApp d'accès (`{caserne}`) suivent. Une nouvelle caserne démarre avec son nom et un logo neutre
   (`img/logo-generique.svg`). **Sans réglage, l'installation simple reste exactement celle de Courzieu**
   (nom, écusson, icônes, couleurs) — vérifié par `tests/api_identite_test.py`.
-- [ ] Étapes 4 à 6.
+- [x] **Étape 4 — Guide de démarrage** (`frontend/js/demarrage.js`, API `/api/admin/demarrage`) : à la
+  première connexion d'une nouvelle caserne, une fenêtre en 4 étapes — *Votre caserne* (nom, couleur,
+  logo), *Association et contact* (reçus, mentions, dossier comptable), *Communes et secteurs* (état du
+  téléchargement, création des secteurs proposés automatiquement dans chaque commune qui n'en a pas),
+  *Lancer la tournée* (année, suivi, dons, étapes suivantes). Chaque étape cochée quand elle est faite ;
+  le guide reste accessible par « 🚀 Guide de démarrage » ; jamais affiché dans l'installation simple.
+- [ ] Étape 5 — Exploitation (export complet d'une caserne, comptes de l'admin central, limites).
+- [ ] Étape 6 — Migration de Courzieu et mise en service.
 
 ### Essayer en local
 

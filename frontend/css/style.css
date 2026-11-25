@@ -2210,3 +2210,27 @@ body.terrain.theme-dark .ent-name { color: #cbd5e1; }
 .brand-logo-row img { width: 58px; height: 80px; object-fit: contain; border: 1px solid var(--line, #e5e7eb); border-radius: 8px; background: #fff; padding: 4px; }
 .brand-upload { cursor: pointer; display: inline-flex; }
 .brand-color input[type="color"] { width: 64px; height: 36px; padding: 2px; border-radius: 8px; }
+
+/* Guide de démarrage (nouvelle caserne) */
+.dm-dialog { max-width: 680px; width: calc(100% - 24px); }
+.dm-head h3 { margin: 0 0 10px; }
+.dm-steps { display: flex; gap: 6px; list-style: none; margin: 0 0 14px; padding: 0; flex-wrap: wrap; }
+.dm-steps li { flex: 1 1 130px; }
+.dm-steps button { width: 100%; display: flex; align-items: center; gap: 6px; border: 1px solid var(--line, #e5e7eb); background: var(--card, #fff);
+  border-radius: 10px; padding: 6px 8px; font: inherit; font-size: 13px; cursor: pointer; text-align: left; }
+.dm-steps button span { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface-2, #f3f4f6); font-weight: 700; font-size: 12px; }
+.dm-steps li.done button span { background: #dcfce7; color: #166534; }
+.dm-steps li.current button { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); font-weight: 700; }
+.dm-body { min-height: 220px; }
+.dm-body .field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; margin: 8px 0; }
+.dm-body .field input { font: inherit; font-weight: 400; font-size: 15px; height: 40px; padding: 0 10px; border: 1px solid var(--line, #e5e7eb); border-radius: 8px; }
+.dm-body .field input[type="color"] { width: 72px; padding: 2px; }
+.dm-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+.dm-row > * { flex: 1 1 200px; }
+.dm-communes { margin: 8px 0 12px; }
+.dm-ok { color: #166534; font-weight: 600; }
+.dm-next li { margin: 4px 0; }
+.dm-next li.done { color: #166534; }
+.dm-actions { align-items: center; }
+.dm-spacer { flex: 1; }

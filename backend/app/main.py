@@ -2577,6 +2577,66 @@ def admin_delete_logo(request: Request):
     return {"logo": _branding()["logo"]}
 
 
+# ---- Guide de démarrage d'une nouvelle caserne ---------------------------------------------
+
+def _onboarding_state() -> dict:
+    cas = plateforme.current.get()
+    b = _branding()
+    communes = []
+    for slug in _all_slugs():
+        data = _load_commune(slug)
+        communes.append({"slug": slug, "nom": data["commune"]["nom"], "adresses": len(_active_addresses(slug, data)),
+                         "secteurs": len(db.list_sectors(slug, "secteur")),
+                         "proposes": sum(1 for x in data.get("auto_sectors", []) if len(x.get("polygon", [])) >= 3)})
+    gen = plateforme.last_generation(cas.id) if cas is not None else None
+    with db.get_conn() as conn:
+        personnes = conn.execute("SELECT COUNT(*) FROM personnes").fetchone()[0]
+    return {
+        "multi": cas is not None, "fait": db.get_setting("demarrage_fait", "") == "1",
+        "etapes": {
+            "identite": b["logo_perso"],
+            "association": bool(db.get_setting("asso_adresse", "") and (db.get_setting("contact_email", "") or db.get_setting("contact_tel", ""))),
+            "communes": bool(communes),
+            "secteurs": bool(communes) and all(c["secteurs"] for c in communes),
+            "equipe": personnes > 0,
+        },
+        "communes": communes, "generation": gen["statut"] if gen else None,
+        "annee": _annee(), "suivi": _suivi_enabled(), "dons": _flag("dons_actifs", False), "personnes": personnes,
+    }
+
+
+@app.get("/api/admin/demarrage", dependencies=[Depends(auth.require("reglages"))])
+def admin_onboarding():
+    return _onboarding_state()
+
+
+@app.post("/api/admin/demarrage/secteurs", dependencies=[Depends(auth.require("secteurs"))])
+def admin_onboarding_sectors(request: Request):
+    """Crée les secteurs proposés automatiquement dans chaque commune qui n'en a pas encore
+    (point de départ, à retoucher ensuite dans l'onglet Secteurs)."""
+    created = []
+    for slug in _all_slugs():
+        data = _load_commune(slug)
+        if db.list_sectors(slug, "secteur"):
+            continue
+        autos = [{"nom": x["nom"], "couleur": x["couleur"], "polygon": x["polygon"]}
+                 for x in data.get("auto_sectors", []) if len(x.get("polygon", [])) >= 3]
+        if not autos:
+            continue
+        db.replace_sectors(slug, autos)
+        created.append(f"{data['commune']['nom']} ({len(autos)})")
+    if created:
+        _log(request, "secteurs.enregistres", "guide de démarrage", "secteurs proposés créés : " + ", ".join(created))
+    return {**_onboarding_state(), "crees": created}
+
+
+@app.post("/api/admin/demarrage/fin", dependencies=[Depends(auth.require("reglages"))])
+def admin_onboarding_done(request: Request):
+    db.set_setting("demarrage_fait", "1")
+    _log(request, "reglages", "guide de démarrage", "terminé")
+    return _onboarding_state()
+
+
 @app.get("/manifest.webmanifest", include_in_schema=False)
 def web_manifest():
     """Application installable aux nom et logo de la caserne."""

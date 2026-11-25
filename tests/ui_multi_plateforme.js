@@ -40,6 +40,25 @@ function check(c, m) { console.log(`${c ? "OK  " : "FAIL"} ${m}`); if (!c) proce
   await c.screenshot({ path: `${SP}/pf-caserne-admin.png` });
   check((await c.getAttribute(".brand-logo", "src")) === "/img/logo-generique.svg" && (await c.textContent(".topbar-sub")) === "Sapeurs-pompiers de Vaugneray",
     "admin de la caserne : son nom et un logo neutre");
+  // guide de démarrage : s'ouvre tout seul à la première connexion
+  await c.waitForTimeout(800);
+  check(await c.isVisible("#dm-dialog") && (await c.textContent("#dm-steps")).includes("Votre caserne"), "guide de démarrage ouvert à la première connexion");
+  await c.screenshot({ path: `${SP}/dm-1-identite.png` });
+  await c.click("#dm-next"); await c.waitForTimeout(500);
+  await c.fill("#dm-adresse", "Caserne, 69670 Vaugneray"); await c.fill("#dm-email", "chef@exemple.fr");
+  await c.click("#dm-next"); await c.waitForTimeout(700);
+  check((await c.textContent("#dm-steps li:nth-child(2)")).includes("✓"), "étape association faite");
+  check(await c.isVisible("#dm-sectors"), "communes prêtes : bouton « Créer les secteurs proposés »");
+  await c.click("#dm-sectors"); await c.waitForTimeout(1500);
+  check((await c.textContent("#dm-body")).includes("Chaque commune a ses secteurs"), "secteurs proposés créés");
+  await c.screenshot({ path: `${SP}/dm-3-secteurs.png` });
+  await c.click("#dm-next"); await c.waitForTimeout(500);
+  await c.check("#dm-suivi"); await c.check("#dm-dons");
+  await c.click("#dm-next"); await c.waitForTimeout(1200);
+  check(!(await c.isVisible("#dm-dialog")), "guide terminé");
+  check(await c.locator(".sector-edit-card").count() === 4, "éditeur : les secteurs créés apparaissent");
+  await c.reload(); await c.waitForTimeout(1500);
+  check(!(await c.isVisible("#dm-dialog")) && await c.isVisible("#btn-demarrage"), "guide terminé : ne s'ouvre plus, reste accessible");
   // identité : nom, couleur, logo
   await c.click('.admin-tab[data-tab="bilan"]'); await c.waitForTimeout(1200);
   await c.evaluate(() => { document.getElementById("brand-group").open = true; });

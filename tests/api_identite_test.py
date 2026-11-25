@@ -25,6 +25,7 @@ with admin:
     m = admin.get("/manifest.webmanifest").json()
     check(m["name"] == "Tournée des calendriers — Sapeurs-pompiers de Courzieu" and m["icons"][0]["src"].startswith("icons/"), "appli installable : nom et icônes de Courzieu")
     admin.post("/api/admin/login", json={"password": "secret123"})
+    check(admin.get("/api/admin/demarrage").json()["multi"] is False, "installation simple : pas de guide de démarrage automatique")
     st = admin.get("/api/admin/settings").json()
     check(st["caserne_nom"] == "Sapeurs-pompiers de Courzieu" and st["caserne_couleur"] == "#e5383b" and not st["caserne_logo_perso"], "réglages : identité par défaut")
     admin.put("/api/admin/settings", json={"caserne_nom": "  Pompiers   de Courzieu ", "caserne_couleur": "#1d4ed8"})

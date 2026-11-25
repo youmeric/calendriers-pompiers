@@ -23,6 +23,7 @@
     <div class="topbar-actions">
       <select id="commune-select" aria-label="Choisir la commune" hidden></select>
       <a class="topbar-link" href="/" target="_blank" rel="noopener">Site public ↗</a>
+      <button id="btn-demarrage" class="topbar-link" type="button" hidden>🚀 Guide de démarrage</button>
       <button id="btn-me" class="topbar-link me-link" type="button" hidden title="Mon compte"></button>
       <button id="btn-logout" class="topbar-link" type="button" hidden>Déconnexion</button>
     </div>
@@ -504,6 +505,24 @@
     </form>
   </dialog>
 
+  <!-- Guide de démarrage d'une nouvelle caserne -->
+  <dialog id="dm-dialog" class="app-dialog dm-dialog" aria-labelledby="dm-title">
+    <form method="dialog" id="dm-form">
+      <div class="dm-head">
+        <h3 id="dm-title">Bienvenue ! Mettons en route votre tournée</h3>
+        <ol class="dm-steps" id="dm-steps"></ol>
+      </div>
+      <div id="dm-body" class="dm-body"></div>
+      <p id="dm-error" class="error-text" hidden></p>
+      <div class="dialog-actions dm-actions">
+        <button type="button" class="btn" id="dm-later">Plus tard</button>
+        <span class="dm-spacer"></span>
+        <button type="button" class="btn" id="dm-prev">← Précédent</button>
+        <button type="button" class="btn primary" id="dm-next">Suivant →</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Avertissement avant d'enregistrer des secteurs modifiés en pleine tournée -->
   <dialog id="impact-dialog" class="app-dialog impact-dialog" aria-labelledby="impact-title">
     <form method="dialog">
@@ -580,6 +599,7 @@
   <script src="js/equipes.js?v=__V__"></script>
   <script src="js/bilan.js?v=__V__"></script>
   <script src="js/comptes.js?v=__V__"></script>
+  <script src="js/demarrage.js?v=__V__"></script>
   <script src="js/admin.js?v=__V__"></script>
 </body>
 </html>
