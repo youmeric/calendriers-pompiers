@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import ipaddress
 import os
 import secrets
 import time
@@ -166,6 +167,24 @@ def team_member(request: Request) -> dict | None:
 def is_admin(request: Request) -> bool:
     """Accès « administrateur » de l'espace équipe (tous les secteurs) : suivi ou dons."""
     return has_perm(request, "suivi", "dons")
+
+
+def client_ip(request: Request) -> str:
+    """Adresse IP du visiteur. Derrière Nginx Proxy Manager, l'application ne voit que l'adresse du proxy
+    (réseau Docker privé), la même pour tout le monde : les essais ratés de toute la commune s'additionneraient
+    et bloqueraient tout le monde. On prend alors la dernière adresse de X-Forwarded-For, celle que le proxy
+    a ajoutée lui-même (le visiteur ne peut pas la choisir). Le port de l'application n'est ouvert qu'en local."""
+    peer = request.client.host if request.client else ""
+    try:
+        behind_proxy = ipaddress.ip_address(peer).is_private
+    except ValueError:
+        behind_proxy = False
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if behind_proxy and forwarded:
+        last = forwarded.split(",")[-1].strip()
+        if last:
+            return last
+    return peer or "?"
 
 
 def too_many_attempts(ip: str) -> bool:
