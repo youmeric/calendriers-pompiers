@@ -621,7 +621,7 @@ def _sumup_config() -> dict | None:
 
 @app.post("/api/equipe/login")
 def team_login(payload: CodeIn, request: Request, response: Response):
-    ip = request.client.host if request.client else "?"
+    ip = auth.client_ip(request)
     if auth.too_many_attempts(ip):
         raise HTTPException(status_code=429, detail="Trop d'essais : réessayez dans quelques minutes")
     person = db.get_personne_by_code(payload.code)
@@ -1380,7 +1380,7 @@ def _set_session(response: Response, account: dict | None) -> None:
 
 @app.post("/api/admin/login")
 def login(payload: LoginIn, request: Request, response: Response):
-    ip = request.client.host if request.client else "?"
+    ip = auth.client_ip(request)
     if auth.too_many_attempts(ip):
         raise HTTPException(status_code=429, detail="Trop d'essais : réessayez dans quelques minutes")
     ident = payload.identifiant.strip()
