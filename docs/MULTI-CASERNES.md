@@ -1,4 +1,14 @@
-# Version multi-casernes — plan de travail
+# Almaneo — version multi-casernes, plan de travail
+
+**Almaneo** (de l'*almanach*, le nom historique du calendrier des pompiers) : nom retenu pour la
+plateforme, domaine `almaneo.fr` libre au moment du choix (à réserver, avec si possible `almaneo.com`,
+et à vérifier / déposer à l'INPI, classes 9 et 42).
+
+Adresses prévues : `admin.almaneo.fr` (admin central), `<caserne>.almaneo.fr` pour chaque caserne
+(`courzieu.almaneo.fr`) ; une caserne peut garder en plus son propre domaine (`spcourzieu.fr` mène aussi
+à Courzieu : adresse ajoutée à la caserne dans l'admin central). Sur les sites des casernes, mention
+discrète « propulsé par Almaneo » (connexion, espace équipe, site public) et un paragraphe dans les
+mentions légales ; jamais dans l'installation simple (`PLATFORM_NAME` pour changer le nom).
 
 > Branche `multi-casernes`, **non déployée**. Le site de Courzieu tourne sur `main`.
 > Toute modification de `main` est fusionnée ici (`git merge main`) puis adaptée.
@@ -98,6 +108,6 @@ continuer à passer pour une caserne seule).
 ## Décisions et questions ouvertes
 
 - Hébergement : sur le serveur actuel (décidé).
-- Nom de domaine de la plateforme : pas encore créé (à régler dans `PLATFORM_DOMAIN`).
+- Nom : **Almaneo** ; domaine `almaneo.fr` (à acheter, puis `PLATFORM_DOMAIN=almaneo.fr`).
 - Abonnement : option préparée, désactivée ; que faire d'une caserne expirée (simple avertissement,
   lecture seule, blocage) reste à décider.

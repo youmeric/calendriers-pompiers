@@ -20,6 +20,8 @@ PLATFORM_DB_PATH = os.environ.get("PLATFORM_DB_PATH") or ""
 CASERNES_DIR = os.environ.get("CASERNES_DIR") or os.path.join(os.path.dirname(PLATFORM_DB_PATH) or ".", "casernes")
 # domaine de la plateforme : « courzieu.<domaine> » mène à la caserne « courzieu » sans réglage de plus
 PLATFORM_DOMAIN = (os.environ.get("PLATFORM_DOMAIN") or "").lower().strip(".")
+# nom de la plateforme (marque), affiché discrètement sur les sites des casernes
+PLATFORM_NAME = os.environ.get("PLATFORM_NAME") or "Almaneo"
 
 SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$")
 RESERVED = {"admin", "www", "api", "plateforme", "static", "mail"}

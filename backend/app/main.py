@@ -173,6 +173,12 @@ def _page(name: str, brand: bool = True) -> HTMLResponse:
         esc = lambda v: v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")  # noqa: E731
         communes = " &amp; ".join(esc(c) for c in b["communes"])
         own = b["logo_perso"] or plateforme.current.get() is not None  # sinon : icônes de Courzieu
+        multi = plateforme.current.get() is not None
+        name = esc(plateforme.PLATFORM_NAME)
+        html = (html.replace("__PROPULSE__", f'<p class="powered">propulsé par <b>{name}</b></p>' if multi else "")
+                .replace("__PLATEFORME__", f'<section><h2 id="ml-plateforme">Application</h2><p>Ce site utilise <b>{name}</b>, '
+                         "l'application de tournée des calendriers des sapeurs-pompiers. La caserne reste seule responsable "
+                         "de ses données (voir ci-dessus).</p></section>" if multi else ""))
         html = (html.replace("__CASERNE__", esc(b["nom"])).replace("__LOGO__", esc(b["logo"]))
                 .replace("__COMMUNES__", communes)
                 .replace("__FAVICON__", esc(b["logo"]) if own else "/icons/favicon-64.png")

@@ -100,6 +100,9 @@ with central:
     check("Sapeurs-pompiers de Vaugneray" in hb and "/img/logo-generique.svg" in hb and "Sapeurs-pompiers de Courzieu" not in hb and "logo-courzieu" not in hb,
           "nouvelle caserne : son nom et un logo neutre, rien de Courzieu")
     check(b.get("/manifest.webmanifest").json()["name"] == "Tournée des calendriers — Sapeurs-pompiers de Vaugneray", "appli installable au nom de la caserne")
+    check("propulsé par <b>Almaneo</b>" in b.get("/equipe").text and "propulsé par <b>Almaneo</b>" in b.get("/admin").text
+          and "Ce site utilise <b>Almaneo</b>" in b.get("/mentions").text, "caserne de la plateforme : « propulsé par Almaneo » et mention dans les mentions légales")
+    check("Almaneo" in central.get("/plateforme").text, "admin central au nom d'Almaneo")
     b.put("/api/admin/settings", json={"caserne_couleur": "#0f766e", "caserne_nom": "Centre de secours de Vaugneray"})
     png = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\x01" * 32).decode()
     check(b.put("/api/admin/logo", json={"type": "image/png", "data": png}).status_code == 200, "Vaugneray envoie son logo")

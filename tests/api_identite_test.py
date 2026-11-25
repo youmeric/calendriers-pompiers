@@ -17,11 +17,12 @@ admin = TestClient(app)
 with admin:
     for page in ("/", "/admin", "/equipe", "/plan.html", "/bilan.html", "/fiscal.html", "/mentions"):
         html = admin.get(page).text
-        check("__CASERNE__" not in html and "__LOGO__" not in html and "__FAVICON__" not in html and "__APPLEICON__" not in html and "__ICON__" not in html, f"{page} : aucun emplacement laissé vide")
+        check("__CASERNE__" not in html and "__LOGO__" not in html and "__FAVICON__" not in html and "__APPLEICON__" not in html and "__ICON__" not in html and "__PROPULSE__" not in html and "__PLATEFORME__" not in html, f"{page} : aucun emplacement laissé vide")
     home = admin.get("/").text
     check("Sapeurs-pompiers de Courzieu" in home and "/img/logo-courzieu.png" in home and "/icons/icon-192.png" in home and "/icons/apple-touch-icon.png" in home and "<style>:root" not in home,
           "sans réglage : nom, logo, icône et couleurs de Courzieu, comme avant")
     check("Courzieu &amp; Brussieu" in admin.get("/bilan.html").text, "bilan imprimé : communes de la caserne")
+    check("Almaneo" not in home and "Almaneo" not in admin.get("/mentions").text, "installation simple : aucune mention de la plateforme Almaneo")
     m = admin.get("/manifest.webmanifest").json()
     check(m["name"] == "Tournée des calendriers — Sapeurs-pompiers de Courzieu" and m["icons"][0]["src"].startswith("icons/"), "appli installable : nom et icônes de Courzieu")
     admin.post("/api/admin/login", json={"password": "secret123"})

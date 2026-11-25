@@ -2245,3 +2245,4 @@ body.terrain.theme-dark .ent-name { color: #cbd5e1; }
 .pf-edit .field-row { display: flex; gap: 10px; flex-wrap: wrap; }
 .pf-edit .field-row .field { flex: 1 1 200px; }
 .pf-edit > .btn, .pf-edit fieldset .btn { margin-top: 8px; }
+.powered { margin: 6px 0 0; font-size: 11px; color: var(--muted, #6b7280); text-align: center; letter-spacing: .02em; }
