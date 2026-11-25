@@ -31,7 +31,7 @@ with v:
     check(hd.get("x-content-type-options") == "nosniff" and hd.get("x-frame-options") == "SAMEORIGIN" and "geolocation=(self)" in hd.get("permissions-policy", "")
           and hd.get("strict-transport-security") == "max-age=31536000" and "x-robots-tag" not in hd, "en-têtes de sécurité sur la vitrine")
     check(C("autre.test").get("/plateforme").headers.get("x-robots-tag") == "noindex, nofollow", "admin central : noindex")
-    for img in ("/img/vitrine/phone-accueil.jpg", "/img/almaneo/logo.png", "/img/almaneo/favicon-32.png", "/img/almaneo/partage.png", "/css/vitrine.css", "/js/vitrine.js"):
+    for img in ("/img/vitrine/phone-accueil.jpg", "/img/almaneo/logo.png", "/img/almaneo/favicon-32.png", "/img/almaneo/favicon-48.png", "/img/almaneo/favicon-192.png", "/favicon.ico", "/img/almaneo/partage.png", "/css/vitrine.css", "/js/vitrine.js"):
         check(v.get(img).status_code == 200, f"ressource {img}")
     check(v.get("/api/communes").status_code == 404 and v.get("/admin").status_code == 404, "pas d'outil sur la vitrine")
     r = v.get("/plateforme", follow_redirects=False)
