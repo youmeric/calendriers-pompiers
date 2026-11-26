@@ -2471,3 +2471,73 @@ body.admin.plateforme .pf-login-card h1 { color: var(--brand-navy); }
   body.admin:not(.terrain) .admin-tabs::-webkit-scrollbar { display: none; }
   body.admin:not(.terrain) .admin-tab { flex: 0 0 auto; white-space: nowrap; }
 }
+
+
+/* Espace équipe — confort d'utilisation sur le terrain */
+body.terrain { background: #f5f7fb; }
+body.terrain .t-top {
+  background: rgba(255,255,255,.97);
+  border-bottom-color: #e2e7ef;
+  box-shadow: 0 2px 12px rgba(11,31,68,.045);
+}
+body.terrain .t-sector-btn {
+  background: #f0f3f8;
+  color: var(--brand-navy);
+  border: 1px solid #e3e9f1;
+}
+body.terrain .t-login-card {
+  border: 1px solid #e5eaf1;
+  box-shadow: 0 22px 60px rgba(11,31,68,.12);
+  border-radius: 24px;
+}
+body.terrain .t-login-card h1,
+body.terrain .r-hello h2 { color: var(--brand-navy); }
+body.terrain #t-code {
+  background: #f7f9fc;
+  border-color: #dfe5ee;
+}
+body.terrain #t-code:focus {
+  border-color: var(--brand-red);
+  box-shadow: 0 0 0 3px rgba(227,20,27,.12);
+}
+body.terrain .t-tabs {
+  background: rgba(255,255,255,.98);
+  border-top-color: #e2e7ef;
+  box-shadow: 0 -4px 18px rgba(11,31,68,.045);
+}
+body.terrain .t-tabs a { min-height: 52px; }
+body.terrain .t-tabs a.active { color: var(--brand-navy); }
+body.terrain .t-tabs a.active .ico {
+  color: var(--brand-red-dark);
+  background: var(--brand-tint);
+}
+body.terrain .r-card {
+  border-color: #e4eaf2;
+  border-radius: 18px;
+  box-shadow: 0 3px 14px rgba(11,31,68,.045);
+}
+body.terrain .r-note { border-left-color: var(--brand-red); }
+body.terrain .t-map-legend {
+  border: 1px solid rgba(226,231,239,.9);
+  box-shadow: 0 8px 24px rgba(11,31,68,.12);
+}
+body.terrain .btn.primary {
+  background: var(--brand-red);
+  border-color: var(--brand-red);
+}
+body.terrain .btn.primary:hover { background: var(--brand-red-dark); }
+body.plan { background: #eef2f7; }
+body.plan .plan-toolbar {
+  border-bottom-color: #e2e7ef;
+  box-shadow: 0 2px 12px rgba(11,31,68,.04);
+}
+body.plan .sheet,
+body.plan .report-sheet {
+  border: 1px solid #e2e7ef;
+  box-shadow: 0 12px 36px rgba(11,31,68,.1);
+}
+@media (max-width: 640px) {
+  body.terrain .t-view { padding-inline: 12px; }
+  body.terrain .t-tabs a { font-size: 10px; }
+  body.terrain .t-tabs .ico { width: 22px; height: 22px; }
+}
