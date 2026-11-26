@@ -3,194 +3,250 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>__NOM__ — application pour la tournée des calendriers des sapeurs-pompiers</title>
-<meta name="description" content="__NOM__ simplifie la tournée des calendriers des sapeurs-pompiers : secteurs sur la carte, suivi sur téléphone même sans réseau, dons, reçus, caisse et bilan comptable pour les amicales." />
+<title>__NOM__ — la plateforme de la tournée des calendriers</title>
+<meta name="description" content="__NOM__ accompagne les amicales de sapeurs-pompiers : préparation des secteurs, équipes sur le terrain, suivi des dons, caisse et bilan comptable." />
 <link rel="canonical" href="https://__DOMAINE__/" />
 <meta name="robots" content="index, follow" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://__DOMAINE__/" />
 <meta property="og:locale" content="fr_FR" />
 <meta property="og:site_name" content="__NOM__" />
-<meta property="og:title" content="__NOM__ — la tournée des calendriers, simplement" />
-<meta property="og:description" content="Secteurs, équipes, suivi des maisons, dons et dossier comptable : tout pour la tournée des calendriers des sapeurs-pompiers." />
+<meta property="og:title" content="__NOM__ — la tournée des calendriers, maîtrisée de bout en bout" />
+<meta property="og:description" content="La carte, les équipes, les dons et la comptabilité réunis dans un seul outil pensé pour les amicales de sapeurs-pompiers." />
 <meta property="og:image" content="https://__DOMAINE__/img/almaneo/partage.png" />
-<meta property="og:image:width" content="1200" />
-<meta property="og:image:height" content="630" />
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
-<link rel="icon" type="image/png" sizes="48x48" href="/img/almaneo/favicon-48.png" />
-<link rel="icon" type="image/png" sizes="96x96" href="/img/almaneo/favicon-96.png" />
 <link rel="icon" type="image/png" sizes="192x192" href="/img/almaneo/favicon-192.png" />
 <link rel="apple-touch-icon" href="/img/almaneo/apple-touch-180.png" />
-<meta name="theme-color" content="#0B1F44" />
+<meta name="theme-color" content="#101f38" />
 <link rel="preload" href="/vendor/inter/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="stylesheet" href="/css/vitrine.css?v=__V__" />
 <script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@graph": [
-    { "@type": "Organization", "name": "__NOM__", "url": "https://__DOMAINE__/", "logo": "https://__DOMAINE__/img/almaneo/icone-512.png" },
-    { "@type": "SoftwareApplication", "name": "__NOM__", "url": "https://__DOMAINE__/",
-      "applicationCategory": "BusinessApplication", "operatingSystem": "Navigateur web (téléphone, tablette, ordinateur)",
-      "inLanguage": "fr",
-      "description": "Application web pour la tournée des calendriers des amicales de sapeurs-pompiers : secteurs sur la carte, suivi des maisons sur téléphone même sans réseau, dons, reçus, caisse et dossier comptable.",
-      "image": "https://__DOMAINE__/img/almaneo/partage.png" }
-  ]
-}
+{"@context":"https://schema.org","@graph":[
+{"@type":"Organization","name":"__NOM__","url":"https://__DOMAINE__/","logo":"https://__DOMAINE__/img/almaneo/icone-512.png"},
+{"@type":"SoftwareApplication","name":"__NOM__","url":"https://__DOMAINE__/","applicationCategory":"BusinessApplication","operatingSystem":"Navigateur web","inLanguage":"fr","description":"Application web pour organiser la tournée des calendriers des amicales de sapeurs-pompiers."}
+]}
 </script>
 </head>
-<body>
-  <header class="v-top">
-    <a class="v-brand" href="#" aria-label="__NOM__"><img src="/img/almaneo/logo.png" alt="__NOM__" height="40" /></a>
-    <nav class="v-nav" aria-label="Sommaire">
-      <a href="#fonctions">Fonctions</a>
-      <a href="#comment">Comment ça marche</a>
-      <a href="#securite">Sécurité</a>
-      <a href="#questions">Questions</a>
-      <a class="v-btn small" href="#contact">Demander une démo</a>
-    </nav>
-  </header>
+<body class="v-site">
+<a class="v-skip" href="#contenu">Aller au contenu</a>
+<header class="v-header">
+  <a class="v-brand" href="#" aria-label="Accueil __NOM__"><img src="/img/almaneo/logo.png" alt="__NOM__" width="150" height="44" /></a>
+  <nav class="v-nav" id="v-nav" aria-label="Navigation principale">
+    <a href="#solution">La solution</a>
+    <a href="#terrain">Sur le terrain</a>
+    <a href="#gestion">Gestion &amp; finances</a>
+    <a href="#securite">Sécurité</a>
+    <a href="#faq">FAQ</a>
+    <a class="v-nav-cta" href="#contact">Demander une démo <span aria-hidden="true">↗</span></a>
+  </nav>
+  <button class="v-menu" id="v-menu" type="button" aria-label="Ouvrir le menu" aria-expanded="false" aria-controls="v-nav"><span></span><span></span></button>
+</header>
 
-  <main>
-    <section class="v-hero">
-      <div class="v-hero-text">
-        <p class="v-kicker">Pour les amicales de sapeurs-pompiers</p>
-        <h1>La tournée des calendriers, <span>enfin simple.</span></h1>
-        <p class="v-lead">Les secteurs sur la carte, les équipes sur leur téléphone, les dons et la caisse au centime près :
-          __NOM__ accompagne votre tournée du premier coup de crayon jusqu'au dossier comptable.</p>
-        <div class="v-cta">
-          <a class="v-btn" href="#contact">Demander une démo</a>
-          <a class="v-btn ghost" href="#fonctions">Voir les fonctions</a>
+<main id="contenu">
+  <section class="v-hero">
+    <div class="v-hero-inner">
+      <div class="v-hero-copy">
+        <p class="v-eyebrow"><span class="v-live-dot"></span> L'outil de terrain des amicales de sapeurs-pompiers</p>
+        <h1>Votre tournée.<br /><em>Enfin bien organisée.</em></h1>
+        <p class="v-hero-lead">De la création des secteurs au dernier centime de la caisse, __NOM__ réunit toute votre tournée des calendriers dans un seul espace. Simple pour les équipes, clair pour les responsables.</p>
+        <div class="v-hero-actions">
+          <a class="v-button v-button-red" href="#contact">Découvrir la plateforme <span aria-hidden="true">→</span></a>
+          <a class="v-button v-button-outline" href="#solution">Explorer les fonctionnalités</a>
         </div>
-        <ul class="v-proofs">
-          <li>✓ Sur téléphone, sans application à installer</li>
-          <li>✓ Fonctionne même sans réseau</li>
-          <li>✓ Vos données restent les vôtres</li>
+        <div class="v-hero-proof">
+          <span><b>01</b> Un outil conçu en caserne</span>
+          <span><b>02</b> Téléphone &amp; ordinateur</span>
+          <span><b>03</b> Même hors connexion</span>
+        </div>
+      </div>
+      <div class="v-hero-visual">
+        <div class="v-visual-glow"></div>
+        <div class="v-visual-label"><span class="v-label-dot"></span> Une tournée, une vue d'ensemble</div>
+        <div class="v-screen v-screen-map">
+          <img src="/img/vitrine/admin-secteurs.jpg" alt="Vue de l'administration avec les secteurs de tournée sur une carte" width="700" height="438" fetchpriority="high" />
+        </div>
+        <div class="v-screen v-screen-phone">
+          <img src="/img/vitrine/phone-maisons.jpg" alt="Suivi des maisons depuis un téléphone" width="280" height="476" loading="eager" />
+        </div>
+        <div class="v-float-card"><span class="v-float-icon">✓</span><span><b>Tout est synchronisé</b><small>Les équipes avancent, vous suivez.</small></span></div>
+      </div>
+    </div>
+    <div class="v-hero-bottom">
+      <span>DU PREMIER PLAN AU BILAN FINAL</span><span class="v-hero-line"></span><span>UNE SEULE PLATEFORME</span>
+    </div>
+  </section>
+
+  <section class="v-intro v-wrap" id="solution">
+    <div class="v-section-tag">LA SOLUTION</div>
+    <div class="v-intro-grid">
+      <h2>Moins de papier.<br /><span>Plus de maîtrise.</span></h2>
+      <div><p class="v-intro-text">La tournée des calendriers mobilise des bénévoles, des communes, des secteurs et de l'argent à suivre avec sérieux. __NOM__ rassemble les informations au même endroit pour que chacun sache quoi faire, et que les responsables gardent une vision claire.</p><p class="v-muted">Un outil métier, pas un tableur de plus.</p></div>
+    </div>
+    <div class="v-pillars">
+      <article class="v-pillar"><span class="v-pillar-no">01</span><div class="v-pillar-icon">⌖</div><h3>Préparer</h3><p>Construisez vos secteurs, répartissez les adresses et préparez les équipes.</p></article>
+      <article class="v-pillar"><span class="v-pillar-no">02</span><div class="v-pillar-icon">↗</div><h3>Réaliser</h3><p>Chaque équipe suit sa tournée depuis son téléphone, avec ou sans réseau.</p></article>
+      <article class="v-pillar"><span class="v-pillar-no">03</span><div class="v-pillar-icon">▤</div><h3>Suivre</h3><p>Visualisez l'avancement, les dons et les mouvements de caisse en direct.</p></article>
+      <article class="v-pillar"><span class="v-pillar-no">04</span><div class="v-pillar-icon">✓</div><h3>Clôturer</h3><p>Retrouvez un registre détaillé, les dépôts et le dossier comptable annuel.</p></article>
+    </div>
+  </section>
+
+  <section class="v-feature v-feature-dark" id="terrain">
+    <div class="v-feature-inner v-wrap">
+      <div class="v-feature-copy">
+        <div class="v-section-tag v-tag-light">01 / SUR LE TERRAIN</div>
+        <h2>Pour les équipes,<br /><em>ça doit rester simple.</em></h2>
+        <p>Sur le pas de la porte, personne n'a envie de chercher dans un tableau compliqué. L'interface équipe est pensée pour aller vite : ouvrir son secteur, retrouver la maison, enregistrer le passage et continuer.</p>
+        <ul class="v-check-list">
+          <li>Une liste claire des adresses à visiter</li>
+          <li>Un suivi rapide : fait, absent ou refus</li>
+          <li>Les notes utiles et les absents à repasser</li>
+          <li>Les immeubles et logements suivis séparément</li>
+          <li>Une synchronisation automatique au retour du réseau</li>
         </ul>
-        <p class="v-origin">Né et utilisé sur le terrain chez les sapeurs-pompiers de Courzieu (Rhône).</p>
+        <a class="v-text-link" href="#contact">Voir l'espace équipe en démonstration <span>→</span></a>
       </div>
-      <div class="v-hero-shots" aria-hidden="true">
-        <img class="v-phone back" src="/img/vitrine/phone-maisons.jpg" alt="" width="280" height="476" />
-        <img class="v-phone front" src="/img/vitrine/phone-accueil.jpg" alt="" width="280" height="476" />
+      <div class="v-feature-media v-media-phone">
+        <div class="v-media-caption">ESPACE ÉQUIPE · MOBILE</div>
+        <div class="v-phone-frame"><img src="/img/vitrine/phone-accueil.jpg" alt="Écran d'accueil de l'espace équipe sur smartphone" width="280" height="476" loading="lazy" /></div>
+        <div class="v-phone-frame v-phone-secondary"><img src="/img/vitrine/phone-maisons.jpg" alt="Liste des maisons à visiter sur smartphone" width="280" height="476" loading="lazy" /></div>
       </div>
-    </section>
+    </div>
+  </section>
 
-    <section class="v-section" id="fonctions">
-      <h2>Tout ce qu'il faut pour la tournée</h2>
-      <p class="v-sub">Pensé avec une amicale, testé en conditions réelles, de la préparation au bilan.</p>
-      <div class="v-grid">
-        <article><span class="v-ico">🗺️</span><h3>Secteurs sur la carte</h3>
-          <p>Toutes les adresses de vos communes, des secteurs proposés automatiquement et équilibrés, à retoucher à la souris. Plans imprimables avec QR code.</p></article>
-        <article><span class="v-ico">👥</span><h3>Équipes et codes d'accès</h3>
-          <p>Chaque équipier reçoit son code personnel par WhatsApp ou SMS et ne voit que son secteur. Responsables, superviseurs, remplaçants.</p></article>
-        <article><span class="v-ico">📱</span><h3>Le suivi sur téléphone</h3>
-          <p>Fait, absent, refus : un appui par maison, l'heure est notée. Les absents à repasser, les immeubles logement par logement, l'ordre de passage.</p></article>
-        <article><span class="v-ico">📶</span><h3>Même sans réseau</h3>
-          <p>Dans les hameaux sans couverture, tout continue : le téléphone garde le secteur et envoie les saisies dès que le réseau revient.</p></article>
-        <article><span class="v-ico">💶</span><h3>Dons et reçus</h3>
-          <p>Espèces, chèques, carte (SumUp). Un reçu à montrer en QR code ou à envoyer à l'habitant. Les dons reçus après la tournée aussi.</p></article>
-        <article><span class="v-ico">🧾</span><h3>Caisse et dossier comptable</h3>
-          <p>Remises au trésorier, dépôts en banque, registre des dons numéroté et inaltérable : de quoi répondre sereinement à un contrôle.</p></article>
-        <article><span class="v-ico">📊</span><h3>Avancement en direct</h3>
-          <p>La carte de toutes les tournées qui se remplit au fil de la journée, et le bilan de l'année comparé à la précédente.</p></article>
-        <article><span class="v-ico">🏢</span><h3>Tournée des entreprises</h3>
-          <p>Les commerces et entreprises dans une tournée à part, avec sa propre équipe ; les oublis signalés depuis le terrain.</p></article>
+  <section class="v-feature v-feature-light">
+    <div class="v-feature-inner v-wrap v-feature-reverse">
+      <div class="v-feature-copy">
+        <div class="v-section-tag">02 / PRÉPARATION &amp; PILOTAGE</div>
+        <h2>Une carte claire.<br /><em>Des secteurs équilibrés.</em></h2>
+        <p>Préparez vos communes, visualisez les adresses et répartissez le travail avant le départ. Les plans peuvent être imprimés et partagés avec un QR code pour retrouver facilement le secteur sur le téléphone.</p>
+        <div class="v-mini-grid">
+          <div><b>Cartographie</b><span>Adresses, routes et limites de secteurs.</span></div>
+          <div><b>Équipes</b><span>Responsables, équipiers et accès individuels.</span></div>
+          <div><b>Suivi global</b><span>Progression des secteurs et points à reprendre.</span></div>
+          <div><b>Multi-communes</b><span>Une tournée organisée sur plusieurs communes.</span></div>
+        </div>
       </div>
-    </section>
+      <div class="v-feature-image"><img src="/img/vitrine/admin-secteurs.jpg" alt="Écran de préparation des secteurs sur une carte" width="700" height="438" loading="lazy" /><span class="v-image-note">ADMINISTRATION · CARTE DES SECTEURS</span></div>
+    </div>
+  </section>
 
-    <section class="v-band">
-      <div class="v-band-text">
-        <h2>Préparer la tournée en une soirée</h2>
-        <p>Les adresses de vos communes sont déjà là (Base Adresse Nationale), les routes aussi. __NOM__ propose un découpage
-          équilibré, le bourg à pied depuis la mairie, les hameaux regroupés. Vous ajustez, vous placez les équipes, c'est prêt.</p>
+  <section class="v-finance" id="gestion">
+    <div class="v-wrap">
+      <div class="v-finance-heading"><div><div class="v-section-tag v-tag-light">03 / DONS &amp; COMPTABILITÉ</div><h2>Chaque don compte.<br /><em>Chaque euro est suivi.</em></h2></div><p>Du terrain à la banque, retrouvez la trace des encaissements et des remises. Les responsables disposent d'une vision structurée pour préparer la clôture de l'année.</p></div>
+      <div class="v-finance-grid">
+        <article><span class="v-finance-icon">€</span><h3>Dons multi-paiements</h3><p>Espèces, chèques et carte bancaire avec SumUp. Les paiements sont rattachés à la tournée.</p></article>
+        <article><span class="v-finance-icon">↗</span><h3>Reçus de paiement</h3><p>Un reçu simple accessible par lien ou QR code, à remettre à l'habitant.</p></article>
+        <article><span class="v-finance-icon">▤</span><h3>Caisse &amp; dépôts</h3><p>Suivi des remises au trésorier, des espèces, des chèques et des dépôts en banque.</p></article>
+        <article><span class="v-finance-icon">#</span><h3>Registre détaillé</h3><p>Les dons sont numérotés et les annulations restent identifiables dans l'historique.</p></article>
+        <article><span class="v-finance-icon">▥</span><h3>Bilan annuel</h3><p>Des synthèses par secteur, par collecteur et par moyen de paiement.</p></article>
+        <article><span class="v-finance-icon">⇩</span><h3>Exports &amp; archivage</h3><p>Les données utiles à la gestion peuvent être exportées pour vos suivis.</p></article>
       </div>
-      <img class="v-wide" src="/img/vitrine/admin-secteurs.jpg" alt="L'éditeur des secteurs : quatre secteurs colorés sur la carte et l'équilibre entre eux" width="700" height="438" loading="lazy" />
-    </section>
+      <p class="v-finance-note">Les reçus générés par la plateforme sont des reçus de paiement et ne constituent pas des reçus fiscaux.</p>
+    </div>
+  </section>
 
-    <section class="v-section v-story">
-      <div class="v-story-card">
-        <p class="v-kicker">Pourquoi __NOM__ ?</p>
-        <h2>Né dans une caserne, pensé pour toutes les amicales.</h2>
-        <p>Chaque année, les mêmes difficultés revenaient : des plans papier à refaire, des secteurs difficiles à équilibrer,
-          des listes de rues à recopier, et de longues soirées pour recompter les enveloppes.</p>
-        <p>__NOM__ est né de cette expérience, chez les sapeurs-pompiers de Courzieu, et a été construit et éprouvé pendant la tournée,
-          avec celles et ceux qui la font. Une seule ambition : moderniser la tournée des calendriers sans compliquer
-          la vie des bénévoles. Si un équipier sait envoyer un message, il sait utiliser __NOM__.</p>
-      </div>
-    </section>
+  <section class="v-steps-section v-wrap">
+    <div class="v-section-tag">UNE MISE EN ROUTE ACCOMPAGNÉE</div>
+    <div class="v-steps-heading"><h2>Prêts pour votre<br /><span>prochaine tournée.</span></h2><p>Pas besoin de repartir de zéro chaque année. Votre espace conserve les éléments utiles et vous permet de préparer la campagne suivante.</p></div>
+    <div class="v-timeline">
+      <article><span>ÉTAPE 01</span><div class="v-timeline-mark">1</div><h3>Votre espace est créé</h3><p>On configure votre caserne, vos communes et votre identité visuelle.</p></article>
+      <article><span>ÉTAPE 02</span><div class="v-timeline-mark">2</div><h3>Vous préparez</h3><p>Vous ajustez les secteurs, les équipes, les accès et les dates.</p></article>
+      <article><span>ÉTAPE 03</span><div class="v-timeline-mark">3</div><h3>Vous partez en tournée</h3><p>Les équipiers ouvrent leur espace mobile et saisissent les passages.</p></article>
+      <article><span>ÉTAPE 04</span><div class="v-timeline-mark">4</div><h3>Vous faites le bilan</h3><p>Vous retrouvez les dons, les remises et les exports de l'année.</p></article>
+    </div>
+  </section>
 
-    <section class="v-section" id="comment">
-      <h2>Comment ça marche</h2>
-      <ol class="v-steps">
-        <li><b>On crée votre espace</b><span>À l'adresse de votre caserne (votrecaserne.__DOMAINE__), avec vos communes, votre écusson et vos couleurs.</span></li>
-        <li><b>Vous préparez la tournée</b><span>Secteurs, équipes, dates : un guide vous accompagne à la première connexion.</span></li>
-        <li><b>Les équipes partent</b><span>Chacun ouvre son lien sur son téléphone, et vous suivez l'avancement et les dons en direct.</span></li>
-      </ol>
-    </section>
+  <section class="v-origin">
+    <div class="v-origin-inner v-wrap">
+      <div class="v-origin-mark">ALMANEO <span>·</span> SUR LE TERRAIN</div>
+      <div><div class="v-section-tag v-tag-light">UNE HISTOIRE DE CASERNE</div><h2>Conçu avec celles et ceux<br />qui font la tournée.</h2><p>__NOM__ est né de l'expérience des sapeurs-pompiers de Courzieu, dans le Rhône. Des besoins concrets, rencontrés pendant la préparation et la réalisation de la tournée, ont guidé la création de l'outil. L'objectif : simplifier l'organisation sans ajouter de complexité aux bénévoles.</p><p class="v-origin-sign">Une solution imaginée au plus près du terrain.</p></div>
+    </div>
+  </section>
 
-    <section class="v-section v-secu" id="securite">
-      <h2>Vos données, protégées</h2>
-      <p class="v-sub">Adresses, équipes, dons : des informations qui méritent d'être bien gardées. Voici ce que fait __NOM__, concrètement.</p>
-      <div class="v-grid">
-        <article><span class="v-ico">🏠</span><h3>Un espace par caserne</h3>
-          <p>Chaque amicale a sa propre adresse et sa propre base de données, séparée de celles des autres. Aucune autre amicale ne peut y accéder.</p></article>
-        <article><span class="v-ico">🔒</span><h3>Connexions chiffrées</h3>
-          <p>Tout passe en HTTPS. Les mots de passe ne sont jamais stockés en clair et les essais de connexion répétés sont freinés.</p></article>
-        <article><span class="v-ico">🔑</span><h3>Chacun ses droits</h3>
-          <p>Chaque équipier a son code personnel et ne voit que son secteur. Les accès administrateurs se règlent fonction par fonction. Un code perdu se remplace en un clic : l'ancien ne marche plus.</p></article>
-        <article><span class="v-ico">💾</span><h3>Sauvegardes quotidiennes</h3>
-          <p>Une sauvegarde automatique chaque jour, gardée 30 jours, et une copie chiffrée hors du serveur si vous le souhaitez.</p></article>
-        <article><span class="v-ico">🧹</span><h3>Le strict nécessaire</h3>
-          <p>Les données personnelles sont limitées au nécessaire et effacées automatiquement au bout des durées que vous choisissez.</p></article>
-        <article><span class="v-ico">📦</span><h3>Vos données restent les vôtres</h3>
-          <p>Vous exportez tout quand vous voulez. Si vous arrêtez, votre espace et ses données sont supprimés sur simple demande.</p></article>
-      </div>
-    </section>
+  <section class="v-security v-wrap" id="securite">
+    <div class="v-section-tag">CONFIANCE &amp; PROTECTION</div>
+    <div class="v-security-head"><h2>Vos données sont<br /><span>une responsabilité.</span></h2><p>Les informations de votre amicale ne sont pas de simples lignes dans un fichier. La plateforme prévoit des espaces séparés, des accès par rôle et des outils pour garder la maîtrise de vos données.</p></div>
+    <div class="v-security-grid">
+      <article><b>01</b><h3>Un espace par caserne</h3><p>Les données de chaque amicale sont isolées dans son propre espace.</p></article>
+      <article><b>02</b><h3>Des accès maîtrisés</h3><p>Les codes individuels et les droits limitent l'accès aux informations utiles à chacun.</p></article>
+      <article><b>03</b><h3>Connexion sécurisée</h3><p>Les échanges avec la plateforme passent par HTTPS.</p></article>
+      <article><b>04</b><h3>Sauvegardes</h3><p>Des sauvegardes régulières permettent de protéger les données de l'espace.</p></article>
+      <article><b>05</b><h3>Historique des actions</h3><p>Les actions sensibles de gestion et de caisse sont journalisées.</p></article>
+      <article><b>06</b><h3>Vous gardez la main</h3><p>Les données peuvent être exportées et leur suppression demandée selon les modalités prévues.</p></article>
+    </div>
+  </section>
 
-    <section class="v-section" id="questions">
-      <h2>Questions fréquentes</h2>
+  <section class="v-faq-section" id="faq">
+    <div class="v-wrap v-faq-layout">
+      <div><div class="v-section-tag">QUESTIONS FRÉQUENTES</div><h2>Vous avez<br /><span>des questions ?</span></h2><p>Quelques réponses pour comprendre comment __NOM__ peut s'intégrer à votre organisation.</p><a class="v-text-link" href="#contact">Parlons de votre caserne <span>→</span></a></div>
       <div class="v-faq">
-        <details><summary>Faut-il installer une application ?</summary><p>Non. Tout se passe dans le navigateur du téléphone ; on peut l'ajouter à l'écran d'accueil comme une appli, sans passer par un magasin d'applications.</p></details>
-        <details><summary>Et sans réseau dans les hameaux ?</summary><p>Le téléphone garde une copie du secteur : on continue de marquer les maisons et les dons, tout part dès que le réseau revient.</p></details>
-        <details><summary>À qui appartiennent les données ?</summary><p>À votre amicale. Vous pouvez tout exporter à tout moment (secteurs, équipes, dons, registre). Les données personnelles sont limitées au nécessaire et effacées automatiquement au bout des durées que vous choisissez.</p></details>
-        <details><summary>Combien de temps faut-il pour démarrer ?</summary><p>Nous créons votre espace avec vos communes : les adresses et les routes sont récupérées automatiquement. Ensuite, un guide vous accompagne à la première connexion ; comptez une soirée pour préparer les secteurs et les équipes.</p></details>
-        <details><summary>Peut-on gérer plusieurs communes ?</summary><p>Oui. Chaque commune a ses secteurs, et une tournée peut même couvrir plusieurs communes (par exemple la tournée des entreprises).</p></details>
-        <details><summary>Plusieurs équipes peuvent-elles travailler en même temps ?</summary><p>Oui, chacune sur son secteur, depuis son téléphone. Vous suivez l'avancement de toutes les tournées en direct sur la carte.</p></details>
-        <details><summary>Et si un don est saisi sans réseau, puis renvoyé deux fois ?</summary><p>Chaque saisie porte un identifiant unique : même renvoyée plusieurs fois après une coupure, elle n'est comptée qu'une seule fois.</p></details>
-        <details><summary>Que se passe-t-il si un téléphone est perdu ?</summary><p>Vous créez un nouveau code pour l'équipier en un clic : l'ancien ne fonctionne plus. Tout ce qui avait déjà été envoyé est en sécurité sur le serveur.</p></details>
-        <details><summary>Et l'année suivante ?</summary><p>Rien à refaire : les adresses, les secteurs et les équipes restent d'une année sur l'autre, vous ajustez seulement ce qui change. Le bilan compare chaque année à la précédente.</p></details>
-        <details><summary>Peut-on imprimer les secteurs ?</summary><p>Oui : chaque secteur a son plan imprimable, avec un QR code qui ouvre le secteur sur le téléphone.</p></details>
-        <details><summary>Une autre amicale peut-elle voir nos données ?</summary><p>Non. Chaque caserne a sa propre base de données, à sa propre adresse : les espaces sont complètement séparés.</p></details>
-        <details><summary>Les reçus sont-ils des reçus fiscaux ?</summary><p>Non : ce sont des reçus de paiement simples, que l'habitant peut garder. Le dossier comptable, lui, rassemble tout ce qu'il faut pour vos comptes.</p></details>
-        <details><summary>Combien ça coûte ?</summary><p>__NOM__ est en phase pilote : contactez-nous pour en parler.</p></details>
+        <details><summary>Faut-il installer une application ?</summary><p>Non. L'espace s'ouvre dans le navigateur du téléphone. Il peut être ajouté à l'écran d'accueil pour un accès rapide.</p></details>
+        <details><summary>Est-ce que l'espace fonctionne sans réseau ?</summary><p>L'espace équipe est conçu pour permettre la poursuite de la tournée hors connexion et synchroniser les saisies lorsque le réseau revient.</p></details>
+        <details><summary>Peut-on gérer plusieurs communes ?</summary><p>Oui. Une tournée peut couvrir plusieurs communes, avec des secteurs et des équipes organisés selon votre fonctionnement.</p></details>
+        <details><summary>Plusieurs équipes peuvent-elles travailler en même temps ?</summary><p>Oui. Chaque équipe travaille sur son secteur et les responsables disposent d'une vue d'ensemble de l'avancement.</p></details>
+        <details><summary>Peut-on encaisser par carte bancaire ?</summary><p>Oui, la plateforme prévoit l'intégration SumUp pour les paiements par carte, en complément des espèces et des chèques.</p></details>
+        <details><summary>Les reçus sont-ils des reçus fiscaux ?</summary><p>Non. Il s'agit de reçus de paiement simples. Ils ne donnent pas droit à une réduction d'impôt.</p></details>
+        <details><summary>Combien coûte la plateforme ?</summary><p>La plateforme est en phase pilote. Contactez-nous pour échanger sur votre besoin et les modalités de mise à disposition.</p></details>
+        <details><summary>Peut-on conserver nos secteurs d'une année sur l'autre ?</summary><p>Oui. Les éléments d'organisation peuvent être repris et ajustés pour la campagne suivante.</p></details>
       </div>
-    </section>
+    </div>
+  </section>
 
-    <section class="v-section v-contact" id="contact">
-      <h2>Demander une démo</h2>
-      <p class="v-sub">Laissez-nous vos coordonnées : nous vous recontactons pour vous montrer __NOM__ et voir ensemble ce qu'il faut pour votre caserne.</p>
-      <form id="v-form" class="v-form" novalidate>
-        <label>Votre nom<input name="nom" required maxlength="80" autocomplete="name" /></label>
-        <label>Caserne / amicale<input name="caserne" required maxlength="120" placeholder="Amicale des sapeurs-pompiers de …" /></label>
-        <label>E-mail<input name="email" type="email" required maxlength="150" autocomplete="email" /></label>
-        <label>Téléphone (facultatif)<input name="telephone" maxlength="30" autocomplete="tel" /></label>
-        <label>Commune(s) (facultatif)<input name="commune" maxlength="120" placeholder="Les communes de votre tournée" /></label>
-        <label>Nombre d'équipiers, environ (facultatif)<input name="equipiers" maxlength="20" inputmode="numeric" placeholder="Ex. : 25" /></label>
-        <label class="v-full">Message (facultatif)<textarea name="message" rows="4" maxlength="1500" placeholder="Date de votre tournée, vos questions…"></textarea></label>
-        <label class="v-hp" aria-hidden="true">Site<input name="site" tabindex="-1" autocomplete="off" /></label>
-        <p class="v-full v-legal">Vos coordonnées servent uniquement à vous recontacter au sujet de __NOM__ ; elles ne sont ni revendues ni utilisées pour autre chose.</p>
-        <button type="submit" class="v-btn v-full">Envoyer la demande</button>
-        <p id="v-msg" class="v-full v-msg" role="status" hidden></p>
-      </form>
-      __CONTACT_DIRECT__
-    </section>
-  </main>
+  <section class="v-contact-section" id="contact">
+    <div class="v-contact-wrap v-wrap">
+      <div class="v-contact-copy">
+        <div class="v-section-tag v-tag-light">ET SI ON EN PARLAIT ?</div>
+        <h2>Votre prochaine tournée<br /><em>commence ici.</em></h2>
+        <p>Présentez-nous votre amicale et vos besoins. Nous pourrons vous montrer la plateforme et échanger sur la mise en place de votre espace.</p>
+        <div class="v-contact-points"><span>✓ Démonstration de la plateforme</span><span>✓ Échange adapté à votre organisation</span><span>✓ Sans engagement</span></div>
+        __CONTACT_DIRECT__
+      </div>
+      <div class="v-form-card">
+        <div class="v-form-heading"><span>DEMANDE DE DÉMONSTRATION</span><h3>Parlons de votre projet.</h3><p>Les champs marqués d'un * sont obligatoires.</p></div>
+        <form id="v-form" class="v-form" novalidate>
+          <label>Votre nom *<input name="nom" required maxlength="80" autocomplete="name" placeholder="Prénom et nom" /></label>
+          <label>Caserne / amicale *<input name="caserne" required maxlength="120" placeholder="Nom de votre amicale" /></label>
+          <label>Adresse e-mail *<input name="email" type="email" required maxlength="150" autocomplete="email" placeholder="vous@exemple.fr" /></label>
+          <label>Téléphone<input name="telephone" maxlength="30" autocomplete="tel" placeholder="Facultatif" /></label>
+          <label>Commune(s)<input name="commune" maxlength="120" placeholder="Vos communes de tournée" /></label>
+          <label>Nombre d'équipiers<input name="equipiers" maxlength="20" inputmode="numeric" placeholder="Ex. : 25" /></label>
+          <label class="v-form-full">Votre message<textarea name="message" rows="3" maxlength="1500" placeholder="Votre organisation, vos questions…"></textarea></label>
+          <label class="v-hp" aria-hidden="true">Site<input name="site" tabindex="-1" autocomplete="off" /></label>
+          <p class="v-form-legal v-form-full">Vos coordonnées sont utilisées uniquement pour traiter votre demande et vous recontacter au sujet de __NOM__.</p>
+          <button type="submit" class="v-button v-button-red v-form-full">Envoyer ma demande <span aria-hidden="true">→</span></button>
+          <p id="v-msg" class="v-form-msg v-form-full" role="status" aria-live="polite" hidden></p>
+        </form>
+      </div>
+    </div>
+  </section>
+</main>
 
-  <footer class="v-foot">
-    <p><b>__NOM__</b> · la tournée des calendriers des sapeurs-pompiers</p>
-    <p>Votre caserne utilise déjà __NOM__ ? Ouvrez son adresse habituelle (par exemple <i>votrecaserne.__DOMAINE__</i>).</p>
-    <p class="v-small">Site édité par __EDITEUR__ · Contact : __CONTACT__ · Cartes © contributeurs OpenStreetMap, IGN · Adresses : Base Adresse Nationale</p>
-  </footer>
-  <script src="/js/vitrine.js?v=__V__"></script>
+<footer class="v-footer">
+  <div class="v-footer-main v-wrap">
+    <div class="v-footer-brand"><img src="/img/almaneo/logo.png" alt="__NOM__" width="138" height="40" /><p>La tournée des calendriers,<br />mieux organisée.</p></div>
+    <div class="v-footer-links"><b>Découvrir</b><a href="#solution">La solution</a><a href="#terrain">Espace équipe</a><a href="#gestion">Dons &amp; comptabilité</a><a href="#securite">Sécurité</a></div>
+    <div class="v-footer-links"><b>Vous accompagner</b><a href="#faq">Questions fréquentes</a><a href="#contact">Demander une démo</a><a href="/mentions">Mentions légales</a></div>
+    <div class="v-footer-aside"><span>FAIT POUR LE TERRAIN</span><p>Imaginé avec les sapeurs-pompiers de Courzieu, Rhône.</p></div>
+  </div>
+  <div class="v-footer-bottom v-wrap"><span>© __NOM__ · Site édité par __EDITEUR__</span><span>Contact : __CONTACT__</span><span>Cartes : OpenStreetMap · IGN · BAN</span></div>
+</footer>
+<script src="/js/vitrine.js?v=__V__"></script>
+<script>
+(() => {
+  const button = document.getElementById("v-menu");
+  const nav = document.getElementById("v-nav");
+  if (!button || !nav) return;
+  const close = () => { nav.classList.remove("is-open"); button.setAttribute("aria-expanded", "false"); button.setAttribute("aria-label", "Ouvrir le menu"); };
+  button.addEventListener("click", () => {
+    const open = button.getAttribute("aria-expanded") !== "true";
+    button.setAttribute("aria-expanded", String(open));
+    button.setAttribute("aria-label", open ? "Fermer le menu" : "Ouvrir le menu");
+    nav.classList.toggle("is-open", open);
+  });
+  nav.querySelectorAll("a").forEach(link => link.addEventListener("click", close));
+  document.addEventListener("keydown", e => { if (e.key === "Escape") close(); });
+})();
+</script>
 </body>
 </html>
