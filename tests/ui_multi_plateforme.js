@@ -75,7 +75,14 @@ function check(c, m) { console.log(`${c ? "OK  " : "FAIL"} ${m}`); if (!c) proce
   const accent = await pub.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
   check((await pub.textContent(".topbar-sub")) === "Centre de secours de Vaugneray" && (await pub.getAttribute(".brand-logo", "src")).startsWith("/logo?v=") && accent === "#0f766e",
     "site public : nouveau nom, logo et couleur");
+  // la couleur de la caserne passe partout (boutons, liens), jamais le rouge Almaneo par-dessus
+  const red = await pub.evaluate(() => [...document.querySelectorAll(".btn.primary, a")].filter((el) => el.offsetParent)
+    .map((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).color]).flat().filter((c) => c === "rgb(227, 20, 27)" || c === "rgb(184, 15, 22)").length);
+  check(red === 0, `site public : aucun bouton ni lien resté au rouge Almaneo (${red})`);
   await pub.goto(`${CASERNE}/equipe`); await pub.waitForTimeout(1200);
+  const redTeam = await pub.evaluate(() => [...document.querySelectorAll(".btn.primary, a")].filter((el) => el.offsetParent)
+    .map((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).color]).flat().filter((c) => c === "rgb(227, 20, 27)" || c === "rgb(184, 15, 22)").length);
+  check(redTeam === 0, `espace équipe : couleur de la caserne sur les boutons et liens (${redTeam})`);
   const html = await pub.content();
   check(html.includes('alt="Centre de secours de Vaugneray"') && !html.includes("Sapeurs-pompiers de Courzieu"), "espace équipe : identité de la caserne");
   await pub.screenshot({ path: `${SP}/pf-equipe-login.png` });

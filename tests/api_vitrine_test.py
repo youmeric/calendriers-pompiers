@@ -18,10 +18,10 @@ C = lambda host: TestClient(main.app, base_url=f"http://{host}")  # noqa: E731
 v = C("almaneo.test")
 with v:
     h = v.get("/").text
-    check("La tournée des calendriers" in h and "Almaneo" in h and "Demander une démo" in h and "__" not in h.replace("__V__", ""), "almaneo.fr : le site vitrine")
+    check("Votre tournée" in h and "Almaneo" in h and "Demander une démo" in h and "__" not in h.replace("__V__", ""), "almaneo.fr : le site vitrine")
     check("votrecaserne.almaneo.test" in h and "mailto:contact@almaneo.test" in h, "domaine et contact de la plateforme")
     check(C("www.almaneo.test").get("/").text == h, "www.almaneo.fr : même page")
-    check('<link rel="canonical" href="https://almaneo.test/"' in h and '"@type": "SoftwareApplication"' in h, "référencement : adresse canonique et données structurées")
+    check('<link rel="canonical" href="https://almaneo.test/"' in h and '"SoftwareApplication"' in h, "référencement : adresse canonique et données structurées")
     r = v.get("/robots.txt")
     check(r.status_code == 200 and "Allow: /" in r.text and "Sitemap: https://almaneo.test/sitemap.xml" in r.text, "robots.txt de la vitrine")
     check("<loc>https://almaneo.test/</loc>" in v.get("/sitemap.xml").text, "sitemap.xml")
@@ -31,7 +31,7 @@ with v:
     check(hd.get("x-content-type-options") == "nosniff" and hd.get("x-frame-options") == "SAMEORIGIN" and "geolocation=(self)" in hd.get("permissions-policy", "")
           and hd.get("strict-transport-security") == "max-age=31536000" and "x-robots-tag" not in hd, "en-têtes de sécurité sur la vitrine")
     check(C("autre.test").get("/plateforme").headers.get("x-robots-tag") == "noindex, nofollow", "admin central : noindex")
-    for img in ("/img/vitrine/phone-accueil.jpg", "/img/almaneo/logo.png", "/img/almaneo/favicon-32.png", "/img/almaneo/favicon-48.png", "/img/almaneo/favicon-192.png", "/favicon.ico", "/img/almaneo/partage.png", "/css/vitrine.css", "/js/vitrine.js"):
+    for img in ("/img/vitrine/phone-accueil.jpg", "/img/almaneo/logo.png", "/img/almaneo/logo-fond-fonce.png", "/img/almaneo/favicon-32.png", "/img/almaneo/favicon-48.png", "/img/almaneo/favicon-192.png", "/favicon.ico", "/img/almaneo/partage.png", "/css/vitrine.css", "/js/vitrine.js"):
         check(v.get(img).status_code == 200, f"ressource {img}")
     check(v.get("/api/communes").status_code == 404 and v.get("/admin").status_code == 404, "pas d'outil sur la vitrine")
     r = v.get("/plateforme", follow_redirects=False)

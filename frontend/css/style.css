@@ -24,7 +24,7 @@
   --accent: #e3141b;
   --accent-dark: #b80f16;
   --accent-soft: #fdeeee;
-  --link: #b80f16;
+  --link: var(--accent-dark);
   --fait: #16834a;
   --absent: #c47b12;
   --refus: #c62828;
@@ -35,6 +35,7 @@
   --shadow-md: 0 4px 14px rgba(11, 31, 68, 0.08), 0 1px 3px rgba(11, 31, 68, 0.06);
   --shadow-lg: 0 16px 40px rgba(11, 31, 68, 0.16);
   --ring: 0 0 0 3px rgba(227, 20, 27, 0.2);
+  --ring: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
   --header-h: 60px;
   --tabs-h: 48px;
   color-scheme: light;
@@ -2341,9 +2342,9 @@ body.plateforme { background: #f4f5f8; }
    ================================================================================= */
 :root {
   --brand-navy: #0b1f44;
-  --brand-red: #e3141b;
-  --brand-red-dark: #b80f16;
-  --brand-tint: #fdeeee;
+  --brand-red: var(--accent);        /* couleur de la caserne (rouge Almaneo par défaut) */
+  --brand-red-dark: var(--accent-dark);
+  --brand-tint: var(--accent-soft);
   --surface-page: #f5f7fb;
 }
 body.admin:not(.terrain) { background: var(--surface-page); }
@@ -2413,6 +2414,7 @@ body.admin:not(.terrain) .login-card input {
 body.admin:not(.terrain) .login-card input:focus {
   border-color: var(--brand-red);
   box-shadow: 0 0 0 3px rgba(227,20,27,.12);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 body.admin:not(.terrain) #admin-panel { background: var(--surface-page); }
 body.admin:not(.terrain) .teams { padding: 24px clamp(14px, 2.4vw, 32px) 48px; }
@@ -2429,6 +2431,7 @@ body.admin:not(.terrain) textarea:focus {
   outline: none;
   border-color: var(--brand-red);
   box-shadow: 0 0 0 3px rgba(227,20,27,.1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 body.admin.plateforme { background: var(--surface-page); }
 body.admin.plateforme .pf-top {
@@ -2499,6 +2502,7 @@ body.terrain #t-code {
 body.terrain #t-code:focus {
   border-color: var(--brand-red);
   box-shadow: 0 0 0 3px rgba(227,20,27,.12);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 body.terrain .t-tabs {
   background: rgba(255,255,255,.98);
@@ -2547,9 +2551,9 @@ body.plan .report-sheet {
 /* Composants partagés : tableaux, indicateurs, formulaires et pages documentaires */
 :root {
   --brand-navy: #0b1f44;
-  --brand-red: #e3141b;
-  --brand-red-dark: #b80f16;
-  --brand-tint: #fdeeee;
+  --brand-red: var(--accent);        /* couleur de la caserne (rouge Almaneo par défaut) */
+  --brand-red-dark: var(--accent-dark);
+  --brand-tint: var(--accent-soft);
   --surface-page: #f5f7fb;
 }
 body.admin:not(.terrain) table,
@@ -2569,6 +2573,7 @@ body.terrain .btn:focus-visible,
 body.legal a:focus-visible,
 body.plan button:focus-visible {
   outline: 3px solid rgba(227,20,27,.28);
+  outline: 3px solid color-mix(in srgb, var(--accent) 28%, transparent);
   outline-offset: 2px;
 }
 body.plan .report-sheet {
@@ -2672,6 +2677,7 @@ body.public .search input:focus,
 body.public input[type="search"]:focus {
   border-color: var(--brand-red);
   box-shadow: 0 0 0 3px rgba(227,20,27,.11);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 11%, transparent);
 }
 body.public .btn:not(.primary) {
   border-color: #dfe5ee;
@@ -2715,6 +2721,7 @@ body.admin .brand-chip {
   background: var(--brand-tint);
   color: var(--brand-red-dark);
   border: 1px solid rgba(227,20,27,.10);
+  border: 1px solid color-mix(in srgb, var(--accent) 10%, transparent);
 }
 body.admin .topbar-actions {
   gap: 6px;
@@ -2741,6 +2748,7 @@ body.admin .admin-tab {
 body.admin .admin-tab.active {
   background: var(--brand-tint);
   border-color: rgba(227,20,27,.10);
+  border-color: color-mix(in srgb, var(--accent) 10%, transparent);
   color: var(--brand-red-dark);
 }
 body.admin #admin-panel {
@@ -2805,6 +2813,7 @@ body.terrain input:focus-visible,
 body.terrain select:focus-visible,
 body.terrain textarea:focus-visible {
   outline: 3px solid rgba(227,20,27,.16);
+  outline: 3px solid color-mix(in srgb, var(--accent) 16%, transparent);
   outline-offset: 1px;
 }
 body.admin .btn,
@@ -3012,7 +3021,7 @@ body.terrain .t-top,
 body.public .brand-title { color: #142b4d; }
 body.admin .brand-chip {
   color: var(--brand-red-dark);
-  background: #fff0f0;
+  background: var(--accent-soft);
   border: 1px solid #f8dada;
   border-radius: 999px;
   padding: 4px 9px;
@@ -3336,7 +3345,7 @@ body.legal .receipt-note { padding: 14px 16px; background: #f3f6fb; color: #5364
 .sumup-page { display: grid; min-height: 100svh; place-items: center; padding: 24px 14px; background: radial-gradient(ellipse at 50% 0, #e8eef8 0, #f3f6fb 60%); }
 .sumup-card { width: min(100%, 520px); padding: clamp(26px, 5vw, 46px); text-align: center; background: #fff; }
 .sumup-card > img { object-fit: contain; margin-bottom: 14px; }
-.sumup-icon { display: grid; place-items: center; width: 58px; height: 58px; margin: 10px auto 18px; border-radius: 18px; background: #fff0f0; color: var(--brand-red); font-size: 28px; font-weight: 800; }
+.sumup-icon { display: grid; place-items: center; width: 58px; height: 58px; margin: 10px auto 18px; border-radius: 18px; background: var(--accent-soft); color: var(--brand-red); font-size: 28px; font-weight: 800; }
 .sumup-card h1 { font-size: clamp(24px, 4vw, 32px); letter-spacing: -.035em; }
 .sumup-note { margin-top: 20px; font-size: 13px; line-height: 1.55; }
 body.admin.plateforme .pf-top { padding-inline: clamp(14px, 3vw, 40px); }

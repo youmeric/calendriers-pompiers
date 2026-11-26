@@ -223,7 +223,7 @@ h2 span, h2 em, h1 em { color: var(--red); font-style: normal; }
 /* Footer */
 .v-footer { padding: 54px 0 0; color: #aebacc; background: #0b172a; }
 .v-footer-main { display: grid; grid-template-columns: 1.1fr .8fr .9fr .9fr; gap: 45px; padding-bottom: 44px; }
-.v-footer-brand img { width: 138px; height: auto; filter: brightness(0) invert(1); opacity: .95; }
+.v-footer-brand img { width: 160px; height: auto; }
 .v-footer-brand p { margin: 17px 0 0; color: #9eacbf; font-size: 12px; line-height: 1.7; }
 .v-footer-links { display: grid; align-content: start; justify-items: start; gap: 10px; }
 .v-footer-links b { margin-bottom: 5px; color: #fff; font-size: 11px; }

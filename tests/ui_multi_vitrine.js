@@ -11,7 +11,9 @@ function check(c, m) { console.log(`${c ? "OK  " : "FAIL"} ${m}`); if (!c) proce
   const watch = (p, n) => p.on("pageerror", (e) => errors.push(`${n}: ${e.message}`));
   const v = await (await browser.newContext({ viewport: { width: 1360, height: 900 } })).newPage(); watch(v, "vitrine");
   await v.goto(`${VITRINE}/`); await v.waitForTimeout(800);
-  check((await v.textContent("h1")).includes("La tournée des calendriers") && await v.locator("#fonctions .v-grid article").count() === 8 && await v.locator("#securite .v-grid article").count() === 6, "vitrine : accroche, 8 fonctions et 6 points de sécurité");
+  check((await v.textContent("h1")).includes("Votre tournée") && await v.locator(".v-pillars article").count() === 4
+    && await v.locator(".v-finance-grid article").count() === 6 && await v.locator("#securite article").count() === 6
+    && (await v.textContent(".v-footer")).includes("votrecaserne."), "vitrine : accroche, étapes, finances, 6 points de sécurité, accès des casernes existantes");
   check(await v.evaluate(() => [...document.images].every((i) => i.complete && i.naturalWidth > 0)), "toutes les images s'affichent");
   await v.screenshot({ path: `${SP}/vitrine-ordinateur.png`, fullPage: true });
   await v.click('.v-nav a[href="#contact"]'); await v.waitForTimeout(400);
