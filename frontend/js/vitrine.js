@@ -3,7 +3,7 @@
   "use strict";
   const form = document.getElementById("v-form");
   const msg = document.getElementById("v-msg");
-  const show = (text, ok) => { msg.textContent = text; msg.hidden = false; msg.className = `v-full v-msg ${ok ? "ok" : "ko"}`; };
+  const show = (text, ok) => { msg.textContent = text; msg.hidden = false; msg.className = `v-form-msg v-form-full ${ok ? "ok" : "ko"}`; };
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(form).entries());

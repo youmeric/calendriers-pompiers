@@ -13,27 +13,28 @@
 }
 
 :root {
-  --bg: #f6f7f9;
+  /* Identité Almaneo : bleu nuit, rouge pompier et surfaces claires */
+  --bg: #f5f7fb;
   --card: #ffffff;
-  --surface-2: #f1f3f6;
-  --text: #0f172a;
-  --muted: #5b6577; /* contraste ≥ 4,5:1 sur fond clair (accessibilité) */
-  --border: #e5e7eb;
-  --border-strong: #d4d8df;
-  --accent: #e5383b;
-  --accent-dark: #c81e2a;
-  --accent-soft: #fff1f1;
-  --link: #2563eb;
-  --fait: #16a34a;
-  --absent: #d97706;
-  --refus: #dc2626;
+  --surface-2: #eef2f7;
+  --text: #0b1f44;
+  --muted: #596579;
+  --border: #e2e7ef;
+  --border-strong: #cbd4e1;
+  --accent: #e3141b;
+  --accent-dark: #b80f16;
+  --accent-soft: #fdeeee;
+  --link: #b80f16;
+  --fait: #16834a;
+  --absent: #c47b12;
+  --refus: #c62828;
   --a-faire: #cbd5e1;
   --radius: 14px;
   --radius-lg: 22px;
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05), 0 1px 3px rgba(15, 23, 42, 0.07);
-  --shadow-md: 0 4px 14px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.06);
-  --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.16);
-  --ring: 0 0 0 3px rgba(229, 56, 59, 0.22);
+  --shadow-sm: 0 1px 2px rgba(11, 31, 68, 0.05), 0 1px 3px rgba(11, 31, 68, 0.07);
+  --shadow-md: 0 4px 14px rgba(11, 31, 68, 0.08), 0 1px 3px rgba(11, 31, 68, 0.06);
+  --shadow-lg: 0 16px 40px rgba(11, 31, 68, 0.16);
+  --ring: 0 0 0 3px rgba(227, 20, 27, 0.2);
   --header-h: 60px;
   --tabs-h: 48px;
   color-scheme: light;
@@ -2331,4 +2332,1045 @@ body.plateforme { background: #f4f5f8; }
   .pf-grid { grid-template-columns: 1fr; }
   .pf-jr { grid-template-columns: 1fr; gap: 2px; }
   .pf-compte-form { grid-template-columns: 1fr; }
+}
+
+
+/* =================================================================================
+   ALMANEO — refonte visuelle transversale (présentation uniquement)
+   Les composants et comportements métier existants sont volontairement conservés.
+   ================================================================================= */
+:root {
+  --brand-navy: #0b1f44;
+  --brand-red: #e3141b;
+  --brand-red-dark: #b80f16;
+  --brand-tint: #fdeeee;
+  --surface-page: #f5f7fb;
+}
+body.admin:not(.terrain) { background: var(--surface-page); }
+body.admin:not(.terrain) .topbar {
+  background: rgba(255,255,255,.96);
+  border-bottom-color: #e2e7ef;
+  box-shadow: 0 2px 12px rgba(11,31,68,.04);
+}
+body.admin:not(.terrain) .brand-title { color: var(--brand-navy); }
+body.admin:not(.terrain) .admin-tabs {
+  padding-inline: clamp(12px, 2.4vw, 32px);
+  gap: 7px;
+  background: rgba(255,255,255,.97);
+  border-bottom-color: #e2e7ef;
+}
+body.admin:not(.terrain) .admin-tab {
+  min-height: 38px;
+  border-radius: 11px;
+  transition: background .16s ease, color .16s ease;
+}
+body.admin:not(.terrain) .admin-tab.active {
+  background: var(--brand-navy);
+  color: #fff;
+}
+body.admin:not(.terrain) .admin-tab.active .ico { color: #fff; }
+body.admin:not(.terrain) .btn {
+  border-color: #dce3ed;
+  border-radius: 11px;
+  box-shadow: 0 1px 2px rgba(11,31,68,.04);
+}
+body.admin:not(.terrain) .btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+body.admin:not(.terrain) .btn.primary:hover { background: var(--accent-dark); }
+body.admin:not(.terrain) .card,
+body.admin:not(.terrain) .people-panel,
+body.admin:not(.terrain) .help,
+body.admin:not(.terrain) .tools,
+body.admin:not(.terrain) .balance,
+body.admin:not(.terrain) .settings-card,
+body.admin:not(.terrain) .sector-edit-card {
+  border-color: #e2e7ef;
+  box-shadow: 0 3px 14px rgba(11,31,68,.045);
+}
+body.admin:not(.terrain) .login-view {
+  min-height: calc(100dvh - var(--header-h));
+  align-items: center;
+  padding: 28px 16px 48px;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(11,31,68,.08), transparent 55%),
+    var(--surface-page);
+}
+body.admin:not(.terrain) .login-card {
+  border-radius: 24px;
+  border-color: #e5eaf1;
+  padding: 30px;
+  box-shadow: 0 22px 60px rgba(11,31,68,.12);
+}
+body.admin:not(.terrain) .login-card h2 { color: var(--brand-navy); }
+body.admin:not(.terrain) .login-card input {
+  min-height: 46px;
+  background: #f7f9fc;
+  border-color: #dfe5ee;
+}
+body.admin:not(.terrain) .login-card input:focus {
+  border-color: var(--brand-red);
+  box-shadow: 0 0 0 3px rgba(227,20,27,.12);
+}
+body.admin:not(.terrain) #admin-panel { background: var(--surface-page); }
+body.admin:not(.terrain) .teams { padding: 24px clamp(14px, 2.4vw, 32px) 48px; }
+body.admin:not(.terrain) .teams-head h2 { color: var(--brand-navy); }
+body.admin:not(.terrain) .people-panel { border-radius: 18px; padding: 18px; }
+body.admin:not(.terrain) input:not([type="checkbox"]):not([type="radio"]),
+body.admin:not(.terrain) select,
+body.admin:not(.terrain) textarea {
+  border-color: #dfe5ee;
+}
+body.admin:not(.terrain) input:focus,
+body.admin:not(.terrain) select:focus,
+body.admin:not(.terrain) textarea:focus {
+  outline: none;
+  border-color: var(--brand-red);
+  box-shadow: 0 0 0 3px rgba(227,20,27,.1);
+}
+body.admin.plateforme { background: var(--surface-page); }
+body.admin.plateforme .pf-top {
+  background: rgba(255,255,255,.96);
+  border-bottom-color: #e2e7ef;
+  box-shadow: 0 2px 12px rgba(11,31,68,.04);
+}
+body.admin.plateforme .pf-brand { color: var(--brand-navy); }
+body.admin.plateforme .pf-chip { color: #fff; background: var(--brand-navy); }
+body.admin.plateforme .pf-kpi,
+body.admin.plateforme .pf-card,
+body.admin.plateforme .pf-caserne {
+  border-color: #e6ebf2;
+  box-shadow: 0 4px 18px rgba(11,31,68,.055);
+}
+body.admin.plateforme .pf-hello h1,
+body.admin.plateforme .pf-section-head h2 { color: var(--brand-navy); }
+body.admin.plateforme .pf-avatar {
+  background: linear-gradient(135deg, var(--brand-navy), #244b82);
+}
+body.admin.plateforme .pf-login {
+  background: radial-gradient(ellipse at 50% 0%, rgba(11,31,68,.1), transparent 58%), var(--surface-page);
+}
+body.admin.plateforme .pf-login-card {
+  border: 1px solid #e5eaf1;
+  box-shadow: 0 22px 60px rgba(11,31,68,.12);
+}
+body.admin.plateforme .pf-login-card h1 { color: var(--brand-navy); }
+@media (min-width: 1100px) {
+  body.admin:not(.terrain) .editor { min-height: calc(100dvh - var(--header-h) - var(--tabs-h)); }
+}
+@media (max-width: 640px) {
+  body.admin:not(.terrain) .login-view { padding-top: 22px; }
+  body.admin:not(.terrain) .login-card { padding: 24px 20px; }
+  body.admin:not(.terrain) .admin-tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+    justify-content: flex-start;
+  }
+  body.admin:not(.terrain) .admin-tabs::-webkit-scrollbar { display: none; }
+  body.admin:not(.terrain) .admin-tab { flex: 0 0 auto; white-space: nowrap; }
+}
+
+
+/* Espace équipe — confort d'utilisation sur le terrain */
+body.terrain { background: #f5f7fb; }
+body.terrain .t-top {
+  background: rgba(255,255,255,.97);
+  border-bottom-color: #e2e7ef;
+  box-shadow: 0 2px 12px rgba(11,31,68,.045);
+}
+body.terrain .t-sector-btn {
+  background: #f0f3f8;
+  color: var(--brand-navy);
+  border: 1px solid #e3e9f1;
+}
+body.terrain .t-login-card {
+  border: 1px solid #e5eaf1;
+  box-shadow: 0 22px 60px rgba(11,31,68,.12);
+  border-radius: 24px;
+}
+body.terrain .t-login-card h1,
+body.terrain .r-hello h2 { color: var(--brand-navy); }
+body.terrain #t-code {
+  background: #f7f9fc;
+  border-color: #dfe5ee;
+}
+body.terrain #t-code:focus {
+  border-color: var(--brand-red);
+  box-shadow: 0 0 0 3px rgba(227,20,27,.12);
+}
+body.terrain .t-tabs {
+  background: rgba(255,255,255,.98);
+  border-top-color: #e2e7ef;
+  box-shadow: 0 -4px 18px rgba(11,31,68,.045);
+}
+body.terrain .t-tabs a { min-height: 52px; }
+body.terrain .t-tabs a.active { color: var(--brand-navy); }
+body.terrain .t-tabs a.active .ico {
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+}
+body.terrain .r-card {
+  border-color: #e4eaf2;
+  border-radius: 18px;
+  box-shadow: 0 3px 14px rgba(11,31,68,.045);
+}
+body.terrain .r-note { border-left-color: var(--brand-red); }
+body.terrain .t-map-legend {
+  border: 1px solid rgba(226,231,239,.9);
+  box-shadow: 0 8px 24px rgba(11,31,68,.12);
+}
+body.terrain .btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+body.terrain .btn.primary:hover { background: var(--accent-dark); }
+body.plan { background: #eef2f7; }
+body.plan .plan-toolbar {
+  border-bottom-color: #e2e7ef;
+  box-shadow: 0 2px 12px rgba(11,31,68,.04);
+}
+body.plan .sheet,
+body.plan .report-sheet {
+  border: 1px solid #e2e7ef;
+  box-shadow: 0 12px 36px rgba(11,31,68,.1);
+}
+@media (max-width: 640px) {
+  body.terrain .t-view { padding-inline: 12px; }
+  body.terrain .t-tabs a { font-size: 10px; }
+  body.terrain .t-tabs .ico { width: 22px; height: 22px; }
+  body.terrain .t-tabs a.active .ico { width: 44px; }
+}
+
+
+/* Composants partagés : tableaux, indicateurs, formulaires et pages documentaires */
+:root {
+  --brand-navy: #0b1f44;
+  --brand-red: #e3141b;
+  --brand-red-dark: #b80f16;
+  --brand-tint: #fdeeee;
+  --surface-page: #f5f7fb;
+}
+body.admin:not(.terrain) table,
+body.plan .report-table,
+body.plan .report-sheet table {
+  border-color: #e2e7ef;
+}
+body.admin:not(.terrain) th,
+body.plan .report-table th {
+  color: var(--brand-navy);
+  background: #f3f6fa;
+  font-weight: 700;
+}
+body.admin:not(.terrain) tr:hover td { background: #fafbfd; }
+body.admin:not(.terrain) .btn:focus-visible,
+body.terrain .btn:focus-visible,
+body.legal a:focus-visible,
+body.plan button:focus-visible {
+  outline: 3px solid rgba(227,20,27,.28);
+  outline-offset: 2px;
+}
+body.plan .report-sheet {
+  border-radius: 12px;
+  color: #263449;
+}
+body.plan .report-head {
+  border-bottom: 2px solid var(--brand-navy);
+}
+body.plan .report-head h1,
+body.plan .report-block h2 { color: var(--brand-navy); }
+body.plan .report-kicker { color: var(--brand-red-dark); font-weight: 750; }
+body.plan .report-block {
+  border-color: #e5eaf1;
+}
+body.plan .report-kpis > * {
+  border: 1px solid #e5eaf1;
+  border-radius: 12px;
+  background: #f8faff;
+}
+body.legal {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(11,31,68,.08), transparent 58%),
+    var(--surface-page);
+}
+body.legal .legal-page,
+body.legal .receipt-card {
+  border: 1px solid #e4eaf2;
+  border-radius: 22px;
+  box-shadow: 0 18px 48px rgba(11,31,68,.09);
+}
+body.legal .legal-page h1,
+body.legal .receipt-card h1 { color: var(--brand-navy); }
+body.legal .legal-page h2 { color: var(--brand-navy); }
+body.legal .legal-back { color: var(--brand-red-dark); }
+body.legal .receipt-card { background: #fff; }
+body.legal .receipt-note {
+  background: #f7f9fc;
+  border-left: 3px solid var(--brand-red);
+  border-radius: 0 12px 12px 0;
+}
+body.admin.plateforme .pf-main {
+  max-width: 1500px;
+  padding-inline: clamp(14px, 3vw, 36px);
+}
+body.admin.plateforme .pf-section,
+body.admin.plateforme .pf-two { margin-top: 24px; }
+body.admin.plateforme .pf-kpis { gap: 14px; }
+body.admin.plateforme .pf-kpi { border-radius: 17px; }
+body.admin.plateforme .pf-card { border-radius: 18px; padding: 20px; }
+body.admin.plateforme .pf-section-head {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+body.admin.plateforme .pf-field input,
+body.admin.plateforme .pf-field select,
+body.admin.plateforme .pf-field textarea {
+  border-radius: 10px;
+}
+@media (max-width: 720px) {
+  body.plan .plan-toolbar-main { align-items: stretch; }
+  body.plan .plan-toolbar-main > .btn,
+  body.plan .plan-toolbar-main > button { flex: 1 1 145px; }
+  body.legal .legal-page,
+  body.legal .receipt-card { border-radius: 16px; }
+}
+@media print {
+  body.plan .report-sheet,
+  body.plan .sheet { box-shadow: none; border: 0; }
+}
+
+
+/* ALMANEO — finition des vues publiques et du retour de paiement */
+body.public .topbar {
+  border-bottom-color: #e2e7ef;
+  box-shadow: 0 2px 14px rgba(11,31,68,.045);
+}
+body.public .brand-title { color: var(--brand-navy); }
+body.public .topbar-sub { color: #64748b; }
+body.public .drawer {
+  border: 1px solid #e4eaf2;
+  box-shadow: 0 -12px 34px rgba(11,31,68,.10);
+}
+body.public .panel-title,
+body.public .sector-heading { color: var(--brand-navy); }
+body.public .info-card {
+  border-color: #e5eaf1;
+  border-radius: 16px;
+  box-shadow: 0 3px 12px rgba(11,31,68,.035);
+}
+body.public .sector-code {
+  background: var(--brand-tint);
+  color: var(--brand-red-dark);
+  border-radius: 9px;
+}
+body.public .search input,
+body.public input[type="search"] {
+  border-color: #dfe5ee;
+}
+body.public .search input:focus,
+body.public input[type="search"]:focus {
+  border-color: var(--brand-red);
+  box-shadow: 0 0 0 3px rgba(227,20,27,.11);
+}
+body.public .btn:not(.primary) {
+  border-color: #dfe5ee;
+}
+body.public .btn.primary {
+  background: var(--brand-red);
+  border-color: var(--brand-red);
+}
+body.public .btn.primary:hover {
+  background: var(--brand-red-dark);
+}
+body.sumup-page {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(11,31,68,.10), transparent 58%),
+    linear-gradient(180deg, #f8faff 0%, #f2f5fa 100%);
+}
+.sumup-card {
+  border: 1px solid #e3e9f1;
+  border-radius: 24px;
+  box-shadow: 0 22px 60px rgba(11,31,68,.12);
+  padding: 34px 28px;
+}
+.sumup-card h1 { color: var(--brand-navy); line-height: 1.25; }
+.sumup-card .sumup-note { color: #64748b; line-height: 1.55; }
+.sumup-card .btn.primary {
+  background: var(--brand-red);
+  border-color: var(--brand-red);
+}
+@media (max-width: 640px) {
+  .sumup-card { padding: 28px 20px; border-radius: 20px; }
+  body.public .panel-handle { padding-top: 14px; }
+}
+
+
+/* ALMANEO — finition de l'administration multi-casernes */
+body.admin .topbar {
+  border-bottom-color: #e2e7ef;
+  box-shadow: 0 2px 14px rgba(11,31,68,.05);
+}
+body.admin .brand-chip {
+  background: var(--brand-tint);
+  color: var(--brand-red-dark);
+  border: 1px solid rgba(227,20,27,.10);
+}
+body.admin .topbar-actions {
+  gap: 6px;
+}
+body.admin .topbar-link {
+  border-radius: 10px;
+  transition: background .15s ease, color .15s ease;
+}
+body.admin .topbar-link:hover {
+  background: #f3f6fa;
+  color: var(--brand-navy);
+}
+body.admin .admin-tabs {
+  gap: 6px;
+  padding-inline: clamp(10px, 2vw, 24px);
+  border-bottom-color: #e2e7ef;
+  box-shadow: 0 3px 12px rgba(11,31,68,.035);
+}
+body.admin .admin-tab {
+  min-height: 42px;
+  border: 1px solid transparent;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+body.admin .admin-tab.active {
+  background: var(--brand-tint);
+  border-color: rgba(227,20,27,.10);
+  color: var(--brand-red-dark);
+}
+body.admin #admin-panel {
+  background: #f7f9fc;
+}
+body.admin #admin-panel .help,
+body.admin #admin-panel .tools,
+body.admin #admin-panel .balance,
+body.admin #admin-panel .settings-card {
+  border-color: #e3e9f1;
+  border-radius: 16px;
+  box-shadow: 0 3px 14px rgba(11,31,68,.035);
+}
+body.admin #admin-panel .help summary {
+  color: var(--brand-navy);
+  font-weight: 700;
+}
+body.admin #admin-panel .balance-head {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+body.admin #admin-panel .panel-title {
+  color: var(--brand-navy);
+}
+body.admin .teams {
+  padding-top: 24px;
+}
+body.admin .teams-head h2 {
+  color: var(--brand-navy);
+  letter-spacing: -.025em;
+}
+body.admin .team-cards,
+body.admin .people-panel,
+body.admin .journal-card,
+body.admin .bilan-main,
+body.admin .settings-card,
+body.admin .live-map-card {
+  border-color: #e3e9f1;
+  border-radius: 16px;
+  box-shadow: 0 3px 14px rgba(11,31,68,.04);
+}
+body.admin .people-panel {
+  background: #fff;
+}
+body.admin .cpt-row,
+body.admin .role-card {
+  border-color: #e8edf3;
+}
+body.admin .role-card {
+  border-radius: 12px;
+}
+body.admin .journal-head,
+body.admin .balance-head,
+body.admin .live-map-head {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+body.admin input:not([type="checkbox"]):not([type="radio"]):focus-visible,
+body.admin select:focus-visible,
+body.admin textarea:focus-visible,
+body.terrain input:focus-visible,
+body.terrain select:focus-visible,
+body.terrain textarea:focus-visible {
+  outline: 3px solid rgba(227,20,27,.16);
+  outline-offset: 1px;
+}
+body.admin .btn,
+body.terrain .btn {
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, transform .1s ease;
+}
+@media (max-width: 760px) {
+  body.admin .topbar {
+    gap: 6px;
+    padding-inline: 10px;
+  }
+  body.admin .brand-logo { height: 38px; }
+  body.admin .brand-title { font-size: 13px; }
+  body.admin .topbar-sub { font-size: 10px; }
+  body.admin .topbar-actions {
+    gap: 2px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  body.admin .topbar-link {
+    padding: 6px 7px;
+    font-size: 11px;
+  }
+  body.admin .admin-tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+  body.admin .admin-tabs::-webkit-scrollbar { display: none; }
+  body.admin .admin-tab {
+    flex: 0 0 auto;
+    padding-inline: 11px;
+    font-size: 12px;
+  }
+  body.admin .teams { padding: 16px 12px 32px; }
+  body.admin .teams-actions { width: 100%; }
+  body.admin .teams-actions .btn { flex: 1 1 auto; }
+  body.admin .comptes-grid { padding-inline: 12px; }
+  body.admin .cpt-form .field-row { flex-direction: column; }
+  body.admin .cpt-form-actions { flex-wrap: wrap; }
+}
+@media (max-width: 420px) {
+  body.admin .topbar-sub { display: none; }
+  body.admin .brand-title { max-width: 145px; }
+  body.admin .topbar-actions .topbar-link { font-size: 10px; }
+}
+
+
+/* ALMANEO — confort de l'espace équipe sur téléphone */
+body.terrain .t-main {
+  background: #f5f7fb;
+}
+body.terrain .t-view {
+  padding-top: 18px;
+}
+body.terrain .r-hello {
+  align-items: center;
+  margin-bottom: 14px;
+}
+body.terrain .r-hello h2 {
+  letter-spacing: -.025em;
+}
+body.terrain .r-card {
+  border: 1px solid #e4eaf2;
+  box-shadow: 0 4px 16px rgba(11,31,68,.045);
+}
+body.terrain .r-progress {
+  gap: 14px;
+}
+body.terrain .r-chips {
+  gap: 7px;
+}
+body.terrain .r-chip {
+  border-radius: 999px;
+  border: 1px solid #e3e9f1;
+  padding: 7px 11px;
+  font-weight: 700;
+}
+body.terrain .t-filters {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding: 2px 1px 9px;
+  margin-bottom: 4px;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+body.terrain .t-filters::-webkit-scrollbar { display: none; }
+body.terrain .t-filter {
+  flex: 0 0 auto;
+  min-height: 38px;
+  border-radius: 999px;
+  border-color: #e1e7ef;
+  background: #fff;
+}
+body.terrain .t-filter.active {
+  background: var(--brand-navy);
+  border-color: var(--brand-navy);
+}
+body.terrain .t-search {
+  border: 1px solid #e1e7ef;
+  background: #fff;
+  border-radius: 13px;
+}
+body.terrain .t-row {
+  border-color: #e4eaf2;
+  box-shadow: 0 2px 8px rgba(11,31,68,.025);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+body.terrain .t-row-main { min-height: 46px; }
+body.terrain .t-row:focus-within {
+  border-color: #b9c7da;
+  box-shadow: 0 0 0 3px rgba(11,31,68,.06);
+}
+body.terrain .t-tabs {
+  padding-top: 6px;
+}
+body.terrain .t-tabs a {
+  min-height: 54px;
+  justify-content: center;
+}
+body.terrain .t-tabs a.active {
+  color: var(--accent-dark);
+}
+body.terrain .t-tabs a.active .ico {
+  background: var(--accent-soft);
+}
+body.terrain .tt-card {
+  border: 1px solid #e3e9f1;
+  box-shadow: 0 16px 42px rgba(11,31,68,.10);
+}
+body.terrain .tt-label {
+  color: var(--brand-navy);
+  letter-spacing: -.025em;
+}
+body.terrain .tt-btn2 {
+  border-color: #e0e6ee;
+}
+body.terrain .t-fiche {
+  border: 1px solid #e3e9f1;
+  border-radius: 22px;
+  box-shadow: 0 20px 56px rgba(11,31,68,.18);
+}
+@media (max-width: 640px) {
+  body.terrain .t-view { padding: 14px 12px 22px; }
+  body.terrain .r-hello h2 { font-size: 20px; }
+  body.terrain .t-map-legend {
+    max-width: calc(100vw - 24px);
+    overflow-x: auto;
+    gap: 8px;
+    font-size: 11px;
+  }
+  body.terrain .tt-card {
+    padding: 18px 14px;
+    border-radius: 20px;
+  }
+  body.terrain .tt-label { font-size: clamp(24px, 7vw, 30px); }
+  body.terrain .tt-actions { gap: 7px; }
+  body.terrain .tt-actions .tt-btn { min-height: 84px; border-radius: 16px; }
+}
+
+
+/* =================================================================================
+   ALMANEO — direction artistique 2026
+   Une interface plus lisible, plus calme et plus cohérente.
+   Les couleurs d'accent restent pilotées par la caserne ; aucune logique métier ici.
+   ================================================================================= */
+:root {
+  --bg: #f3f6fb;
+  --surface-page: #f3f6fb;
+  --card: #fff;
+  --surface-2: #f1f4f9;
+  --text: #14233b;
+  --muted: #64748b;
+  --border: #e3e9f2;
+  --border-strong: #cbd5e1;
+  --radius: 16px;
+  --radius-lg: 22px;
+  --shadow-sm: 0 1px 2px rgba(15, 35, 65, .04), 0 3px 10px rgba(15, 35, 65, .035);
+  --shadow-md: 0 8px 24px rgba(15, 35, 65, .075);
+  --shadow-lg: 0 20px 55px rgba(15, 35, 65, .14);
+  --ring: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+html { scroll-padding-top: 84px; }
+body { color: var(--text); background: var(--bg); }
+::selection { background: color-mix(in srgb, var(--accent) 18%, white); }
+button, input, select, textarea { accent-color: var(--accent); }
+:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 34%, transparent); outline-offset: 2px; box-shadow: none; }
+
+/* Navigation et repères */
+body.admin .topbar,
+body.terrain .t-top,
+body.public .topbar,
+body.plateforme .pf-top {
+  min-height: 64px;
+  background: rgba(255,255,255,.94);
+  border-color: var(--border);
+  box-shadow: 0 2px 16px rgba(15,35,65,.045);
+  -webkit-backdrop-filter: blur(16px) saturate(1.35);
+  backdrop-filter: blur(16px) saturate(1.35);
+}
+body.admin .brand-logo { height: 42px; }
+body.admin .brand-title,
+body.terrain .t-top,
+body.public .brand-title { color: #142b4d; }
+body.admin .brand-chip {
+  color: var(--brand-red-dark);
+  background: #fff0f0;
+  border: 1px solid #f8dada;
+  border-radius: 999px;
+  padding: 4px 9px;
+}
+body.admin:not(.terrain) .admin-tabs {
+  padding: 8px clamp(12px, 2.4vw, 32px);
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255,255,255,.96);
+}
+body.admin:not(.terrain) .admin-tab {
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: #64748b;
+  font-weight: 650;
+}
+body.admin:not(.terrain) .admin-tab:hover { background: #f3f6fa; color: #142b4d; }
+body.admin:not(.terrain) .admin-tab.active {
+  color: #fff;
+  background: #142b4d;
+  border-color: #142b4d;
+  box-shadow: 0 4px 10px rgba(20,43,77,.15);
+}
+
+/* Boutons : accent de la caserne, jamais une couleur de marque imposée */
+.btn {
+  min-height: 42px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  border-color: var(--border);
+  font-weight: 650;
+  box-shadow: 0 1px 2px rgba(15,35,65,.045);
+  transition: transform .16s ease, box-shadow .16s ease, background .16s ease, border-color .16s ease;
+}
+.btn:hover { box-shadow: var(--shadow-sm); }
+.btn.primary,
+body.admin:not(.terrain) .btn.primary,
+body.terrain .btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.btn.primary:hover,
+body.admin:not(.terrain) .btn.primary:hover,
+body.terrain .btn.primary:hover {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+}
+.btn:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 30%, transparent); outline-offset: 2px; }
+.btn.small { min-height: 36px; border-radius: 10px; }
+
+/* Panneaux et cartes de l'administration */
+body.admin:not(.terrain) { background: #f3f6fb; }
+body.admin:not(.terrain) #admin-panel { background: #f3f6fb; padding: 18px; }
+body.admin:not(.terrain) .card,
+body.admin:not(.terrain) .people-panel,
+body.admin:not(.terrain) .help,
+body.admin:not(.terrain) .tools,
+body.admin:not(.terrain) .balance,
+body.admin:not(.terrain) .settings-card,
+body.admin:not(.terrain) .sector-edit-card,
+body.admin:not(.terrain) .caisse-section,
+body.admin:not(.terrain) .live-map-card {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+body.admin:not(.terrain) .settings-card,
+body.admin:not(.terrain) .people-panel,
+body.admin:not(.terrain) .balance,
+body.admin:not(.terrain) .caisse-section { padding: 18px; }
+body.admin:not(.terrain) .panel-title {
+  color: #193455;
+  letter-spacing: -.025em;
+}
+body.admin:not(.terrain) .teams { max-width: 1600px; margin-inline: auto; }
+body.admin:not(.terrain) .teams-head { margin-bottom: 18px; }
+body.admin:not(.terrain) .teams-head h2 { font-size: clamp(22px, 2.2vw, 28px); letter-spacing: -.035em; }
+body.admin:not(.terrain) .hint { color: #68788e; }
+body.admin:not(.terrain) .sector-edit-card { border-left-width: 4px; }
+body.admin:not(.terrain) .login-card {
+  border-radius: 26px;
+  box-shadow: 0 24px 70px rgba(15,35,65,.13);
+}
+body.admin:not(.terrain) input:not([type="checkbox"]):not([type="radio"]),
+body.admin:not(.terrain) select,
+body.admin:not(.terrain) textarea,
+body.terrain input:not([type="checkbox"]):not([type="radio"]),
+body.terrain select,
+body.terrain textarea {
+  border-radius: 11px;
+}
+body.admin:not(.terrain) input:focus,
+body.admin:not(.terrain) select:focus,
+body.admin:not(.terrain) textarea:focus,
+body.terrain input:focus,
+body.terrain select:focus,
+body.terrain textarea:focus {
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+body.admin:not(.terrain) .journal-table-wrap,
+body.admin:not(.terrain) .bilan-table-wrap { border-radius: 14px; border-color: var(--border); }
+body.admin:not(.terrain) .journal-table th,
+body.admin:not(.terrain) .bilan-table th { background: #f4f7fb; color: #52647d; }
+body.admin:not(.terrain) .journal-table td,
+body.admin:not(.terrain) .bilan-table td { border-color: #edf1f6; }
+
+/* Carte et expérience équipe : pensée pour une utilisation rapide sur le terrain */
+body.terrain { background: #f3f6fb; }
+body.terrain .t-main { background: #f3f6fb; }
+body.terrain .t-view { max-width: 920px; margin-inline: auto; }
+body.terrain .r-hello { padding: 4px 2px 10px; }
+body.terrain .r-hello h2 { color: #142b4d; font-size: clamp(21px, 4vw, 26px); letter-spacing: -.035em; }
+body.terrain .r-card,
+body.terrain .t-fiche,
+body.terrain .tt-card {
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+body.terrain .r-card { padding: 18px; }
+body.terrain .t-row {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 2px 7px rgba(15,35,65,.025);
+}
+body.terrain .t-row:focus-within { border-color: color-mix(in srgb, var(--accent) 50%, white); box-shadow: var(--ring); }
+body.terrain .t-filter.active {
+  background: color-mix(in srgb, var(--accent) 12%, white);
+  color: var(--accent-dark);
+  border-color: color-mix(in srgb, var(--accent) 32%, white);
+}
+body.terrain .t-tabs {
+  border-top: 1px solid var(--border);
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 -8px 28px rgba(15,35,65,.07);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+body.terrain .t-tabs a { min-height: 58px; gap: 4px; color: #718096; }
+body.terrain .t-tabs a.active { color: var(--accent-dark); }
+body.terrain .t-tabs a.active .ico {
+  width: 44px;
+  color: var(--accent-dark);
+  background: color-mix(in srgb, var(--accent) 13%, white);
+  border-radius: 12px;
+}
+body.terrain .t-login-card { border: 1px solid var(--border); box-shadow: var(--shadow-lg); }
+body.terrain #t-code { min-height: 52px; border-radius: 14px; letter-spacing: .18em; }
+body.terrain .tt-card { box-shadow: 0 20px 55px rgba(15,35,65,.14); }
+
+/* Documents, reçus et exports */
+body.plan { background: #e9eef5; }
+body.plan .plan-toolbar { border-bottom: 1px solid var(--border); box-shadow: 0 4px 18px rgba(15,35,65,.06); }
+body.plan .plan-options fieldset { border-color: var(--border); border-radius: 14px; }
+body.plan .sheet,
+body.plan .report-sheet { border: 1px solid #e0e7f0; border-radius: 12px; box-shadow: 0 16px 42px rgba(15,35,65,.12); }
+body.plan .report-sheet { padding: 14mm 13mm; }
+body.plan .report-head { border-bottom: 3px solid var(--accent); padding-bottom: 14px; }
+body.plan .report-head h1,
+body.plan .report-block h2 { color: #142b4d; }
+body.plan .report-block { padding-block: 12px; border-color: var(--border); }
+body.plan .report-kpis > * { border: 1px solid var(--border); border-radius: 14px; background: #f7f9fc; }
+body.legal { background: radial-gradient(ellipse at 50% 0, #e8eef8 0, #f3f6fb 54%, #f3f6fb 100%); }
+body.legal .legal-page,
+body.legal .receipt-card,
+.sumup-card { border: 1px solid var(--border); border-radius: 24px; box-shadow: 0 22px 60px rgba(15,35,65,.12); }
+body.legal .legal-page h1,
+body.legal .legal-page h2,
+body.legal .receipt-card h1,
+.sumup-card h1 { color: #142b4d; }
+body.legal .receipt-note { border-radius: 0 12px 12px 0; }
+
+/* Administration centrale : identité Almaneo assumée */
+body.admin.plateforme { background: #f3f6fb; }
+body.admin.plateforme .pf-main { max-width: 1480px; }
+body.admin.plateforme .pf-card,
+body.admin.plateforme .pf-kpi,
+body.admin.plateforme .pf-caserne { border: 1px solid var(--border); border-radius: 20px; box-shadow: var(--shadow-sm); }
+body.admin.plateforme .pf-hello h1 { font-size: clamp(26px, 3vw, 34px); letter-spacing: -.04em; }
+body.admin.plateforme .pf-kpi { padding: 20px; }
+body.admin.plateforme .pf-kpi strong { font-size: clamp(26px, 3vw, 34px); }
+body.admin.plateforme .pf-caserne { padding: 20px; }
+body.admin.plateforme .pf-caserne:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
+body.admin.plateforme .pf-card { padding: 22px; }
+body.admin.plateforme .pf-section-head h2 { font-size: 20px; }
+body.admin.plateforme .pf-field input,
+body.admin.plateforme .pf-field textarea,
+body.admin.plateforme .pf-field select { min-height: 44px; border-radius: 12px; }
+
+/* Responsive : pas de débordement, zones tactiles confortables */
+@media (max-width: 760px) {
+  body.admin:not(.terrain) #admin-panel { padding: 12px; }
+  body.admin:not(.terrain) .teams { padding: 16px 12px 28px; }
+  body.admin:not(.terrain) .settings-card,
+  body.admin:not(.terrain) .people-panel,
+  body.admin:not(.terrain) .balance,
+  body.admin:not(.terrain) .caisse-section { padding: 14px; border-radius: 16px; }
+  body.admin:not(.terrain) .admin-tabs { gap: 5px; padding: 7px 10px; }
+  body.admin:not(.terrain) .admin-tab { min-height: 42px; padding-inline: 12px; }
+  body.terrain .t-view { padding: 14px 12px 24px; }
+  body.terrain .r-card { padding: 15px; }
+  body.terrain .t-tabs a { min-height: 58px; }
+  body.admin.plateforme .pf-main { padding: 18px 12px 32px; gap: 16px; }
+  body.admin.plateforme .pf-card { padding: 16px; border-radius: 16px; }
+  body.admin.plateforme .pf-kpis { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 9px; }
+  body.admin.plateforme .pf-kpi { padding: 13px; }
+  body.admin.plateforme .pf-kpi strong { font-size: 24px; }
+  body.admin.plateforme .pf-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 420px) {
+  body.admin .brand-title { max-width: 138px; }
+  body.admin .topbar-actions .topbar-link { padding-inline: 6px; }
+  body.admin.plateforme .pf-kpis { grid-template-columns: 1fr 1fr; }
+  body.admin.plateforme .pf-kpi span { font-size: 10px; }
+  body.admin.plateforme .pf-kpi strong { font-size: 21px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
+
+/* ALMANEO — finition des écrans secondaires et documents */
+body.plan .plan-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 12px clamp(14px, 3vw, 34px);
+  background: rgba(255,255,255,.94);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+body.plan .plan-toolbar-main {
+  width: min(100%, 1500px);
+  margin-inline: auto;
+  gap: 10px;
+  align-items: end;
+}
+body.plan .plan-choice { min-width: min(230px, 100%); gap: 6px; color: #53647b; font-size: 12px; font-weight: 750; }
+body.plan .plan-choice select { min-height: 42px; border: 1px solid var(--border); border-radius: 11px; background: #fff; padding-inline: 12px; }
+body.plan .plan-options {
+  width: min(100%, 1500px);
+  margin: 12px auto 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #f8fafd;
+  box-shadow: inset 0 1px 0 #fff;
+}
+body.plan .plan-options fieldset {
+  padding: 14px;
+  background: #fff;
+}
+body.plan .plan-options legend { padding: 0 7px; color: #193455; font-weight: 750; }
+body.plan .plan-options label { line-height: 1.45; }
+body.plan .sheet,
+body.plan .report-sheet {
+  width: min(100% - 32px, 1100px);
+  margin: 28px auto 48px;
+  padding: clamp(22px, 4vw, 52px);
+  background: #fff;
+}
+body.plan .sheet-header,
+body.plan .report-head {
+  gap: 20px;
+  align-items: center;
+}
+body.plan .sheet-heading h1,
+body.plan .report-head h1 { font-size: clamp(25px, 3vw, 36px); line-height: 1.12; letter-spacing: -.04em; }
+body.plan .sheet-kicker,
+body.plan .report-kicker { color: var(--brand-red-dark); font-size: 11px; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
+body.plan .sheet-qr { padding: 10px; border: 1px solid var(--border); border-radius: 14px; background: #fff; }
+body.plan .sheet-section { padding-block: 18px; border-top: 1px solid var(--border); }
+body.plan .sheet-section h2 { margin-bottom: 12px; color: #193455; font-size: 17px; }
+body.plan .sheet-footer { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); color: #718096; font-size: 10px; }
+body.plan.report .report-sheet { max-width: 1000px; }
+body.plan.report .report-head { padding-bottom: 22px; border-bottom: 3px solid var(--brand-red); }
+body.plan.report .report-kpis { gap: 12px; margin-block: 22px; }
+body.plan.report .report-kpis > * { min-width: 0; padding: 17px; background: linear-gradient(145deg, #fff, #f5f8fc); }
+body.plan.report .report-kpis strong { color: #142b4d; font-size: clamp(22px, 3vw, 32px); letter-spacing: -.035em; }
+body.plan.report .report-block { margin-top: 20px; padding: 20px 0 4px; border-top: 1px solid #e8edf4; }
+body.plan.report .report-block h2 { margin-bottom: 14px; font-size: 18px; letter-spacing: -.02em; }
+body.plan.report .report-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+body.plan.report .report-table { width: 100%; border-collapse: collapse; }
+body.plan.report .report-table th { position: sticky; top: 0; background: #f2f5fa; color: #4c5e76; font-size: 11px; text-transform: uppercase; letter-spacing: .045em; }
+body.plan.report .report-table th,
+body.plan.report .report-table td { padding: 10px 12px; border-bottom: 1px solid #e9eef5; }
+body.plan.report .report-table tr:last-child td { border-bottom: 0; }
+body.plan.report .report-chart { min-height: 110px; padding: 14px; border: 1px solid #e9eef5; border-radius: 14px; background: #fbfcfe; }
+body.plan.report .report-foot { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--border); color: #718096; font-size: 11px; }
+body.plan.fiscal .fx-tools { width: min(100% - 32px, 1100px); margin: 20px auto; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+body.plan.fiscal .fx-panel { min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 14px; background: #fff; box-shadow: var(--shadow-sm); }
+body.plan.fiscal .fx-panel summary { cursor: pointer; color: #193455; font-weight: 750; }
+body.plan.fiscal .fx-panel[open] { grid-column: span 1; }
+body.plan.fiscal .fx-form { display: grid; gap: 10px; margin-top: 14px; }
+body.plan.fiscal .fx-status { margin: 16px 0; padding: 12px 14px; border-radius: 12px; background: #f2f6fb; color: #40516a; }
+body.plan.fiscal .fx-explain { color: #64748b; font-size: 12px; line-height: 1.55; }
+body.plan.fiscal .fx-registre .report-table-wrap { max-height: 620px; }
+body.legal .legal-page { width: min(100% - 32px, 850px); margin: 44px auto; padding: clamp(24px, 5vw, 58px); background: #fff; line-height: 1.7; }
+body.legal .legal-page h1 { margin: 16px 0 28px; font-size: clamp(28px, 4vw, 40px); letter-spacing: -.04em; }
+body.legal .legal-page h2 { margin: 30px 0 10px; padding-top: 18px; border-top: 1px solid var(--border); font-size: 20px; }
+body.legal .legal-page h3 { margin: 20px 0 8px; color: #304765; font-size: 15px; }
+body.legal .legal-page a { color: var(--brand-red-dark); text-underline-offset: 3px; }
+body.legal .legal-back { display: inline-flex; padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; color: #40516a; text-decoration: none; font-weight: 650; }
+body.legal.receipt { display: grid; min-height: 100svh; place-items: center; padding: 24px 14px; }
+body.legal .receipt-card { width: min(100%, 560px); padding: clamp(24px, 5vw, 42px); text-align: center; background: #fff; }
+body.legal .receipt-card > img { object-fit: contain; margin-bottom: 12px; }
+body.legal .receipt-card h1 { margin: 8px 0; font-size: clamp(27px, 5vw, 36px); letter-spacing: -.04em; }
+body.legal .receipt-card dl { display: grid; grid-template-columns: 1fr auto; gap: 10px 18px; margin: 24px 0; padding: 18px; border: 1px solid var(--border); border-radius: 14px; text-align: left; }
+body.legal .receipt-card dt { color: #718096; }
+body.legal .receipt-card dd { margin: 0; color: #193455; font-weight: 700; text-align: right; overflow-wrap: anywhere; }
+body.legal .receipt-amount { font-size: 22px; }
+body.legal .receipt-note { padding: 14px 16px; background: #f3f6fb; color: #53647b; text-align: left; line-height: 1.6; }
+.sumup-page { display: grid; min-height: 100svh; place-items: center; padding: 24px 14px; background: radial-gradient(ellipse at 50% 0, #e8eef8 0, #f3f6fb 60%); }
+.sumup-card { width: min(100%, 520px); padding: clamp(26px, 5vw, 46px); text-align: center; background: #fff; }
+.sumup-card > img { object-fit: contain; margin-bottom: 14px; }
+.sumup-icon { display: grid; place-items: center; width: 58px; height: 58px; margin: 10px auto 18px; border-radius: 18px; background: #fff0f0; color: var(--brand-red); font-size: 28px; font-weight: 800; }
+.sumup-card h1 { font-size: clamp(24px, 4vw, 32px); letter-spacing: -.035em; }
+.sumup-note { margin-top: 20px; font-size: 13px; line-height: 1.55; }
+body.admin.plateforme .pf-top { padding-inline: clamp(14px, 3vw, 40px); }
+body.admin.plateforme .pf-brand { gap: 12px; }
+body.admin.plateforme .pf-nav a { padding: 9px 12px; border-radius: 10px; color: #53647b; font-weight: 650; }
+body.admin.plateforme .pf-nav a:hover,
+body.admin.plateforme .pf-nav a:focus-visible { background: #f2f5fa; color: #142b4d; }
+body.admin.plateforme .pf-hello { padding: 24px; border: 1px solid var(--border); border-radius: 20px; background: linear-gradient(135deg,#fff,#f7f9fc); box-shadow: var(--shadow-sm); }
+body.admin.plateforme .pf-section { scroll-margin-top: 88px; }
+body.admin.plateforme .pf-section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+body.admin.plateforme .pf-sub { margin-top: 20px; padding-top: 16px; border-top: 1px solid #e9eef5; color: #193455; }
+body.admin.plateforme .pf-row { gap: 12px; }
+body.admin.plateforme .pf-journal { overflow-x: auto; }
+@media (max-width: 760px) {
+  body.plan .plan-toolbar { position: relative; }
+  body.plan .plan-toolbar-main { align-items: stretch; }
+  body.plan .plan-choice { flex: 1 1 100%; }
+  body.plan .sheet,
+  body.plan .report-sheet { width: calc(100% - 20px); margin: 12px auto 28px; padding: 18px; }
+  body.plan .sheet-header,
+  body.plan .report-head { align-items: flex-start; }
+  body.plan.fiscal .fx-tools { width: calc(100% - 20px); grid-template-columns: 1fr; }
+  body.plan.fiscal .fx-panel[open] { grid-column: auto; }
+  body.plan.report .report-kpis { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  body.legal .legal-page { width: calc(100% - 20px); margin: 12px auto; padding: 22px; border-radius: 18px; }
+  body.legal .receipt-card dl { grid-template-columns: 1fr; gap: 3px; }
+  body.legal .receipt-card dd { margin-bottom: 10px; text-align: left; }
+  body.admin.plateforme .pf-hello { padding: 18px; }
+}
+@media print {
+  body.plan { background: #fff; }
+  body.plan .sheet,
+  body.plan .report-sheet { width: 100%; margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; }
+  body.plan.report .report-block { break-inside: avoid; }
+  body.legal { background: #fff; }
+  body.legal .receipt-card { border: 0; box-shadow: none; }
 }
