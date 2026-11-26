@@ -2850,3 +2850,117 @@ body.terrain .btn {
   body.admin .brand-title { max-width: 145px; }
   body.admin .topbar-actions .topbar-link { font-size: 10px; }
 }
+
+
+/* ALMANEO — confort de l'espace équipe sur téléphone */
+body.terrain .t-main {
+  background: #f5f7fb;
+}
+body.terrain .t-view {
+  padding-top: 18px;
+}
+body.terrain .r-hello {
+  align-items: center;
+  margin-bottom: 14px;
+}
+body.terrain .r-hello h2 {
+  letter-spacing: -.025em;
+}
+body.terrain .r-card {
+  border: 1px solid #e4eaf2;
+  box-shadow: 0 4px 16px rgba(11,31,68,.045);
+}
+body.terrain .r-progress {
+  gap: 14px;
+}
+body.terrain .r-chips {
+  gap: 7px;
+}
+body.terrain .r-chip {
+  border-radius: 999px;
+  border: 1px solid #e3e9f1;
+  padding: 7px 11px;
+  font-weight: 700;
+}
+body.terrain .t-filters {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding: 2px 1px 9px;
+  margin-bottom: 4px;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+body.terrain .t-filters::-webkit-scrollbar { display: none; }
+body.terrain .t-filter {
+  flex: 0 0 auto;
+  min-height: 38px;
+  border-radius: 999px;
+  border-color: #e1e7ef;
+  background: #fff;
+}
+body.terrain .t-filter.active {
+  background: var(--brand-navy);
+  border-color: var(--brand-navy);
+}
+body.terrain .t-search {
+  border: 1px solid #e1e7ef;
+  background: #fff;
+  border-radius: 13px;
+}
+body.terrain .t-row {
+  border-color: #e4eaf2;
+  box-shadow: 0 2px 8px rgba(11,31,68,.025);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+body.terrain .t-row-main { min-height: 46px; }
+body.terrain .t-row:focus-within {
+  border-color: #b9c7da;
+  box-shadow: 0 0 0 3px rgba(11,31,68,.06);
+}
+body.terrain .t-tabs {
+  padding-top: 6px;
+}
+body.terrain .t-tabs a {
+  min-height: 54px;
+  justify-content: center;
+}
+body.terrain .t-tabs a.active {
+  color: var(--brand-red-dark);
+}
+body.terrain .t-tabs a.active .ico {
+  background: var(--brand-tint);
+}
+body.terrain .tt-card {
+  border: 1px solid #e3e9f1;
+  box-shadow: 0 16px 42px rgba(11,31,68,.10);
+}
+body.terrain .tt-label {
+  color: var(--brand-navy);
+  letter-spacing: -.025em;
+}
+body.terrain .tt-btn2 {
+  border-color: #e0e6ee;
+}
+body.terrain .t-fiche {
+  border: 1px solid #e3e9f1;
+  border-radius: 22px;
+  box-shadow: 0 20px 56px rgba(11,31,68,.18);
+}
+@media (max-width: 640px) {
+  body.terrain .t-view { padding: 14px 12px 22px; }
+  body.terrain .r-hello h2 { font-size: 20px; }
+  body.terrain .t-map-legend {
+    max-width: calc(100vw - 24px);
+    overflow-x: auto;
+    gap: 8px;
+    font-size: 11px;
+  }
+  body.terrain .tt-card {
+    padding: 18px 14px;
+    border-radius: 20px;
+  }
+  body.terrain .tt-label { font-size: clamp(24px, 7vw, 30px); }
+  body.terrain .tt-actions { gap: 7px; }
+  body.terrain .tt-actions .tt-btn { min-height: 84px; border-radius: 16px; }
+}
