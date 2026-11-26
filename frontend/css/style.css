@@ -13,27 +13,28 @@
 }
 
 :root {
-  --bg: #f6f7f9;
+  /* Identité Almaneo : bleu nuit, rouge pompier et surfaces claires */
+  --bg: #f5f7fb;
   --card: #ffffff;
-  --surface-2: #f1f3f6;
-  --text: #0f172a;
-  --muted: #5b6577; /* contraste ≥ 4,5:1 sur fond clair (accessibilité) */
-  --border: #e5e7eb;
-  --border-strong: #d4d8df;
-  --accent: #e5383b;
-  --accent-dark: #c81e2a;
-  --accent-soft: #fff1f1;
-  --link: #2563eb;
-  --fait: #16a34a;
-  --absent: #d97706;
-  --refus: #dc2626;
+  --surface-2: #eef2f7;
+  --text: #0b1f44;
+  --muted: #596579;
+  --border: #e2e7ef;
+  --border-strong: #cbd4e1;
+  --accent: #e3141b;
+  --accent-dark: #b80f16;
+  --accent-soft: #fdeeee;
+  --link: #b80f16;
+  --fait: #16834a;
+  --absent: #c47b12;
+  --refus: #c62828;
   --a-faire: #cbd5e1;
   --radius: 14px;
   --radius-lg: 22px;
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05), 0 1px 3px rgba(15, 23, 42, 0.07);
-  --shadow-md: 0 4px 14px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.06);
-  --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.16);
-  --ring: 0 0 0 3px rgba(229, 56, 59, 0.22);
+  --shadow-sm: 0 1px 2px rgba(11, 31, 68, 0.05), 0 1px 3px rgba(11, 31, 68, 0.07);
+  --shadow-md: 0 4px 14px rgba(11, 31, 68, 0.08), 0 1px 3px rgba(11, 31, 68, 0.06);
+  --shadow-lg: 0 16px 40px rgba(11, 31, 68, 0.16);
+  --ring: 0 0 0 3px rgba(227, 20, 27, 0.2);
   --header-h: 60px;
   --tabs-h: 48px;
   color-scheme: light;
