@@ -108,3 +108,48 @@ h1, h2, h3 { color: var(--ink); line-height: 1.15; margin: 0; }
   .v-brand img { height: 32px; }
   .v-nav .v-btn.small { padding: 8px 12px; font-size: 13px; white-space: nowrap; }
 }
+
+
+/* ALMANEO — finition visuelle de la vitrine */
+:root {
+  --line: #e2e7ef;
+  --bg-2: #f5f7fb;
+}
+.v-top {
+  min-height: 68px;
+  box-shadow: 0 2px 14px rgba(11,31,68,.045);
+}
+.v-brand img { max-height: 42px; }
+.v-hero {
+  min-height: min(720px, calc(100svh - 68px));
+  background:
+    radial-gradient(900px 500px at 90% 12%, rgba(11,31,68,.12), transparent 62%),
+    linear-gradient(180deg, #fff 0%, #f8faff 100%);
+}
+.v-hero h1 { max-width: 12ch; color: var(--navy); }
+.v-lead { color: #475569; line-height: 1.65; }
+.v-proofs { gap: 10px 22px; }
+.v-proofs li { font-size: 14px; }
+.v-grid article {
+  border-color: #e2e7ef;
+  border-radius: 20px;
+  box-shadow: 0 3px 14px rgba(11,31,68,.035);
+}
+.v-grid article:hover {
+  border-color: #cbd6e6;
+  box-shadow: 0 16px 34px rgba(11,31,68,.09);
+}
+.v-steps li { border: 1px solid #e7ebf2; background: #fff; }
+.v-faq details { border-color: #e2e7ef; box-shadow: 0 2px 10px rgba(11,31,68,.025); }
+.v-contact { background: linear-gradient(180deg, #fff 0%, #fff6f6 100%); }
+.v-form input, .v-form textarea { border-color: #dfe5ee; }
+.v-form input:focus, .v-form textarea:focus { box-shadow: 0 0 0 3px rgba(227,20,27,.12); }
+.v-foot { background: #fff; }
+@media (max-width: 860px) {
+  .v-hero { min-height: auto; }
+  .v-hero h1 { max-width: 15ch; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .v-btn, .v-grid article { transition: none; }
+  html { scroll-behavior: auto; }
+}
