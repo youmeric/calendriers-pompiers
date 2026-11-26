@@ -153,3 +153,49 @@ h1, h2, h3 { color: var(--ink); line-height: 1.15; margin: 0; }
   .v-btn, .v-grid article { transition: none; }
   html { scroll-behavior: auto; }
 }
+
+
+/* ALMANEO — accessibilité et confort mobile */
+.v-btn:focus-visible,
+.v-nav a:focus-visible,
+.v-faq summary:focus-visible {
+  outline: 3px solid rgba(227,20,27,.28);
+  outline-offset: 3px;
+}
+.v-hero-shots { min-width: 0; }
+.v-phone { max-width: 46%; }
+.v-story-card { line-height: 1.7; }
+.v-secu .v-grid article { min-height: 100%; }
+.v-faq summary { padding: 2px 0; }
+.v-form label { min-width: 0; }
+.v-form input,
+.v-form textarea { width: 100%; min-width: 0; }
+.v-form textarea { resize: vertical; }
+.v-foot a { text-underline-offset: 3px; }
+@media (max-width: 860px) {
+  .v-hero { gap: 18px; }
+  .v-hero-shots { height: clamp(300px, 76vw, 420px); }
+  .v-phone { width: min(42%, 220px); }
+  .v-phone.back { right: 8%; }
+  .v-phone.front { left: 10%; }
+  .v-band { gap: 24px; }
+}
+@media (max-width: 520px) {
+  .v-top { padding-inline: 14px; }
+  .v-hero { padding-top: 38px; }
+  .v-hero h1 { font-size: clamp(34px, 10vw, 46px); }
+  .v-hero-shots { height: 310px; }
+  .v-phone { border-width: 6px; border-radius: 25px; }
+  .v-phone.front { left: 6%; }
+  .v-phone.back { right: 5%; }
+  .v-section,
+  .v-band { padding-block: 48px; }
+  .v-grid { grid-template-columns: 1fr; }
+  .v-secu .v-grid { grid-template-columns: 1fr; }
+  .v-steps { grid-template-columns: 1fr; }
+  .v-foot { padding-block: 26px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .v-grid article,
+  .v-btn { transition: none !important; }
+}
