@@ -199,3 +199,56 @@ h1, h2, h3 { color: var(--ink); line-height: 1.15; margin: 0; }
   .v-grid article,
   .v-btn { transition: none !important; }
 }
+
+
+/* Direction artistique 2026 — vitrine Almaneo */
+:root {
+  --navy: #142b4d;
+  --ink: #142b4d;
+  --text: #40516a;
+  --muted: #718096;
+  --line: #e3e9f2;
+  --bg-2: #f3f6fb;
+}
+.v-top {
+  min-height: 72px;
+  padding-inline: clamp(16px, 5vw, 72px);
+  border-bottom-color: var(--line);
+  box-shadow: 0 4px 18px rgba(15,35,65,.05);
+}
+.v-brand img { max-height: 44px; }
+.v-hero {
+  min-height: min(760px, calc(100svh - 72px));
+  padding-inline: clamp(20px, 7vw, 112px);
+  background:
+    radial-gradient(ellipse at 82% 18%, rgba(20,43,77,.13), transparent 42%),
+    linear-gradient(135deg, #fff 0%, #f6f8fc 72%, #eef2f8 100%);
+}
+.v-hero h1 { font-size: clamp(40px, 6vw, 72px); line-height: 1.02; letter-spacing: -.055em; }
+.v-lead { max-width: 36em; color: #4d5e75; font-size: clamp(17px, 1.7vw, 20px); }
+.v-btn { border-radius: 13px; min-height: 48px; box-shadow: 0 8px 20px rgba(227,20,27,.2); }
+.v-btn.ghost { box-shadow: none; }
+.v-section { padding-inline: clamp(20px, 7vw, 112px); }
+.v-section h2, .v-band h2 { letter-spacing: -.045em; }
+.v-grid { gap: 18px; }
+.v-grid article { padding: 26px; border-radius: 22px; box-shadow: 0 4px 18px rgba(15,35,65,.04); }
+.v-grid h3 { letter-spacing: -.02em; }
+.v-steps li { border-radius: 20px; padding: 24px 24px 24px 72px; }
+.v-faq details { border-radius: 16px; padding: 17px 20px; }
+.v-faq summary { list-style-position: outside; }
+.v-contact { background: linear-gradient(180deg, #fff 0%, #fff5f5 100%); }
+.v-form input, .v-form textarea { min-height: 48px; border-radius: 13px; }
+.v-form textarea { min-height: 130px; }
+.v-foot { padding-inline: clamp(20px, 7vw, 112px); }
+@media (max-width: 860px) {
+  .v-hero { padding-inline: 22px; }
+  .v-section, .v-band { padding-inline: 22px; }
+}
+@media (max-width: 520px) {
+  .v-top { min-height: 60px; }
+  .v-hero { padding: 38px 18px 22px; }
+  .v-hero h1 { font-size: clamp(36px, 10vw, 48px); }
+  .v-section, .v-band { padding-inline: 18px; }
+  .v-grid article { padding: 21px; }
+  .v-foot { padding-inline: 18px; }
+}
