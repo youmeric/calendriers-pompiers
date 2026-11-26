@@ -2965,3 +2965,278 @@ body.terrain .t-fiche {
   body.terrain .tt-actions { gap: 7px; }
   body.terrain .tt-actions .tt-btn { min-height: 84px; border-radius: 16px; }
 }
+
+
+/* =================================================================================
+   ALMANEO — direction artistique 2026
+   Une interface plus lisible, plus calme et plus cohérente.
+   Les couleurs d'accent restent pilotées par la caserne ; aucune logique métier ici.
+   ================================================================================= */
+:root {
+  --bg: #f3f6fb;
+  --surface-page: #f3f6fb;
+  --card: #fff;
+  --surface-2: #f1f4f9;
+  --text: #14233b;
+  --muted: #64748b;
+  --border: #e3e9f2;
+  --border-strong: #cbd5e1;
+  --radius: 16px;
+  --radius-lg: 22px;
+  --shadow-sm: 0 1px 2px rgba(15, 35, 65, .04), 0 3px 10px rgba(15, 35, 65, .035);
+  --shadow-md: 0 8px 24px rgba(15, 35, 65, .075);
+  --shadow-lg: 0 20px 55px rgba(15, 35, 65, .14);
+  --ring: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+html { scroll-padding-top: 84px; }
+body { color: var(--text); background: var(--bg); }
+::selection { background: color-mix(in srgb, var(--accent) 18%, white); }
+button, input, select, textarea { accent-color: var(--accent); }
+:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 34%, transparent); outline-offset: 2px; box-shadow: none; }
+
+/* Navigation et repères */
+body.admin .topbar,
+body.terrain .t-top,
+body.public .topbar,
+body.plateforme .pf-top {
+  min-height: 64px;
+  background: rgba(255,255,255,.94);
+  border-color: var(--border);
+  box-shadow: 0 2px 16px rgba(15,35,65,.045);
+  -webkit-backdrop-filter: blur(16px) saturate(1.35);
+  backdrop-filter: blur(16px) saturate(1.35);
+}
+body.admin .brand-logo { height: 42px; }
+body.admin .brand-title,
+body.terrain .t-top,
+body.public .brand-title { color: #142b4d; }
+body.admin .brand-chip {
+  color: var(--brand-red-dark);
+  background: #fff0f0;
+  border: 1px solid #f8dada;
+  border-radius: 999px;
+  padding: 4px 9px;
+}
+body.admin:not(.terrain) .admin-tabs {
+  padding: 8px clamp(12px, 2.4vw, 32px);
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255,255,255,.96);
+}
+body.admin:not(.terrain) .admin-tab {
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: #64748b;
+  font-weight: 650;
+}
+body.admin:not(.terrain) .admin-tab:hover { background: #f3f6fa; color: #142b4d; }
+body.admin:not(.terrain) .admin-tab.active {
+  color: #fff;
+  background: #142b4d;
+  border-color: #142b4d;
+  box-shadow: 0 4px 10px rgba(20,43,77,.15);
+}
+
+/* Boutons : accent de la caserne, jamais une couleur de marque imposée */
+.btn {
+  min-height: 42px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  border-color: var(--border);
+  font-weight: 650;
+  box-shadow: 0 1px 2px rgba(15,35,65,.045);
+  transition: transform .16s ease, box-shadow .16s ease, background .16s ease, border-color .16s ease;
+}
+.btn:hover { box-shadow: var(--shadow-sm); }
+.btn.primary,
+body.admin:not(.terrain) .btn.primary,
+body.terrain .btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.btn.primary:hover,
+body.admin:not(.terrain) .btn.primary:hover,
+body.terrain .btn.primary:hover {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+}
+.btn:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 30%, transparent); outline-offset: 2px; }
+.btn.small { min-height: 36px; border-radius: 10px; }
+
+/* Panneaux et cartes de l'administration */
+body.admin:not(.terrain) { background: #f3f6fb; }
+body.admin:not(.terrain) #admin-panel { background: #f3f6fb; padding: 18px; }
+body.admin:not(.terrain) .card,
+body.admin:not(.terrain) .people-panel,
+body.admin:not(.terrain) .help,
+body.admin:not(.terrain) .tools,
+body.admin:not(.terrain) .balance,
+body.admin:not(.terrain) .settings-card,
+body.admin:not(.terrain) .sector-edit-card,
+body.admin:not(.terrain) .caisse-section,
+body.admin:not(.terrain) .live-map-card {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+body.admin:not(.terrain) .settings-card,
+body.admin:not(.terrain) .people-panel,
+body.admin:not(.terrain) .balance,
+body.admin:not(.terrain) .caisse-section { padding: 18px; }
+body.admin:not(.terrain) .panel-title {
+  color: #193455;
+  letter-spacing: -.025em;
+}
+body.admin:not(.terrain) .teams { max-width: 1600px; margin-inline: auto; }
+body.admin:not(.terrain) .teams-head { margin-bottom: 18px; }
+body.admin:not(.terrain) .teams-head h2 { font-size: clamp(22px, 2.2vw, 28px); letter-spacing: -.035em; }
+body.admin:not(.terrain) .hint { color: #68788e; }
+body.admin:not(.terrain) .sector-edit-card { border-left-width: 4px; }
+body.admin:not(.terrain) .login-card {
+  border-radius: 26px;
+  box-shadow: 0 24px 70px rgba(15,35,65,.13);
+}
+body.admin:not(.terrain) input:not([type="checkbox"]):not([type="radio"]),
+body.admin:not(.terrain) select,
+body.admin:not(.terrain) textarea,
+body.terrain input:not([type="checkbox"]):not([type="radio"]),
+body.terrain select,
+body.terrain textarea {
+  border-radius: 11px;
+}
+body.admin:not(.terrain) input:focus,
+body.admin:not(.terrain) select:focus,
+body.admin:not(.terrain) textarea:focus,
+body.terrain input:focus,
+body.terrain select:focus,
+body.terrain textarea:focus {
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+body.admin:not(.terrain) .journal-table-wrap,
+body.admin:not(.terrain) .bilan-table-wrap { border-radius: 14px; border-color: var(--border); }
+body.admin:not(.terrain) .journal-table th,
+body.admin:not(.terrain) .bilan-table th { background: #f4f7fb; color: #52647d; }
+body.admin:not(.terrain) .journal-table td,
+body.admin:not(.terrain) .bilan-table td { border-color: #edf1f6; }
+
+/* Carte et expérience équipe : pensée pour une utilisation rapide sur le terrain */
+body.terrain { background: #f3f6fb; }
+body.terrain .t-main { background: #f3f6fb; }
+body.terrain .t-view { max-width: 920px; margin-inline: auto; }
+body.terrain .r-hello { padding: 4px 2px 10px; }
+body.terrain .r-hello h2 { color: #142b4d; font-size: clamp(21px, 4vw, 26px); letter-spacing: -.035em; }
+body.terrain .r-card,
+body.terrain .t-fiche,
+body.terrain .tt-card {
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+body.terrain .r-card { padding: 18px; }
+body.terrain .t-row {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 2px 7px rgba(15,35,65,.025);
+}
+body.terrain .t-row:focus-within { border-color: color-mix(in srgb, var(--accent) 50%, white); box-shadow: var(--ring); }
+body.terrain .t-filter.active {
+  background: color-mix(in srgb, var(--accent) 12%, white);
+  color: var(--accent-dark);
+  border-color: color-mix(in srgb, var(--accent) 32%, white);
+}
+body.terrain .t-tabs {
+  border-top: 1px solid var(--border);
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 -8px 28px rgba(15,35,65,.07);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+body.terrain .t-tabs a { min-height: 58px; gap: 4px; color: #718096; }
+body.terrain .t-tabs a.active { color: var(--accent-dark); }
+body.terrain .t-tabs a.active .ico {
+  width: 44px;
+  color: var(--accent-dark);
+  background: color-mix(in srgb, var(--accent) 13%, white);
+  border-radius: 12px;
+}
+body.terrain .t-login-card { border: 1px solid var(--border); box-shadow: var(--shadow-lg); }
+body.terrain #t-code { min-height: 52px; border-radius: 14px; letter-spacing: .18em; }
+body.terrain .tt-card { box-shadow: 0 20px 55px rgba(15,35,65,.14); }
+
+/* Documents, reçus et exports */
+body.plan { background: #e9eef5; }
+body.plan .plan-toolbar { border-bottom: 1px solid var(--border); box-shadow: 0 4px 18px rgba(15,35,65,.06); }
+body.plan .plan-options fieldset { border-color: var(--border); border-radius: 14px; }
+body.plan .sheet,
+body.plan .report-sheet { border: 1px solid #e0e7f0; border-radius: 12px; box-shadow: 0 16px 42px rgba(15,35,65,.12); }
+body.plan .report-sheet { padding: 14mm 13mm; }
+body.plan .report-head { border-bottom: 3px solid var(--accent); padding-bottom: 14px; }
+body.plan .report-head h1,
+body.plan .report-block h2 { color: #142b4d; }
+body.plan .report-block { padding-block: 12px; border-color: var(--border); }
+body.plan .report-kpis > * { border: 1px solid var(--border); border-radius: 14px; background: #f7f9fc; }
+body.legal { background: radial-gradient(ellipse at 50% 0, #e8eef8 0, #f3f6fb 54%, #f3f6fb 100%); }
+body.legal .legal-page,
+body.legal .receipt-card,
+.sumup-card { border: 1px solid var(--border); border-radius: 24px; box-shadow: 0 22px 60px rgba(15,35,65,.12); }
+body.legal .legal-page h1,
+body.legal .legal-page h2,
+body.legal .receipt-card h1,
+.sumup-card h1 { color: #142b4d; }
+body.legal .receipt-note { border-radius: 0 12px 12px 0; }
+
+/* Administration centrale : identité Almaneo assumée */
+body.admin.plateforme { background: #f3f6fb; }
+body.admin.plateforme .pf-main { max-width: 1480px; }
+body.admin.plateforme .pf-card,
+body.admin.plateforme .pf-kpi,
+body.admin.plateforme .pf-caserne { border: 1px solid var(--border); border-radius: 20px; box-shadow: var(--shadow-sm); }
+body.admin.plateforme .pf-hello h1 { font-size: clamp(26px, 3vw, 34px); letter-spacing: -.04em; }
+body.admin.plateforme .pf-kpi { padding: 20px; }
+body.admin.plateforme .pf-kpi strong { font-size: clamp(26px, 3vw, 34px); }
+body.admin.plateforme .pf-caserne { padding: 20px; }
+body.admin.plateforme .pf-caserne:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
+body.admin.plateforme .pf-card { padding: 22px; }
+body.admin.plateforme .pf-section-head h2 { font-size: 20px; }
+body.admin.plateforme .pf-field input,
+body.admin.plateforme .pf-field textarea,
+body.admin.plateforme .pf-field select { min-height: 44px; border-radius: 12px; }
+
+/* Responsive : pas de débordement, zones tactiles confortables */
+@media (max-width: 760px) {
+  body.admin:not(.terrain) #admin-panel { padding: 12px; }
+  body.admin:not(.terrain) .teams { padding: 16px 12px 28px; }
+  body.admin:not(.terrain) .settings-card,
+  body.admin:not(.terrain) .people-panel,
+  body.admin:not(.terrain) .balance,
+  body.admin:not(.terrain) .caisse-section { padding: 14px; border-radius: 16px; }
+  body.admin:not(.terrain) .admin-tabs { gap: 5px; padding: 7px 10px; }
+  body.admin:not(.terrain) .admin-tab { min-height: 42px; padding-inline: 12px; }
+  body.terrain .t-view { padding: 14px 12px 24px; }
+  body.terrain .r-card { padding: 15px; }
+  body.terrain .t-tabs a { min-height: 58px; }
+  body.admin.plateforme .pf-main { padding: 18px 12px 32px; gap: 16px; }
+  body.admin.plateforme .pf-card { padding: 16px; border-radius: 16px; }
+  body.admin.plateforme .pf-kpis { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 9px; }
+  body.admin.plateforme .pf-kpi { padding: 13px; }
+  body.admin.plateforme .pf-kpi strong { font-size: 24px; }
+  body.admin.plateforme .pf-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 420px) {
+  body.admin .brand-title { max-width: 138px; }
+  body.admin .topbar-actions .topbar-link { padding-inline: 6px; }
+  body.admin.plateforme .pf-kpis { grid-template-columns: 1fr 1fr; }
+  body.admin.plateforme .pf-kpi span { font-size: 10px; }
+  body.admin.plateforme .pf-kpi strong { font-size: 21px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
