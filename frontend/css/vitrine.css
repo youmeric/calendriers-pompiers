@@ -442,3 +442,40 @@ h2 span, h2 em, h1 em { color: var(--red); font-style: normal; }
   .v-order-steps { grid-template-columns: 1fr; gap: 14px; }
   .v-price-pitch { min-height: 0; }
 }
+
+/* Pages secondaires : mentions légales, confidentialité, accès à son espace */
+.v-subpage .v-header .v-nav-sub { display: flex; }
+.v-doc { max-width: 820px; padding-top: 72px; padding-bottom: 96px; }
+.v-doc h1 { margin: 0 0 14px; font-size: clamp(34px, 5vw, 52px); letter-spacing: -.05em; }
+.v-doc h2 { margin: 42px 0 10px; font-size: 21px; letter-spacing: -.02em; }
+.v-doc p, .v-doc li { color: var(--body); font-size: 15px; line-height: 1.8; }
+.v-doc ul { padding-left: 20px; }
+.v-doc a { color: var(--red-dark); }
+.v-doc-lead { color: var(--muted) !important; font-size: 17px !important; }
+.v-acces-form { margin: 30px 0 18px; }
+.v-acces-form label { display: block; margin-bottom: 8px; color: var(--ink); font-size: 13px; font-weight: 700; }
+.v-acces-form div { display: flex; gap: 10px; }
+.v-acces-form input { flex: 1; min-width: 0; min-height: 52px; padding: 12px 16px; border: 1px solid #d7dee8; border-radius: 11px; font-size: 16px; color: var(--ink); }
+.v-acces-form input:focus { outline: 0; border-color: var(--red); box-shadow: 0 0 0 3px rgba(223,32,41,.1); }
+.v-acces-results { display: grid; gap: 10px; margin: 8px 0 10px; padding: 0; list-style: none; }
+.v-acces-results a { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 14px; text-decoration: none; color: var(--ink); background: #fff; transition: border-color .15s ease, transform .15s ease; }
+.v-acces-results a:hover { border-color: var(--navy); transform: translateY(-1px); }
+.v-acces-results b { display: block; font-size: 16px; }
+.v-acces-results small { color: var(--muted); font-size: 13px; }
+.v-acces-results span.go { color: var(--red); font-weight: 800; white-space: nowrap; }
+.v-acces-none { padding: 16px 18px; border-radius: 12px; background: var(--mist); color: var(--body); font-size: 14px; }
+.v-acces-help { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 42px; }
+.v-acces-help > div { padding: 22px; border-radius: 16px; background: var(--mist); }
+.v-acces-help h2 { margin: 0 0 8px; font-size: 16px; }
+.v-acces-help p { margin: 0; font-size: 14px; }
+.v-nav-espace { font-weight: 700 !important; }
+@media (max-width: 820px) {
+  .v-subpage .v-header .v-nav-sub { position: static; display: flex; padding: 0; background: none; box-shadow: none; flex-direction: row; gap: 10px; }
+  .v-subpage .v-nav-sub a:not(.v-nav-cta) { display: none; }
+  .v-acces-help { grid-template-columns: 1fr; }
+  .v-doc { padding-top: 44px; }
+}
+@media (max-width: 540px) { .v-acces-form div { flex-direction: column; } }
+.v-footer-bottom { font-size: 11px; }
+.v-footer-bottom a, .v-footer-aside a { color: #c9d4e4; }
+.v-footer-bottom a:hover, .v-footer-aside a:hover { color: #fff; }

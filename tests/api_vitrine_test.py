@@ -73,6 +73,27 @@ with v:
     p.put("/api/plateforme/tarifs", json={"actif": False, "offres": offres})
     check('id="tarifs"' not in v.get("/").text, "tarifs cachés à nouveau")
     p.post("/api/plateforme/casernes", json={"slug": "vaugneray", "nom": "SP Vaugneray", "admin_identifiant": "chef", "admin_nom": "Paul", "admin_password": "motdepasse1"})
+    # pages secondaires : mentions légales, confidentialité, accès à son espace
+    ml = v.get("/mentions-legales")
+    check(ml.status_code == 200 and "Mentions légales" in ml.text and "OVH SAS" in ml.text and "article 6, III, 2" in ml.text
+          and "mailto:contact@almaneo.test" in ml.text and "__" not in ml.text.replace("__V__", ""), "mentions légales (éditeur, hébergeur, contact)")
+    cf = v.get("/confidentialite")
+    check(cf.status_code == 200 and "3 ans" in cf.text and "aucun cookie" in cf.text and "CNIL" in cf.text, "politique de confidentialité")
+    check(C("vaugneray.almaneo.test").get("/mentions-legales").status_code == 404, "pages du site vitrine : seulement sur almaneo.fr")
+    a = v.get("/acces", params={"q": "vaug"})
+    check(a.status_code == 200 and 'href="https://vaugneray.almaneo.test/"' in a.text and "noindex" in a.text, "accès : la caserne est retrouvée par son nom")
+    check("au moins 3 lettres" in v.get("/acces", params={"q": "va"}).text and "Aucune caserne" in v.get("/acces", params={"q": "zzzz"}).text
+          and "vaugneray.almaneo.test" not in v.get("/acces", params={"q": "va"}).text, "accès : pas de liste complète, message si rien")
+    x = v.get("/acces", params={"q": "<script>alert(1)</script>"}).text
+    check("<script>alert" not in x and "&lt;script&gt;" in x, "accès : recherche échappée")
+    check('"index, follow"' in v.get("/acces").text and "/mentions-legales</loc>" in v.get("/sitemap.xml").text, "pages déclarées à Google")
+    check('href="/mentions-legales"' in v.get("/").text and 'href="/acces"' in v.get("/").text, "liens depuis la page d'accueil")
+    from backend.app import plateforme as _pf
+    with _pf.conn() as c:
+        c.execute("UPDATE demandes SET created_at = '2020-01-01T00:00:00+00:00' WHERE id = (SELECT MIN(id) FROM demandes)")
+        c.commit()
+    avant = len(p.get("/api/plateforme/demandes").json()["demandes"])
+    check(_pf.purge_demandes() == 1 and len(p.get("/api/plateforme/demandes").json()["demandes"]) == avant - 1, "demandes de plus de 3 ans effacées")
     check("Demander une démo" not in C("vaugneray.almaneo.test").get("/").text and C("vaugneray.almaneo.test").post("/api/vitrine/demande", json=d).status_code == 404,
           "une caserne garde son site (pas de vitrine)")
 print("ÉCHECS :", fails)

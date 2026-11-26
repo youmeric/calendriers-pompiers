@@ -12,9 +12,10 @@ import json
 import os
 import re
 import sqlite3
+import unicodedata
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 PLATFORM_DB_PATH = os.environ.get("PLATFORM_DB_PATH") or ""
 CASERNES_DIR = os.environ.get("CASERNES_DIR") or os.path.join(os.path.dirname(PLATFORM_DB_PATH) or ".", "casernes")
@@ -23,8 +24,14 @@ PLATFORM_DOMAIN = (os.environ.get("PLATFORM_DOMAIN") or "").lower().strip(".")
 # nom de la plateforme (marque), affiché discrètement sur les sites des casernes
 PLATFORM_NAME = os.environ.get("PLATFORM_NAME") or "Almaneo"
 # site vitrine (almaneo.fr) : contact et éditeur affichés en bas de page
-PLATFORM_CONTACT_EMAIL = os.environ.get("PLATFORM_CONTACT_EMAIL") or ""
+PLATFORM_CONTACT_EMAIL = os.environ.get("PLATFORM_CONTACT_EMAIL") or (f"contact@{PLATFORM_DOMAIN}" if PLATFORM_DOMAIN else "")
 PLATFORM_EDITEUR = os.environ.get("PLATFORM_EDITEUR") or ""
+# mentions légales : à renseigner dès que le site est édité à titre professionnel (vente)
+PLATFORM_EDITEUR_ADRESSE = os.environ.get("PLATFORM_EDITEUR_ADRESSE") or ""
+PLATFORM_EDITEUR_SIRET = os.environ.get("PLATFORM_EDITEUR_SIRET") or ""
+# hébergeur du serveur (mentions légales)
+PLATFORM_HEBERGEUR = os.environ.get("PLATFORM_HEBERGEUR") or "OVH SAS, 2 rue Kellermann, 59100 Roubaix, France — www.ovhcloud.com"
+DEMANDES_CONSERVATION_JOURS = 3 * 365  # demandes de démo : 3 ans après leur envoi (recommandation CNIL pour les prospects)
 
 SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$")
 RESERVED = {"admin", "www", "api", "plateforme", "static", "mail"}
@@ -400,6 +407,47 @@ def add_demande(d: dict) -> int:
                          d.get("commune", ""), d.get("equipiers", ""), d.get("offre", ""), _now())).lastrowid
         c.commit()
     return did
+
+
+def purge_demandes(days: int = DEMANDES_CONSERVATION_JOURS) -> int:
+    """Efface les demandes de démo trop anciennes (durée annoncée dans la politique de confidentialité)."""
+    limit = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    with conn() as c:
+        n = c.execute("DELETE FROM demandes WHERE created_at < ?", (limit,)).rowcount
+        c.commit()
+    return n
+
+
+def _plain_text(v: str) -> str:
+    v = unicodedata.normalize("NFKD", v.lower())
+    return re.sub(r"[^a-z0-9]+", " ", "".join(ch for ch in v if not unicodedata.combining(ch))).strip()
+
+
+def caserne_url(cas: Caserne) -> str:
+    own = [h for h in hosts(cas.id) if not (PLATFORM_DOMAIN and h.endswith("." + PLATFORM_DOMAIN))]
+    if own:
+        return f"https://{own[0]}/"
+    return f"https://{cas.slug}.{PLATFORM_DOMAIN}/" if PLATFORM_DOMAIN else ""
+
+
+def find_espaces(q: str, limit: int = 5) -> list[dict]:
+    """« Accéder à mon espace » : casernes actives dont le nom, l'identifiant ou une commune contient tous les mots tapés.
+    Il faut au moins 3 lettres : on ne publie pas la liste complète des casernes."""
+    words = _plain_text(q).split()
+    if len("".join(words)) < 3:
+        return []
+    out = []
+    for cas in list_casernes():
+        if cas.statut != "active":
+            continue
+        gen = last_generation(cas.id)
+        communes = [c.get("nom", "") for c in (gen or {}).get("communes", []) if isinstance(c, dict)]
+        hay = _plain_text(" ".join([cas.nom, cas.slug.replace("-", " "), *communes]))
+        if all(w in hay for w in words) and (url := caserne_url(cas)):
+            out.append({"nom": cas.nom, "url": url, "communes": communes})
+        if len(out) >= limit:
+            break
+    return out
 
 
 def list_demandes() -> list[dict]:

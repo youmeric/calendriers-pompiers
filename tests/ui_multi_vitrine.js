@@ -55,6 +55,13 @@ function check(c, m) { console.log(`${c ? "OK  " : "FAIL"} ${m}`); if (!c) proce
   await v.click('#v-form button[type="submit"]'); await v.waitForTimeout(800);
   await p.reload(); await p.waitForTimeout(1200);
   check((await p.textContent("#pf-demandes")).includes("Formule : Amicale"), "admin central : la demande indique la formule");
+  // pages secondaires
+  await v.click('.v-footer-bottom a[href="/mentions-legales"]'); await v.waitForTimeout(500);
+  check((await v.textContent("h1")).includes("Mentions légales"), "pied de page → mentions légales");
+  await m.goto(`${VITRINE}/acces?q=xyz`); await m.waitForTimeout(500);
+  check(await m.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1) && (await m.textContent("main")).includes("Aucune caserne"),
+    "téléphone : page « Accéder à mon espace » sans défilement horizontal");
+  await m.screenshot({ path: `${SP}/vitrine-acces.png` });
   check(errors.length === 0, `aucune erreur JS ${errors.join(" | ")}`);
   await browser.close();
 })();

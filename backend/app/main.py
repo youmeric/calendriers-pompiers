@@ -74,6 +74,11 @@ async def _daily_backups() -> None:
         for cas in await asyncio.to_thread(_each_caserne):
             with plateforme.use(cas):
                 await _daily_tasks()
+        if plateforme.enabled():
+            try:  # demandes de démo : effacées au bout de la durée annoncée sur le site
+                await asyncio.to_thread(plateforme.purge_demandes)
+            except Exception:
+                log.exception("Nettoyage des demandes impossible")
         await asyncio.sleep(3600)
 
 
@@ -2718,6 +2723,11 @@ class CaserneMiddleware:
                 return await _vitrine_page()(scope, receive, send)
             if path == "/sitemap.xml":
                 return await _sitemap()(scope, receive, send)
+            if path.rstrip("/") in VITRINE_PAGES:
+                qs = scope.get("query_string", b"").decode("latin-1")
+                client = (scope.get("client") or ("?", 0))[0]
+                fwd = dict(scope.get("headers") or []).get(b"x-forwarded-for", b"").decode("latin-1")
+                return await _vitrine_doc(path.rstrip("/"), qs, fwd.split(",")[-1].strip() if fwd else client)(scope, receive, send)
             if path.startswith(STATIC_PREFIXES) or path == "/api/vitrine/demande":
                 return await self.asgi(scope, receive, send)
             if path == "/plateforme" and plateforme.PLATFORM_DOMAIN:
@@ -2790,19 +2800,78 @@ def _tarifs_html() -> dict:
 
 def _vitrine_page() -> HTMLResponse:
     """Site vitrine de la plateforme (almaneo.fr)."""
-    esc = _esc
-    name, mail, editeur = plateforme.PLATFORM_NAME, plateforme.PLATFORM_CONTACT_EMAIL, plateforme.PLATFORM_EDITEUR
     tarifs = _tarifs_html()
     html = (FRONTEND_DIR / "vitrine.html").read_text(encoding="utf-8").replace("__V__", ASSET_VERSION)
     html = (html.replace("__TARIFS__", tarifs["section"]).replace("__NAV_TARIFS__", tarifs["nav"])
             .replace("__CHAMP_FORMULE__", tarifs["champ"]).replace("__FAQ_PRIX__", tarifs["faq"]))
-    html = (html.replace("__NOM__", esc(name))
+    return HTMLResponse(_vitrine_fill(html), headers={"Cache-Control": "no-cache"})
+
+
+# pages secondaires du site vitrine : chemin -> (fichier, titre, description, indexée)
+VITRINE_PAGES = {
+    "/mentions-legales": ("mentions-legales", "Mentions légales", "Éditeur, hébergeur et crédits du site.", True),
+    "/confidentialite": ("confidentialite", "Politique de confidentialité", "Ce que nous faisons des données personnelles.", True),
+    "/acces": ("acces", "Accéder à l'espace de votre caserne", "Retrouvez l'adresse de l'espace de votre caserne.", True),
+}
+VITRINE_PAGES_DIR = Path(__file__).parent / "vitrine_pages"
+_acces_ip: dict[str, list[float]] = {}
+
+
+def _acces_results(q: str, ip: str) -> str:
+    q = " ".join(q.split())[:80]
+    if not q:
+        return ""
+    now = time.time()
+    recent = [t for t in _acces_ip.get(ip, []) if now - t < 60]
+    if len(recent) >= 30:
+        return '<p class="v-acces-none">Trop de recherches d\'un coup : réessayez dans une minute.</p>'
+    _acces_ip[ip] = recent + [now]
+    if len(q.replace(" ", "")) < 3:
+        return '<p class="v-acces-none">Tapez au moins 3 lettres.</p>'
+    found = plateforme.find_espaces(q)
+    if not found:
+        return ('<p class="v-acces-none">Aucune caserne trouvée pour « ' + _esc(q) + ' ». Vérifiez l\'orthographe, essayez le nom '
+                'de votre commune, ou demandez l\'adresse à votre chef de tournée.</p>')
+    items = "".join(
+        f'<li><a href="{_esc(f["url"])}"><span><b>{_esc(f["nom"])}</b><small>{_esc(f["url"].split("//")[-1].rstrip("/"))}'
+        + (f' · {_esc(", ".join(f["communes"][:4]))}' if f["communes"] else "") + '</small></span><span class="go">Ouvrir →</span></a></li>'
+        for f in found)
+    return f'<ul class="v-acces-results">{items}</ul>'
+
+
+def _vitrine_doc(path: str, query: str, ip: str) -> HTMLResponse:
+    from urllib.parse import parse_qs
+    fichier, titre, description, indexee = VITRINE_PAGES[path]
+    contenu = (VITRINE_PAGES_DIR / f"{fichier}.html").read_text(encoding="utf-8")
+    if fichier == "acces":
+        q = (parse_qs(query).get("q") or [""])[0]
+        contenu = contenu.replace("__Q__", _esc(q[:80])).replace("__RESULTATS__", _acces_results(q, ip))
+        indexee = indexee and not q  # une page de résultats n'a rien à faire dans Google
+    adresse, siret = plateforme.PLATFORM_EDITEUR_ADRESSE, plateforme.PLATFORM_EDITEUR_SIRET
+    coordonnees = "".join(f"<p>{label} : {_esc(v)}</p>" for label, v in (("Adresse", adresse), ("SIRET", siret)) if v) or (
+        "<p>L'éditeur, personne physique, n'a pas souhaité rendre publiques ses coordonnées personnelles ; celles-ci ont été "
+        "communiquées à l'hébergeur (article 6, III, 2 de la loi n° 2004-575 du 21 juin 2004).</p>")
+    personne = _esc(plateforme.PLATFORM_EDITEUR) if plateforme.PLATFORM_EDITEUR else "le créateur de __NOM__"
+    contenu = (contenu.replace("__EDITEUR_PERSONNE__", personne).replace("__EDITEUR_COORDONNEES__", coordonnees).replace("__HEBERGEUR__", _esc(plateforme.PLATFORM_HEBERGEUR))
+               .replace("__MAJ__", "novembre 2026"))
+    pied = (VITRINE_PAGES_DIR / "pied.html").read_text(encoding="utf-8")
+    html = (FRONTEND_DIR / "vitrine-page.html").read_text(encoding="utf-8").replace("__V__", ASSET_VERSION)
+    html = (html.replace("__CONTENU__", contenu).replace("__PIED__", pied).replace("__TITRE__", _esc(titre))
+            .replace("__DESCRIPTION__", _esc(description)).replace("__CHEMIN__", path)
+            .replace("__ROBOTS__", "index, follow" if indexee else "noindex, follow"))
+    return HTMLResponse(_vitrine_fill(html), headers={"Cache-Control": "no-cache"})
+
+
+def _vitrine_fill(html: str) -> str:
+    """Remplace les informations de la plateforme (nom, contact, éditeur, domaine) dans une page du site vitrine."""
+    esc = _esc
+    name, mail, editeur = plateforme.PLATFORM_NAME, plateforme.PLATFORM_CONTACT_EMAIL, plateforme.PLATFORM_EDITEUR
+    return (html.replace("__NOM__", esc(name))
             .replace("__CONTACT__", f'<a href="mailto:{esc(mail)}">{esc(mail)}</a>' if mail else "le formulaire ci-dessus")
             .replace("__CONTACT_DIRECT__", f'<p class="v-direct">Vous préférez écrire directement ? <a href="mailto:{esc(mail)}">{esc(mail)}</a></p>' if mail else "")
             .replace("__EDITEUR__", esc(editeur) if editeur else esc(name))
             .replace("__DOMAINE__", esc(plateforme.PLATFORM_DOMAIN or "almaneo.fr"))
             .replace("__ADMIN__", f"https://admin.{esc(plateforme.PLATFORM_DOMAIN)}/plateforme" if plateforme.PLATFORM_DOMAIN else "/plateforme"))
-    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 
 def _site_url() -> str:
@@ -2817,7 +2886,9 @@ def _robots(vitrine: bool) -> PlainTextResponse:
 
 def _sitemap() -> Response:
     body = ('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-            f"<url><loc>{_site_url()}</loc><changefreq>monthly</changefreq></url></urlset>\n")
+            f"<url><loc>{_site_url()}</loc><changefreq>monthly</changefreq></url>"
+            + "".join(f"<url><loc>{_site_url()}{p.lstrip('/')}</loc><changefreq>yearly</changefreq></url>" for p in VITRINE_PAGES)
+            + "</urlset>\n")
     return Response(body, media_type="application/xml", headers={"Cache-Control": "public, max-age=3600"})
 
 
