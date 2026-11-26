@@ -372,6 +372,50 @@ def save_settings(payload: ReglagesIn, request: Request):
     return _settings()
 
 
+class OffreIn(BaseModel):
+    nom: str = Field(min_length=1, max_length=40)
+    prix: str = Field(default="", max_length=30)
+    periode: str = Field(default="", max_length=30)
+    accroche: str = Field(default="", max_length=160)
+    inclus: list[str] = Field(default_factory=list, max_length=10)
+    bouton: str = Field(default="", max_length=40)
+    vedette: bool = False
+
+    @field_validator("nom", "prix", "periode", "accroche", "bouton")
+    @classmethod
+    def strip(cls, v: str) -> str:
+        return " ".join(v.split())
+
+    @field_validator("inclus")
+    @classmethod
+    def lines(cls, v: list[str]) -> list[str]:
+        out = [" ".join(x.split())[:120] for x in v]
+        return [x for x in out if x]
+
+
+class TarifsIn(BaseModel):
+    actif: bool = False
+    note: str = Field(default="", max_length=400)
+    offres: list[OffreIn] = Field(default_factory=list, max_length=4)
+
+
+@router.get("/api/plateforme/tarifs", dependencies=[Depends(require_central)])
+def get_prices():
+    return plateforme.tarifs()
+
+
+@router.put("/api/plateforme/tarifs", dependencies=[Depends(require_central)])
+def save_prices(payload: TarifsIn, request: Request):
+    """Formules affichées sur le site vitrine (partie « Tarifs ») et proposées dans le formulaire de demande."""
+    data = {"actif": payload.actif, "note": " ".join(payload.note.split()), "offres": [o.model_dump() for o in payload.offres]}
+    if data["actif"] and not data["offres"]:
+        raise HTTPException(status_code=400, detail="Ajoutez au moins une formule avant d'afficher les tarifs")
+    plateforme.set_tarifs(data)
+    plateforme.log(_who(request), "reglages", "tarifs",
+                   ("affichés" if data["actif"] else "cachés") + " · " + ", ".join(f"{o['nom']} {o['prix']}".strip() for o in data["offres"]))
+    return data
+
+
 @router.post("/api/plateforme/whatsapp/test", dependencies=[Depends(require_central)])
 def test_bot():
     """Le bot de la plateforme répond-il, et WhatsApp est-il connecté ?"""
@@ -497,10 +541,11 @@ class DemandeIn(BaseModel):
     telephone: str = Field(default="", max_length=30)
     commune: str = Field(default="", max_length=120)
     equipiers: str = Field(default="", max_length=20)
+    offre: str = Field(default="", max_length=60)
     message: str = Field(default="", max_length=1500)
     site: str = Field(default="", max_length=200)  # piège à robots : champ caché, doit rester vide
 
-    @field_validator("nom", "caserne", "email", "telephone", "commune", "equipiers")
+    @field_validator("nom", "caserne", "email", "telephone", "commune", "equipiers", "offre")
     @classmethod
     def strip(cls, v: str) -> str:
         return " ".join(v.split())

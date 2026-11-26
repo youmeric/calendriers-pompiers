@@ -67,6 +67,50 @@ const fs = require("fs");
   await p.screenshot({ path: `${OUT}/phone-maisons.png` });
   await p.click('.t-tabs a[data-tab="carte"]'); await p.waitForTimeout(1200);
   await p.screenshot({ path: `${OUT}/phone-carte.png` });
+  // 3. animation pour le bandeau : on marque deux maisons, le pourcentage monte
+  //    (images assemblées ensuite en WebP animé par tests/captures_animation.py)
+  const tap = async (sel) => {
+    const box = await p.locator(sel).first().boundingBox();
+    await p.evaluate(({ x, y }) => {
+      const d = document.createElement("div");
+      d.className = "tap-demo";
+      Object.assign(d.style, { position: "fixed", left: `${x - 22}px`, top: `${y - 22}px`, width: "44px", height: "44px", borderRadius: "50%",
+        background: "rgba(11,31,68,.22)", border: "2px solid rgba(11,31,68,.45)", zIndex: 9999, pointerEvents: "none" });
+      document.body.appendChild(d);
+    }, { x: box.x + box.width / 2, y: box.y + box.height / 2 });
+  };
+  const untap = () => p.evaluate(() => document.querySelectorAll(".tap-demo").forEach((d) => d.remove()));
+  await p.click('.t-tabs a[data-tab="accueil"]'); await p.waitForTimeout(900);
+  await p.screenshot({ path: `${OUT}/anim-1.png` });
+  await p.click('.t-tabs a[data-tab="maisons"]'); await p.click('.t-filter[data-filter="all"]'); await p.waitForTimeout(300);
+  await p.locator('.t-row:not(.st-fait):not(.st-absent):not(.st-refus)').first().evaluate((el) => el.scrollIntoView({ block: "center" }));
+  await p.waitForTimeout(400);
+  await p.screenshot({ path: `${OUT}/anim-2.png` });
+  for (const n of [3, 5]) {
+    const sel = '.t-row:not(.st-fait):not(.st-absent):not(.st-refus) .t-st.fait';
+    await p.locator(sel).first().evaluate((el) => el.scrollIntoView({ block: "center" })); await p.waitForTimeout(300);
+    await tap(sel); await p.screenshot({ path: `${OUT}/anim-${n}.png` });
+    await untap(); await p.locator(sel).first().click(); await p.waitForTimeout(600);
+    await p.screenshot({ path: `${OUT}/anim-${n + 1}.png` });
+  }
+  await p.click('.t-tabs a[data-tab="accueil"]'); await p.waitForTimeout(900);
+  await p.screenshot({ path: `${OUT}/anim-7.png` });
+  // 4. la même appli aux couleurs de trois casernes fictives
+  const shield = (c1, c2, txt) => Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120">
+    <path d="M50 4 L94 18 V58 C94 88 74 106 50 116 C26 106 6 88 6 58 V18 Z" fill="${c1}" stroke="#fff" stroke-width="4"/>
+    <path d="M50 14 L84 25 V58 C84 81 69 96 50 104 Z" fill="${c2}"/>
+    <path d="M50 40 C60 52 64 60 58 72 C56 64 52 62 50 58 C48 66 42 68 42 76 C34 64 40 52 50 40 Z" fill="#fff"/>
+    <text x="50" y="100" font-family="Arial" font-weight="700" font-size="13" text-anchor="middle" fill="#fff">${txt}</text></svg>`).toString("base64");
+  const variants = [["Sapeurs-pompiers de Valmont", "#d1262c", "#d1262c", "#8f1218", "SPV"],
+    ["Amicale des pompiers de Montclar", "#1d4ed8", "#1d4ed8", "#0b2a6b", "APM"],
+    ["Centre de secours des Aubiers", "#0f766e", "#0f766e", "#064e46", "CSA"]];
+  for (const [i, [nom, couleur, c1, c2, txt]] of variants.entries()) {
+    await req.put(`${B}/api/admin/logo`, { data: { type: "image/svg+xml", data: shield(c1, c2, txt) } });
+    await req.put(`${B}/api/admin/settings`, { data: { caserne_nom: nom, caserne_couleur: couleur } });
+    await p.reload(); await p.waitForTimeout(1500);
+    await p.click('.t-tabs a[data-tab="accueil"]').catch(() => {}); await p.waitForTimeout(600);
+    await p.screenshot({ path: `${OUT}/theme-${i + 1}.png` });
+  }
   await browser.close();
   console.log("captures faites dans", OUT);
 })();

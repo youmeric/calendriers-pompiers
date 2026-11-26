@@ -14,6 +14,9 @@ function check(c, m) { console.log(`${c ? "OK  " : "FAIL"} ${m}`); if (!c) proce
   check((await v.textContent("h1")).includes("Votre tournée") && await v.locator(".v-pillars article").count() === 4
     && await v.locator(".v-finance-grid article").count() === 6 && await v.locator("#securite article").count() === 6
     && (await v.textContent(".v-footer")).includes("votrecaserne."), "vitrine : accroche, étapes, finances, 6 points de sécurité, accès des casernes existantes");
+  // on descend toute la page pour charger les images différées, comme un visiteur
+  await v.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += 600) { window.scrollTo(0, y); await new Promise((r) => setTimeout(r, 60)); } window.scrollTo(0, 0); });
+  await v.waitForTimeout(800);
   check(await v.evaluate(() => [...document.images].every((i) => i.complete && i.naturalWidth > 0)), "toutes les images s'affichent");
   await v.screenshot({ path: `${SP}/vitrine-ordinateur.png`, fullPage: true });
   await v.click('.v-nav a[href="#contact"]'); await v.waitForTimeout(400);
@@ -35,6 +38,23 @@ function check(c, m) { console.log(`${c ? "OK  " : "FAIL"} ${m}`); if (!c) proce
     "admin central : la demande est arrivée");
   await p.click('#pf-demandes [data-dem="1"]'); await p.waitForTimeout(600);
   check(await p.isHidden("#pf-dem-count"), "demande traitée");
+  // tarifs : affichés depuis l'admin central, puis choisis sur la vitrine
+  check(await v.locator("#tarifs").count() === 0, "tarifs cachés au départ");
+  await p.click('.pf-nav a[href="#tarifs"]'); await p.waitForTimeout(300);
+  check(await p.locator(".pf-offre").count() === 3, "admin central : 3 formules proposées au départ");
+  await p.fill('.pf-offre[data-i="1"] [data-o="prix"]', "139 €");
+  await p.check("#pf-tarifs-actif"); await p.click("#pf-tarifs-save"); await p.waitForTimeout(800);
+  await p.screenshot({ path: `${SP}/pf-tarifs.png` });
+  await v.reload(); await v.waitForTimeout(800);
+  check(await v.locator("#tarifs .v-price-card").count() === 3 && (await v.textContent("#tarifs")).includes("139 €"), "vitrine : les 3 formules, avec le prix modifié");
+  await v.locator("#tarifs").scrollIntoViewIfNeeded(); await v.waitForTimeout(300);
+  await v.screenshot({ path: `${SP}/vitrine-tarifs.png` });
+  await v.click('#tarifs [data-offre="Amicale"]'); await v.waitForTimeout(600);
+  check(await v.inputValue('#v-form select[name="offre"]') === "Amicale", "« Choisir Amicale » : formule présélectionnée dans la demande");
+  await v.fill('[name="nom"]', "Paule Martin"); await v.fill('[name="caserne"]', "Amicale de Montclar"); await v.fill('[name="email"]', "paule@exemple.fr");
+  await v.click('#v-form button[type="submit"]'); await v.waitForTimeout(800);
+  await p.reload(); await p.waitForTimeout(1200);
+  check((await p.textContent("#pf-demandes")).includes("Formule : Amicale"), "admin central : la demande indique la formule");
   check(errors.length === 0, `aucune erreur JS ${errors.join(" | ")}`);
   await browser.close();
 })();

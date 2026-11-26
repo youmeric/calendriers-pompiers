@@ -28,3 +28,32 @@
     }
   });
 })();
+
+/* Bouton « Demander une démo » collant (téléphone) et apparitions au défilement. */
+(() => {
+  "use strict";
+  const sticky = document.getElementById("v-sticky");
+  const hero = document.querySelector(".v-hero");
+  const contact = document.getElementById("contact");
+  if (sticky && hero && contact && "IntersectionObserver" in window) {
+    const seen = { hero: true, contact: false };
+    const update = () => { sticky.hidden = seen.hero || seen.contact; };
+    new IntersectionObserver(([e]) => { seen.hero = e.isIntersecting; update(); }).observe(hero);
+    new IntersectionObserver(([e]) => { seen.contact = e.isIntersecting; update(); }).observe(contact);
+  }
+  // pas d'animation pour les robots (captures, référencement) ni si le téléphone demande moins de mouvement
+  if (navigator.webdriver || !("IntersectionObserver" in window) || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const items = document.querySelectorAll("main section h2, .v-pillar, .v-price-card, .v-compare-col, .v-feature-media, .v-feature-image, .v-brand-phones figure, .v-finance-grid article, .v-roles-grid article, .v-timeline article, .v-security-grid article, .v-form-card");
+  document.documentElement.classList.add("v-reveal-on");
+  const io = new IntersectionObserver((entries) => entries.forEach((e) => {
+    if (e.isIntersecting) { e.target.classList.add("is-in"); io.unobserve(e.target); }
+  }), { rootMargin: "0px 0px -8% 0px" });
+  items.forEach((el, i) => { el.classList.add("v-reveal"); el.style.transitionDelay = `${(i % 4) * 70}ms`; io.observe(el); });
+})();
+
+/* Tarifs : « Choisir cette formule » la présélectionne dans le formulaire de demande. */
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-offre]");
+  const select = document.querySelector('#v-form select[name="offre"]');
+  if (btn && select) select.value = btn.dataset.offre;
+});

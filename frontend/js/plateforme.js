@@ -44,8 +44,9 @@
   }
 
   async function refresh() {
-    const [r, reg, dm, cp, j] = await Promise.all([api("/api/plateforme/casernes"), api("/api/plateforme/reglages"),
-      api("/api/plateforme/demandes"), api("/api/plateforme/comptes"), api("/api/plateforme/journal")]);
+    const [r, reg, dm, cp, j, tf] = await Promise.all([api("/api/plateforme/casernes"), api("/api/plateforme/reglages"),
+      api("/api/plateforme/demandes"), api("/api/plateforme/comptes"), api("/api/plateforme/journal"), api("/api/plateforme/tarifs")]);
+    if (!state.tarifsDirty) renderTarifs(tf);
     state.casernes = r.casernes;
     state.abos = r.abonnements_actifs;
     state.demandes = dm.demandes;
@@ -247,7 +248,7 @@
         <div><b>${escapeHtml(d.caserne)}</b> — ${escapeHtml(d.nom)}
           <small class="hint">${new Date(d.created_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}</small><br>
           <a href="mailto:${encodeURIComponent(d.email).replace(/%40/g, "@")}">${escapeHtml(d.email)}</a>${d.telephone ? ` · ${escapeHtml(d.telephone)}` : ""}
-          ${d.commune || d.equipiers ? `<br><small>${[d.commune && `📍 ${escapeHtml(d.commune)}`, d.equipiers && `👥 ${escapeHtml(d.equipiers)} équipiers`].filter(Boolean).join(" · ")}</small>` : ""}
+          ${d.commune || d.equipiers || d.offre ? `<br><small>${[d.offre && `🧾 Formule : <b>${escapeHtml(d.offre)}</b>`, d.commune && `📍 ${escapeHtml(d.commune)}`, d.equipiers && `👥 ${escapeHtml(d.equipiers)} équipiers`].filter(Boolean).join(" · ")}</small>` : ""}
           ${d.message ? `<p class="pf-dem-msg">${escapeHtml(d.message)}</p>` : ""}</div>
         <button type="button" class="btn small" data-dem="${d.traitee ? "0" : "1"}">${d.traitee ? "Rouvrir" : "✓ Traitée"}</button></div>`).join("")
       : `<p class="hint">Aucune demande pour l'instant.</p>`;
@@ -291,6 +292,71 @@
   $("pf-abos").addEventListener("change", async () => {
     try {
       await api("/api/plateforme/reglages", { method: "PUT", body: { abonnements_actifs: $("pf-abos").checked } });
+      await refresh();
+    } catch (err) { showToast(err.message, true); }
+  });
+
+  // ---- tarifs du site vitrine ----
+  function offreHtml(o, i) {
+    return `<div class="pf-offre" data-i="${i}">
+      <div class="pf-row"><label class="pf-field">Nom<input data-o="nom" maxlength="40" value="${escapeHtml(o.nom || "")}" placeholder="Amicale" /></label>
+        <label class="pf-field">Prix<input data-o="prix" maxlength="30" value="${escapeHtml(o.prix || "")}" placeholder="149 €" /></label>
+        <label class="pf-field">Période<input data-o="periode" maxlength="30" value="${escapeHtml(o.periode || "")}" placeholder="par an" /></label></div>
+      <label class="pf-field">Phrase d'accroche<input data-o="accroche" maxlength="160" value="${escapeHtml(o.accroche || "")}" /></label>
+      <label class="pf-field">Ce qui est inclus (une ligne par point)<textarea data-o="inclus" rows="4">${escapeHtml((o.inclus || []).join("\n"))}</textarea></label>
+      <div class="pf-row"><label class="pf-field">Texte du bouton<input data-o="bouton" maxlength="40" value="${escapeHtml(o.bouton || "")}" placeholder="Choisir cette formule" /></label>
+        <label class="setting-row pf-offre-vedette"><input type="checkbox" data-o="vedette"${o.vedette ? " checked" : ""} /><span>Mise en avant (« Recommandé »)</span></label></div>
+      <div class="pf-actions"><button type="button" class="btn small" data-offre-move="-1"${i === 0 ? " disabled" : ""}>↑</button>
+        <button type="button" class="btn small" data-offre-move="1">↓</button>
+        <button type="button" class="btn small danger" data-offre-del>Supprimer</button></div></div>`;
+  }
+  function readTarifs() {
+    return {
+      actif: $("pf-tarifs-actif").checked,
+      note: $("pf-tarifs-note").value,
+      offres: [...document.querySelectorAll(".pf-offre")].map((el) => {
+        const f = (k) => el.querySelector(`[data-o="${k}"]`);
+        return { nom: f("nom").value.trim(), prix: f("prix").value, periode: f("periode").value, accroche: f("accroche").value,
+          inclus: f("inclus").value.split("\n").map((x) => x.trim()).filter(Boolean), bouton: f("bouton").value, vedette: f("vedette").checked };
+      }),
+    };
+  }
+  function renderTarifs(t) {
+    $("pf-tarifs-actif").checked = !!t.actif;
+    $("pf-tarifs-note").value = t.note || "";
+    $("pf-offres").innerHTML = (t.offres || []).map(offreHtml).join("");
+    $("pf-offre-add").disabled = (t.offres || []).length >= 4;
+    $("pf-tarifs-voir").href = state.domaine ? `https://${state.domaine}/#tarifs` : "/";
+  }
+  $("tarifs").addEventListener("input", () => { state.tarifsDirty = true; });
+  $("pf-offre-add").addEventListener("click", () => {
+    const t = readTarifs();
+    t.offres.push({ nom: "", prix: "", periode: "par an", accroche: "", inclus: [], bouton: "", vedette: false });
+    state.tarifsDirty = true;
+    renderTarifs(t);
+  });
+  $("pf-offres").addEventListener("click", (e) => {
+    const card = e.target.closest(".pf-offre");
+    if (!card) return;
+    const i = Number(card.dataset.i);
+    const t = readTarifs();
+    if (e.target.closest("[data-offre-del]")) t.offres.splice(i, 1);
+    else if (e.target.closest("[data-offre-move]")) {
+      const j = i + Number(e.target.closest("[data-offre-move]").dataset.offreMove);
+      if (j < 0 || j >= t.offres.length) return;
+      [t.offres[i], t.offres[j]] = [t.offres[j], t.offres[i]];
+    } else return;
+    state.tarifsDirty = true;
+    renderTarifs(t);
+  });
+  $("pf-tarifs-save").addEventListener("click", async () => {
+    try {
+      const t = readTarifs();
+      if (t.offres.some((o) => !o.nom)) throw new Error("Chaque formule doit avoir un nom");
+      const saved = await api("/api/plateforme/tarifs", { method: "PUT", body: t });
+      state.tarifsDirty = false;
+      renderTarifs(saved);
+      showToast(saved.actif ? "Tarifs enregistrés et affichés sur le site ✓" : "Tarifs enregistrés (cachés sur le site) ✓");
       await refresh();
     } catch (err) { showToast(err.message, true); }
   });

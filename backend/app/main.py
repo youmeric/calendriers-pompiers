@@ -2743,11 +2743,59 @@ class CaserneMiddleware:
             plateforme.current.reset(token)
 
 
+def _esc(v: str) -> str:
+    return v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+_CHECK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg>'
+
+
+def _tarifs_html() -> dict:
+    """Partie « Tarifs » du site vitrine, rendue côté serveur (lisible par les moteurs de recherche).
+    Vide tant que l'admin central n'a pas choisi d'afficher les tarifs."""
+    t = plateforme.tarifs()
+    offres = [o for o in t.get("offres", []) if o.get("nom")]
+    if not t.get("actif") or not offres:
+        return {"section": "", "nav": "", "champ": "",
+                "faq": "La plateforme est en phase pilote. Contactez-nous pour échanger sur votre besoin et les modalités de mise à disposition."}
+    cards = []
+    for o in offres:
+        nom = _esc(o["nom"])
+        inclus = "".join(f"<li>{_CHECK_SVG}<span>{_esc(x)}</span></li>" for x in o.get("inclus", []))
+        cards.append(
+            f'<article class="v-price-card{" is-featured" if o.get("vedette") else ""}">'
+            + ('<span class="v-price-badge">Recommandé</span>' if o.get("vedette") else "")
+            + f'<h3>{nom}</h3><p class="v-price-pitch">{_esc(o.get("accroche", ""))}</p>'
+            + f'<p class="v-price"><b>{_esc(o.get("prix", ""))}</b><span>{_esc(o.get("periode", ""))}</span></p>'
+            + f'<ul>{inclus}</ul>'
+            + f'<a class="v-button {"v-button-red" if o.get("vedette") else "v-button-outline"}" href="#contact" data-offre="{nom}">'
+            + f'{_esc(o.get("bouton") or "Choisir")} <span aria-hidden="true">→</span></a></article>')
+    section = (
+        '<section class="v-pricing v-wrap" id="tarifs" aria-labelledby="v-tarifs-titre">'
+        '<div class="v-section-tag">TARIFS</div>'
+        '<div class="v-pricing-head"><h2 id="v-tarifs-titre">Un prix clair,<br /><span>sans surprise.</span></h2>'
+        f'<p>{_esc(t.get("note", ""))}</p></div>'
+        f'<div class="v-price-grid" data-n="{len(cards)}">{"".join(cards)}</div>'
+        '<ol class="v-order-steps"><li><b>Vous choisissez</b> une formule et envoyez la demande ci-dessous.</li>'
+        '<li><b>Nous créons votre espace</b> avec vos communes et vous envoyons vos accès.</li>'
+        '<li><b>Vous préparez votre tournée</b>, guidés pas à pas dès la première connexion.</li></ol>'
+        '</section>')
+    options = "".join(f'<option value="{_esc(o["nom"])}">{_esc(o["nom"])}{" — " + _esc(o["prix"]) if o.get("prix") else ""}</option>' for o in offres)
+    champ = ('<label class="v-form-full">Formule souhaitée<select name="offre">'
+             f'<option value="">Je ne sais pas encore</option>{options}</select></label>')
+    return {"section": section, "nav": '<a href="#tarifs">Tarifs</a>', "champ": champ,
+            "faq": 'Nos formules sont présentées dans la partie <a href="#tarifs">Tarifs</a> : un prix par caserne et par an. '
+                   "Une question ? Écrivez-nous avec le formulaire de demande."}
+
+
 def _vitrine_page() -> HTMLResponse:
     """Site vitrine de la plateforme (almaneo.fr)."""
-    esc = lambda v: v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")  # noqa: E731
+    esc = _esc
     name, mail, editeur = plateforme.PLATFORM_NAME, plateforme.PLATFORM_CONTACT_EMAIL, plateforme.PLATFORM_EDITEUR
+    tarifs = _tarifs_html()
     html = (FRONTEND_DIR / "vitrine.html").read_text(encoding="utf-8").replace("__V__", ASSET_VERSION)
+    html = (html.replace("__TARIFS__", tarifs["section"]).replace("__NAV_TARIFS__", tarifs["nav"])
+            .replace("__CHAMP_FORMULE__", tarifs["champ"]).replace("__FAQ_PRIX__", tarifs["faq"]))
     html = (html.replace("__NOM__", esc(name))
             .replace("__CONTACT__", f'<a href="mailto:{esc(mail)}">{esc(mail)}</a>' if mail else "le formulaire ci-dessus")
             .replace("__CONTACT_DIRECT__", f'<p class="v-direct">Vous préférez écrire directement ? <a href="mailto:{esc(mail)}">{esc(mail)}</a></p>' if mail else "")

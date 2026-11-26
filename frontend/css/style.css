@@ -3383,3 +3383,10 @@ body.admin.plateforme .pf-journal { overflow-x: auto; }
   body.legal { background: #fff; }
   body.legal .receipt-card { border: 0; box-shadow: none; }
 }
+
+/* Admin central : formules de prix du site vitrine */
+.pf-offres { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin: 14px 0; }
+.pf-offre { padding: 16px; border: 1px solid var(--border, #e5e7eb); border-radius: 14px; background: var(--surface-2, #f6f7f9); }
+.pf-offre .pf-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.pf-offre .pf-row > .pf-field { flex: 1 1 90px; }
+.pf-offre-vedette { align-self: flex-end; margin-bottom: 10px; }

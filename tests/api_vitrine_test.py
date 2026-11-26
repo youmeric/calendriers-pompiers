@@ -31,7 +31,7 @@ with v:
     check(hd.get("x-content-type-options") == "nosniff" and hd.get("x-frame-options") == "SAMEORIGIN" and "geolocation=(self)" in hd.get("permissions-policy", "")
           and hd.get("strict-transport-security") == "max-age=31536000" and "x-robots-tag" not in hd, "en-têtes de sécurité sur la vitrine")
     check(C("autre.test").get("/plateforme").headers.get("x-robots-tag") == "noindex, nofollow", "admin central : noindex")
-    for img in ("/img/vitrine/phone-accueil.jpg", "/img/almaneo/logo.png", "/img/almaneo/logo-fond-fonce.png", "/img/almaneo/favicon-32.png", "/img/almaneo/favicon-48.png", "/img/almaneo/favicon-192.png", "/favicon.ico", "/img/almaneo/partage.png", "/css/vitrine.css", "/js/vitrine.js"):
+    for img in ("/img/vitrine/phone-accueil.webp", "/img/vitrine/demo-tournee.webp", "/img/vitrine/caserne-1.webp", "/img/almaneo/logo.png", "/img/almaneo/logo-fond-fonce.png", "/img/almaneo/favicon-32.png", "/img/almaneo/favicon-48.png", "/img/almaneo/favicon-192.png", "/favicon.ico", "/img/almaneo/partage.png", "/css/vitrine.css", "/js/vitrine.js"):
         check(v.get(img).status_code == 200, f"ressource {img}")
     check(v.get("/api/communes").status_code == 404 and v.get("/admin").status_code == 404, "pas d'outil sur la vitrine")
     r = v.get("/plateforme", follow_redirects=False)
@@ -52,6 +52,26 @@ with v:
         v.post("/api/vitrine/demande", json=d)
     check(v.post("/api/vitrine/demande", json=d).status_code == 429, "trop de demandes d'une même adresse : freinées")
     check(p.get("/").status_code in (200, 307) and "Almaneo" in p.get("/plateforme").text, "admin.almaneo.fr : l'admin central")
+    # tarifs : cachés au départ, puis affichés depuis l'admin central
+    check('id="tarifs"' not in v.get("/").text and "phase pilote" in v.get("/").text and p.get("/api/plateforme/tarifs").json()["actif"] is False,
+          "tarifs : cachés tant que l'admin central ne les affiche pas")
+    check(v.put("/api/plateforme/tarifs", json={"actif": True}).status_code == 404 and C("autre.test").put("/api/plateforme/tarifs", json={"actif": True}).status_code == 401,
+          "tarifs : modifiables seulement par l'admin central")
+    check(p.put("/api/plateforme/tarifs", json={"actif": True, "offres": []}).status_code == 400, "tarifs : au moins une formule pour les afficher")
+    offres = [{"nom": "Essentiel", "prix": "89 €", "periode": "par an", "accroche": "Une ou deux communes", "inclus": ["Tout", "  ", "Sauvegardes"], "bouton": "Choisir"},
+              {"nom": "Amicale <b>", "prix": "149 €", "periode": "par an", "inclus": ["Visio"], "vedette": True}]
+    r = p.put("/api/plateforme/tarifs", json={"actif": True, "note": "Paiement par virement.", "offres": offres})
+    check(r.status_code == 200 and r.json()["offres"][0]["inclus"] == ["Tout", "Sauvegardes"], "tarifs enregistrés (lignes vides retirées)")
+    h2 = v.get("/").text
+    check('id="tarifs"' in h2 and 'href="#tarifs">Tarifs</a>' in h2 and "Paiement par virement." in h2 and h2.count('class="v-price-card') == 2
+          and "is-featured" in h2 and '<option value="Essentiel">Essentiel — 89 €</option>' in h2 and "phase pilote" not in h2, "vitrine : partie Tarifs, menu, formulaire et FAQ")
+    check("Amicale <b>" not in h2 and "Amicale &lt;b&gt;" in h2, "tarifs : texte échappé")
+    from backend.app import central as _central
+    _central._demandes_ip.clear()
+    check(v.post("/api/vitrine/demande", json={**d, "offre": "Essentiel"}).status_code == 200
+          and p.get("/api/plateforme/demandes").json()["demandes"][0]["offre"] == "Essentiel", "demande avec la formule choisie")
+    p.put("/api/plateforme/tarifs", json={"actif": False, "offres": offres})
+    check('id="tarifs"' not in v.get("/").text, "tarifs cachés à nouveau")
     p.post("/api/plateforme/casernes", json={"slug": "vaugneray", "nom": "SP Vaugneray", "admin_identifiant": "chef", "admin_nom": "Paul", "admin_password": "motdepasse1"})
     check("Demander une démo" not in C("vaugneray.almaneo.test").get("/").text and C("vaugneray.almaneo.test").post("/api/vitrine/demande", json=d).status_code == 404,
           "une caserne garde son site (pas de vitrine)")

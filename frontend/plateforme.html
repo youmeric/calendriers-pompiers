@@ -19,6 +19,7 @@
     <nav class="pf-nav" id="pf-nav" hidden aria-label="Rubriques">
       <a href="#casernes">Casernes</a>
       <a href="#demandes">Demandes <span id="pf-nav-dem" class="pf-dot" hidden></span></a>
+      <a href="#tarifs">Tarifs</a>
       <a href="#reglages">Réglages</a>
       <a href="#comptes">Comptes</a>
       <a href="#journal">Journal</a>
@@ -62,6 +63,19 @@
       <div class="pf-section-head"><h2>Demandes de démo <span id="pf-dem-count" class="pf-badge new" hidden></span></h2>
         <span class="hint">Envoyées depuis le site vitrine.</span></div>
       <div id="pf-demandes"></div>
+    </section>
+
+    <section id="tarifs" class="pf-section pf-card">
+      <div class="pf-section-head"><h2>Tarifs du site vitrine</h2>
+        <a class="hint" id="pf-tarifs-voir" href="/" target="_blank" rel="noopener">Voir le site ↗</a></div>
+      <p class="hint">Les formules affichées dans la partie « Tarifs » d'almaneo.fr et proposées dans le formulaire de demande.
+        Les prix sont libres (« 149 € », « Sur devis »…). Rien n'est encaissé en ligne : la demande arrive ici, comme une demande de démo.</p>
+      <label class="setting-row"><input type="checkbox" id="pf-tarifs-actif" />
+        <span><b>Afficher les tarifs sur le site vitrine</b> — décoché : la partie est cachée et la FAQ indique « phase pilote ».</span></label>
+      <label class="pf-field">Texte sous le titre (conditions, modalités de paiement…)<textarea id="pf-tarifs-note" rows="2" maxlength="400"></textarea></label>
+      <div id="pf-offres" class="pf-offres"></div>
+      <div class="pf-actions"><button type="button" class="btn small" id="pf-offre-add">+ Ajouter une formule</button>
+        <button type="button" class="btn small primary" id="pf-tarifs-save">Enregistrer les tarifs</button></div>
     </section>
 
     <div class="pf-two">

@@ -146,7 +146,7 @@ def init() -> None:
             if col not in cols:  # bot WhatsApp : géré par l'admin central, activé caserne par caserne
                 c.execute(f"ALTER TABLE casernes ADD COLUMN {col} {decl}")
         dcols = {r[1] for r in c.execute("PRAGMA table_info(demandes)")}
-        for col in ("commune", "equipiers"):  # précisions facultatives du formulaire de démo
+        for col in ("commune", "equipiers", "offre"):  # précisions facultatives du formulaire de démo
             if col not in dcols:
                 c.execute(f"ALTER TABLE demandes ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
         c.commit()
@@ -279,6 +279,43 @@ def get_reglage(key: str, default: str = "") -> str:
     return r[0] if r else default
 
 
+# ---- Tarifs affichés sur le site vitrine (modifiables dans l'admin central) -------------------
+# Proposition de départ, cachée tant que l'admin central n'a pas coché « Afficher les tarifs ».
+TARIFS_DEFAUT = {
+    "actif": False,
+    "note": "Tarifs pilotes, par caserne et par an. Facture adressée à l'amicale, paiement par virement. "
+            "Sans engagement : vous arrêtez quand vous voulez et vous repartez avec vos données.",
+    "offres": [
+        {"nom": "Essentiel", "prix": "89 €", "periode": "par an", "accroche": "Une amicale, une ou deux communes.",
+         "inclus": ["Toutes les fonctions : secteurs, équipes, suivi, dons, caisse, registre", "Jusqu'à 2 communes",
+                    "Équipiers illimités", "Votre espace à vos couleurs, à votre adresse", "Sauvegardes quotidiennes",
+                    "Assistance par e-mail"],
+         "bouton": "Choisir Essentiel", "vedette": False},
+        {"nom": "Amicale", "prix": "149 €", "periode": "par an", "accroche": "Plusieurs communes, une tournée bien rodée.",
+         "inclus": ["Tout ce qu'il y a dans Essentiel", "Jusqu'à 6 communes", "Mise en route accompagnée en visio",
+                    "Aide prioritaire pendant la tournée"],
+         "bouton": "Choisir Amicale", "vedette": True},
+        {"nom": "Sur mesure", "prix": "Sur devis", "periode": "", "accroche": "Union départementale, groupement de casernes, besoins particuliers.",
+         "inclus": ["Plusieurs casernes", "Votre propre nom de domaine", "Formation de vos responsables"],
+         "bouton": "Nous contacter", "vedette": False},
+    ],
+}
+
+
+def tarifs() -> dict:
+    raw = get_reglage("tarifs", "")
+    if not raw:
+        return json.loads(json.dumps(TARIFS_DEFAUT))
+    try:
+        return json.loads(raw)
+    except ValueError:
+        return json.loads(json.dumps(TARIFS_DEFAUT))
+
+
+def set_tarifs(data: dict) -> None:
+    set_reglage("tarifs", json.dumps(data, ensure_ascii=False))
+
+
 def set_reglage(key: str, value: str) -> None:
     with conn() as c:
         c.execute("INSERT INTO reglages (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
@@ -352,15 +389,15 @@ def delete_caserne(caserne_id: int) -> None:
 
 # ---- Demandes de démonstration (site vitrine) ---------------------------------------------
 
-_DEMANDE = ("id", "nom", "caserne", "email", "telephone", "message", "created_at", "traitee", "commune", "equipiers")
+_DEMANDE = ("id", "nom", "caserne", "email", "telephone", "message", "created_at", "traitee", "commune", "equipiers", "offre")
 
 
 def add_demande(d: dict) -> int:
     with conn() as c:
-        did = c.execute("INSERT INTO demandes (nom, caserne, email, telephone, message, commune, equipiers, created_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        did = c.execute("INSERT INTO demandes (nom, caserne, email, telephone, message, commune, equipiers, offre, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (d["nom"], d["caserne"], d["email"], d.get("telephone", ""), d.get("message", ""),
-                         d.get("commune", ""), d.get("equipiers", ""), _now())).lastrowid
+                         d.get("commune", ""), d.get("equipiers", ""), d.get("offre", ""), _now())).lastrowid
         c.commit()
     return did
 
