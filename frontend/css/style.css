@@ -2638,3 +2638,68 @@ body.admin.plateforme .pf-field textarea {
   body.plan .report-sheet,
   body.plan .sheet { box-shadow: none; border: 0; }
 }
+
+
+/* ALMANEO — finition des vues publiques et du retour de paiement */
+body.public .topbar {
+  border-bottom-color: #e2e7ef;
+  box-shadow: 0 2px 14px rgba(11,31,68,.045);
+}
+body.public .brand-title { color: var(--brand-navy); }
+body.public .topbar-sub { color: #64748b; }
+body.public .drawer {
+  border: 1px solid #e4eaf2;
+  box-shadow: 0 -12px 34px rgba(11,31,68,.10);
+}
+body.public .panel-title,
+body.public .sector-heading { color: var(--brand-navy); }
+body.public .info-card {
+  border-color: #e5eaf1;
+  border-radius: 16px;
+  box-shadow: 0 3px 12px rgba(11,31,68,.035);
+}
+body.public .sector-code {
+  background: var(--brand-tint);
+  color: var(--brand-red-dark);
+  border-radius: 9px;
+}
+body.public .search input,
+body.public input[type="search"] {
+  border-color: #dfe5ee;
+}
+body.public .search input:focus,
+body.public input[type="search"]:focus {
+  border-color: var(--brand-red);
+  box-shadow: 0 0 0 3px rgba(227,20,27,.11);
+}
+body.public .btn:not(.primary) {
+  border-color: #dfe5ee;
+}
+body.public .btn.primary {
+  background: var(--brand-red);
+  border-color: var(--brand-red);
+}
+body.public .btn.primary:hover {
+  background: var(--brand-red-dark);
+}
+body.sumup-page {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(11,31,68,.10), transparent 58%),
+    linear-gradient(180deg, #f8faff 0%, #f2f5fa 100%);
+}
+.sumup-card {
+  border: 1px solid #e3e9f1;
+  border-radius: 24px;
+  box-shadow: 0 22px 60px rgba(11,31,68,.12);
+  padding: 34px 28px;
+}
+.sumup-card h1 { color: var(--brand-navy); line-height: 1.25; }
+.sumup-card .sumup-note { color: #64748b; line-height: 1.55; }
+.sumup-card .btn.primary {
+  background: var(--brand-red);
+  border-color: var(--brand-red);
+}
+@media (max-width: 640px) {
+  .sumup-card { padding: 28px 20px; border-radius: 20px; }
+  body.public .panel-handle { padding-top: 14px; }
+}
