@@ -479,3 +479,5 @@ h2 span, h2 em, h1 em { color: var(--red); font-style: normal; }
 .v-footer-bottom { font-size: 11px; }
 .v-footer-bottom a, .v-footer-aside a { color: #c9d4e4; }
 .v-footer-bottom a:hover, .v-footer-aside a:hover { color: #fff; }
+.v-pricing-cgv { margin: 22px 0 0; color: var(--muted); font-size: 13px; }
+.v-pricing-cgv a { color: var(--red-dark); }

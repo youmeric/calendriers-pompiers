@@ -64,7 +64,7 @@ with v:
     check(r.status_code == 200 and r.json()["offres"][0]["inclus"] == ["Tout", "Sauvegardes"], "tarifs enregistrés (lignes vides retirées)")
     h2 = v.get("/").text
     check('id="tarifs"' in h2 and 'href="#tarifs">Tarifs</a>' in h2 and "Paiement par virement." in h2 and h2.count('class="v-price-card') == 2
-          and "is-featured" in h2 and '<option value="Essentiel">Essentiel — 89 €</option>' in h2 and "phase pilote" not in h2, "vitrine : partie Tarifs, menu, formulaire et FAQ")
+          and "is-featured" in h2 and '<option value="Essentiel">Essentiel — 89 €</option>' in h2 and "phase pilote" not in h2 and 'href="/conditions-generales"' in h2, "vitrine : partie Tarifs, menu, formulaire, FAQ et lien vers les CGV")
     check("Amicale <b>" not in h2 and "Amicale &lt;b&gt;" in h2, "tarifs : texte échappé")
     from backend.app import central as _central
     _central._demandes_ip.clear()
@@ -77,6 +77,9 @@ with v:
     ml = v.get("/mentions-legales")
     check(ml.status_code == 200 and "Mentions légales" in ml.text and "OVH SAS" in ml.text and "article 6, III, 2" in ml.text
           and "mailto:contact@almaneo.test" in ml.text and "__" not in ml.text.replace("__V__", ""), "mentions légales (éditeur, hébergeur, contact)")
+    cg = v.get("/conditions-generales")
+    check(cg.status_code == 200 and "article 28 du RGPD" in cg.text and "293 B" in cg.text and "OVH SAS" in cg.text
+          and "__" not in cg.text.replace("__V__", ""), "conditions générales de vente")
     cf = v.get("/confidentialite")
     check(cf.status_code == 200 and "3 ans" in cf.text and "aucun cookie" in cf.text and "CNIL" in cf.text, "politique de confidentialité")
     check(C("vaugneray.almaneo.test").get("/mentions-legales").status_code == 404, "pages du site vitrine : seulement sur almaneo.fr")

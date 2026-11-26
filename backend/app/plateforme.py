@@ -31,6 +31,8 @@ PLATFORM_EDITEUR_ADRESSE = os.environ.get("PLATFORM_EDITEUR_ADRESSE") or ""
 PLATFORM_EDITEUR_SIRET = os.environ.get("PLATFORM_EDITEUR_SIRET") or ""
 # hébergeur du serveur (mentions légales)
 PLATFORM_HEBERGEUR = os.environ.get("PLATFORM_HEBERGEUR") or "OVH SAS, 2 rue Kellermann, 59100 Roubaix, France — www.ovhcloud.com"
+# mention de TVA des conditions générales et des factures (micro-entreprise en franchise de TVA par défaut)
+PLATFORM_TVA_MENTION = os.environ.get("PLATFORM_TVA_MENTION") or "TVA non applicable, article 293 B du CGI."
 DEMANDES_CONSERVATION_JOURS = 3 * 365  # demandes de démo : 3 ans après leur envoi (recommandation CNIL pour les prospects)
 
 SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$")

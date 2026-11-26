@@ -2789,6 +2789,8 @@ def _tarifs_html() -> dict:
         '<ol class="v-order-steps"><li><b>Vous choisissez</b> une formule et envoyez la demande ci-dessous.</li>'
         '<li><b>Nous créons votre espace</b> avec vos communes et vous envoyons vos accès.</li>'
         '<li><b>Vous préparez votre tournée</b>, guidés pas à pas dès la première connexion.</li></ol>'
+        '<p class="v-pricing-cgv">Abonnement annuel, résiliable à chaque échéance. '
+        '<a href="/conditions-generales">Voir les conditions générales</a>.</p>'
         '</section>')
     options = "".join(f'<option value="{_esc(o["nom"])}">{_esc(o["nom"])}{" — " + _esc(o["prix"]) if o.get("prix") else ""}</option>' for o in offres)
     champ = ('<label class="v-form-full">Formule souhaitée<select name="offre">'
@@ -2812,6 +2814,8 @@ VITRINE_PAGES = {
     "/mentions-legales": ("mentions-legales", "Mentions légales", "Éditeur, hébergeur et crédits du site.", True),
     "/confidentialite": ("confidentialite", "Politique de confidentialité", "Ce que nous faisons des données personnelles.", True),
     "/acces": ("acces", "Accéder à l'espace de votre caserne", "Retrouvez l'adresse de l'espace de votre caserne.", True),
+    "/conditions-generales": ("conditions-generales", "Conditions générales de vente et d'utilisation",
+                              "Abonnement, prix, données personnelles et engagements du service.", True),
 }
 VITRINE_PAGES_DIR = Path(__file__).parent / "vitrine_pages"
 _acces_ip: dict[str, list[float]] = {}
@@ -2853,7 +2857,7 @@ def _vitrine_doc(path: str, query: str, ip: str) -> HTMLResponse:
         "communiquées à l'hébergeur (article 6, III, 2 de la loi n° 2004-575 du 21 juin 2004).</p>")
     personne = _esc(plateforme.PLATFORM_EDITEUR) if plateforme.PLATFORM_EDITEUR else "le créateur de __NOM__"
     contenu = (contenu.replace("__EDITEUR_PERSONNE__", personne).replace("__EDITEUR_COORDONNEES__", coordonnees).replace("__HEBERGEUR__", _esc(plateforme.PLATFORM_HEBERGEUR))
-               .replace("__MAJ__", "novembre 2026"))
+               .replace("__TVA__", _esc(plateforme.PLATFORM_TVA_MENTION)).replace("__MAJ__", "novembre 2026"))
     pied = (VITRINE_PAGES_DIR / "pied.html").read_text(encoding="utf-8")
     html = (FRONTEND_DIR / "vitrine-page.html").read_text(encoding="utf-8").replace("__V__", ASSET_VERSION)
     html = (html.replace("__CONTENU__", contenu).replace("__PIED__", pied).replace("__TITRE__", _esc(titre))
