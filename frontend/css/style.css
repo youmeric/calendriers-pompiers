@@ -2703,3 +2703,150 @@ body.sumup-page {
   .sumup-card { padding: 28px 20px; border-radius: 20px; }
   body.public .panel-handle { padding-top: 14px; }
 }
+
+
+/* ALMANEO — finition de l'administration multi-casernes */
+body.admin .topbar {
+  border-bottom-color: #e2e7ef;
+  box-shadow: 0 2px 14px rgba(11,31,68,.05);
+}
+body.admin .brand-chip {
+  background: var(--brand-tint);
+  color: var(--brand-red-dark);
+  border: 1px solid rgba(227,20,27,.10);
+}
+body.admin .topbar-actions {
+  gap: 6px;
+}
+body.admin .topbar-link {
+  border-radius: 10px;
+  transition: background .15s ease, color .15s ease;
+}
+body.admin .topbar-link:hover {
+  background: #f3f6fa;
+  color: var(--brand-navy);
+}
+body.admin .admin-tabs {
+  gap: 6px;
+  padding-inline: clamp(10px, 2vw, 24px);
+  border-bottom-color: #e2e7ef;
+  box-shadow: 0 3px 12px rgba(11,31,68,.035);
+}
+body.admin .admin-tab {
+  min-height: 42px;
+  border: 1px solid transparent;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+body.admin .admin-tab.active {
+  background: var(--brand-tint);
+  border-color: rgba(227,20,27,.10);
+  color: var(--brand-red-dark);
+}
+body.admin #admin-panel {
+  background: #f7f9fc;
+}
+body.admin #admin-panel .help,
+body.admin #admin-panel .tools,
+body.admin #admin-panel .balance,
+body.admin #admin-panel .settings-card {
+  border-color: #e3e9f1;
+  border-radius: 16px;
+  box-shadow: 0 3px 14px rgba(11,31,68,.035);
+}
+body.admin #admin-panel .help summary {
+  color: var(--brand-navy);
+  font-weight: 700;
+}
+body.admin #admin-panel .balance-head {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+body.admin #admin-panel .panel-title {
+  color: var(--brand-navy);
+}
+body.admin .teams {
+  padding-top: 24px;
+}
+body.admin .teams-head h2 {
+  color: var(--brand-navy);
+  letter-spacing: -.025em;
+}
+body.admin .team-cards,
+body.admin .people-panel,
+body.admin .journal-card,
+body.admin .bilan-main,
+body.admin .settings-card,
+body.admin .live-map-card {
+  border-color: #e3e9f1;
+  border-radius: 16px;
+  box-shadow: 0 3px 14px rgba(11,31,68,.04);
+}
+body.admin .people-panel {
+  background: #fff;
+}
+body.admin .cpt-row,
+body.admin .role-card {
+  border-color: #e8edf3;
+}
+body.admin .role-card {
+  border-radius: 12px;
+}
+body.admin .journal-head,
+body.admin .balance-head,
+body.admin .live-map-head {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+body.admin input:not([type="checkbox"]):not([type="radio"]):focus-visible,
+body.admin select:focus-visible,
+body.admin textarea:focus-visible,
+body.terrain input:focus-visible,
+body.terrain select:focus-visible,
+body.terrain textarea:focus-visible {
+  outline: 3px solid rgba(227,20,27,.16);
+  outline-offset: 1px;
+}
+body.admin .btn,
+body.terrain .btn {
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, transform .1s ease;
+}
+@media (max-width: 760px) {
+  body.admin .topbar {
+    gap: 6px;
+    padding-inline: 10px;
+  }
+  body.admin .brand-logo { height: 38px; }
+  body.admin .brand-title { font-size: 13px; }
+  body.admin .topbar-sub { font-size: 10px; }
+  body.admin .topbar-actions {
+    gap: 2px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  body.admin .topbar-link {
+    padding: 6px 7px;
+    font-size: 11px;
+  }
+  body.admin .admin-tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+  body.admin .admin-tabs::-webkit-scrollbar { display: none; }
+  body.admin .admin-tab {
+    flex: 0 0 auto;
+    padding-inline: 11px;
+    font-size: 12px;
+  }
+  body.admin .teams { padding: 16px 12px 32px; }
+  body.admin .teams-actions { width: 100%; }
+  body.admin .teams-actions .btn { flex: 1 1 auto; }
+  body.admin .comptes-grid { padding-inline: 12px; }
+  body.admin .cpt-form .field-row { flex-direction: column; }
+  body.admin .cpt-form-actions { flex-wrap: wrap; }
+}
+@media (max-width: 420px) {
+  body.admin .topbar-sub { display: none; }
+  body.admin .brand-title { max-width: 145px; }
+  body.admin .topbar-actions .topbar-link { font-size: 10px; }
+}
