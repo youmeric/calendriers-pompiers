@@ -1320,8 +1320,10 @@
     $("tf-bld").hidden = !canEdit();
     $("tf-bld").textContent = lg ? `🏢 Modifier le nombre de logements (${lg.n})` : "🏢 C'est un immeuble ? Indiquer le nombre de logements";
     $("tf-note-box").hidden = !canEdit();
-    $("tf-note").value = noteOf(a);
-    $("tf-note-save").hidden = true;
+    // fiche rafraîchie pendant qu'on tape (statut, logement…) : la note en cours d'écriture est gardée
+    const typing = $("t-fiche").open && ficheAddr === a && cleanNote($("tf-note").value) !== noteOf(a);
+    if (!typing) $("tf-note").value = noteOf(a);
+    $("tf-note-save").hidden = !typing;
     const by = T.tr && T.tr.notes && T.tr.notes[a.id];
     $("tf-note").title = by && by.par ? `Note de ${by.par}` : "";
     document.querySelectorAll("#t-fiche .tf-status .tt-btn").forEach((b) => {
@@ -1380,12 +1382,20 @@
     if (!v.toLowerCase().includes(add.toLowerCase())) $("tf-note").value = v ? `${v}, ${add}` : add;
     noteChanged();
   });
-  const noteChanged = () => { $("tf-note-save").hidden = $("tf-note").value.trim() === noteOf(ficheAddr); };
+  const cleanNote = (raw) => raw.split(/\s+/).join(" ").trim().slice(0, 300);
+  const noteChanged = () => { $("tf-note-save").hidden = cleanNote($("tf-note").value) === noteOf(ficheAddr); };
+  // une note tapée puis « Fait », « Absent », un don ou la fermeture de la fiche : elle est enregistrée
+  // d'elle-même, sans avoir à appuyer sur « Enregistrer la note »
+  $("t-fiche").addEventListener("close", () => {
+    const a = ficheAddr;
+    if (!a || !canEdit() || $("tf-note-box").hidden) return;
+    if (cleanNote($("tf-note").value) !== noteOf(a)) saveNote(a, $("tf-note").value);
+  });
   $("tf-note").addEventListener("input", noteChanged);
   $("tf-note-save").addEventListener("click", () => saveNote(ficheAddr, $("tf-note").value));
 
   async function saveNote(a, raw) {
-    const note = raw.split(/\s+/).join(" ").trim().slice(0, 300);
+    const note = cleanNote(raw);
     const slug = slugOf(a);
     const local = () => {
       if (note) T.tr.notes[a.id] = { note, par: T.me.personne ? T.me.personne.nom : "Admin", pending: true };
